@@ -1,0 +1,32 @@
+{
+  "name": "react-native-notion-markdown-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Notion-flavored markdown renderer and WYSIWYG editor.",
+  "author": {
+    "email": "gage@sorrell.sh",
+    "name": "Gage Sorrell",
+    "url": "https://sorrell.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GageSorrell/ReactNativeNotionMarkdown.git"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/eslintrc": "3.3.6",
+    "@sorrell/eslint-config": "2.3.0",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-perf": "3.3.3",
+    "react-native": "0.86.2",
+    "typescript": "6.0.3"
+  },
+  "workspaces":
+  [
+    "./Application",
+    "./Documentation",
+    "./Package/*",
+    "./Script/*"
+  ],
+  "type": "module"
+}

@@ -1,0 +1,33 @@
+node_modules
+Distribution
+Intermediate
+
+.env
+.env*
+
+NotionKit
+
+Application/Mobile/.agent-device/
+
+Tasks.md
+
+# Application/Mobile/.gitignore excludes these as generated/local-only, but
+# .easignore replacing .gitignore means that file is *not* consulted during
+# EAS uploads, so its rules must be duplicated here explicitly. Without this,
+# a locally generated android/ or ios/ directory (e.g. from a local prebuild
+# or native build) gets swept into the upload, EAS sees native dirs already
+# present and skips its own prebuild step, and the build then runs against
+# stale generated files (autolinking caches, .cxx dirs, etc.) that can bake
+# in absolute paths from the local machine and fail on the build server.
+Application/Mobile/android/
+Application/Mobile/ios/
+Application/Mobile/.expo/
+
+# .easignore replaces .gitignore entirely for EAS Build uploads, so the
+# entries above are carried over from .gitignore. Everything below trims
+# workspaces that Application/Mobile (the only app currently built via EAS)
+# does not depend on, to keep the upload small.
+Application/Windows
+Application/Mac
+Package/Icons
+Website

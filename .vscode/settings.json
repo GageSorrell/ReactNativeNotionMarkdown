@@ -1,0 +1,30 @@
+{
+    "editor.codeActionsOnSave": { },
+    "eslint.options": {
+        "overrideConfigFile": "/ReactNativeNotionMarkdown/Configuration/eslint.config.js"
+    },
+    "eslint.enable": true,
+    "eslint.nodePath": "node_modules",
+    "eslint.codeActionsOnSave.rules": null,
+    "editor.formatOnSave": false,
+    "eslint.format.enable": false,
+    "explorer.excludeGitIgnore": true,
+    "react-native-tools.projectRoot": "Application/Windows",
+  	"eslint.workingDirectories":
+	[
+        { "!cwd": false, "directory": "**" }
+  	],
+    "eslint.validate":
+    [
+        "javascript",
+        "javascriptreact",
+        "typescript",
+        "typescriptreact"
+    ],
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools",
+        "editor.formatOnSave": true
+    },
+
+    "C_Cpp.clang_format_style": "file"
+}
