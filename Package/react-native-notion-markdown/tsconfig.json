@@ -1,0 +1,13 @@
+{
+  "extends": "expo-module-scripts/tsconfig",
+  "compilerOptions": {
+    "strict": true,
+    "rootDir": "src",
+    "outDir": "Distribution",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

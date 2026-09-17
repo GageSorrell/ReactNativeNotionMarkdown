@@ -1,0 +1,13 @@
+group = "react.native.notion.markdown"
+version = "0.0.1"
+
+apply plugin: "com.android.library"
+apply plugin: "expo-module-gradle-plugin"
+
+android {
+  namespace "expo.modules.notionmarkdown"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.1"
+  }
+}

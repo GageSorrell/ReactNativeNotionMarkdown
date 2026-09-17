@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Notion Markdown Storybook",
+    "slug": "notion-markdown",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.gagesorrell.notionmarkdown.storybook"
+    },
+    "plugins": [
+      "expo-dev-client",
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "3bcef71e-7454-433c-8e10-92bcfc6aa89c"
+      }
+    },
+    "owner": "gagesorrell"
+  }
+}

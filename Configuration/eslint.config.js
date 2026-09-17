@@ -24,6 +24,13 @@ export default defineConfig(
     ExpoConfig,
     SorrellConfig,
     {
+        files: [ "**/Application/**/*.js" ],
+        rules:
+        {
+            "@typescript-eslint/typedef": "off"
+        }
+    },
+    {
         /* Next.js build output — never hand-authored, and picking it up
            crashes some jsdoc rules on the minified/bundled JS inside it. */
         ignores: [ "**/.next/**" ]
@@ -42,7 +49,7 @@ export default defineConfig(
     {
         /* Storybook story files are demo/config code, not documented API
            surface, so don't require JSDoc blocks on their exports. */
-        files: [ "Application/Mobile/**/*.stories.tsx" ],
+        files: [ "**/Application/**/*.stories.tsx" ],
         rules:
         {
             "jsdoc/require-jsdoc": "off"
@@ -115,6 +122,14 @@ export default defineConfig(
             "react-perf/jsx-no-new-object-as-prop": "warn",
             "react-perf/jsx-no-new-array-as-prop": "warn",
             "react-perf/jsx-no-new-function-as-prop": "warn",
+        }
+    },
+    {
+        files: [ "**/Application/**/*.js", "**/Application/**/*.stories.tsx" ],
+        rules:
+        {
+            "@typescript-eslint/typedef": "off",
+            "jsdoc/require-jsdoc": "off"
         }
     }
 );

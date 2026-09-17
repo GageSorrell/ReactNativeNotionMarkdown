@@ -4,5 +4,24 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"cSpell.words": [
+			"autocorrection",
+			"hardbreak",
+			"Insertable",
+			"linkify",
+			"notionhq",
+			"notionmarkdown",
+			"ondevice",
+			"Pilcrow",
+			"Pressable",
+			"ratex",
+			"revisioned",
+			"rnstorybook",
+			"softbreak",
+			"toggleable",
+			"uniffi",
+			"worklets"
+		]
+	}
 }

@@ -1,0 +1,29 @@
+{
+  "name": "@react-native-notion-markdown/devtools-plugin-webui",
+  "description": "WebUI for the react-native-notion-markdown Expo DevTools plugin.",
+  "license": "MIT",
+  "version": "0.0.1-private",
+  "private": true,
+  "main": "index.ts",
+  "dependencies": {
+    "@expo/metro-runtime": "~57.0.15",
+    "@react-native-notion-markdown/devtools-plugin": "file:..",
+    "expo": "57.0.22",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-notion-markdown": "file:../../react-native-notion-markdown",
+    "react-native-web": "^0.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.4",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  }
+}

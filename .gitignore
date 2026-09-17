@@ -8,6 +8,15 @@ Intermediate
 NotionKit
 
 Application/Mobile/.agent-device/
+Application/android/
+Application/ios/
+Application/.expo/
+Application/.rnstorybook/storybook.requires.ts
+
+Package/*/android/build/
+Package/*/android/.cxx/
+Package/*/android/.gradle/
+*.tgz
 
 .next/
 out/
