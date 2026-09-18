@@ -11,6 +11,7 @@
 
 export {
     NotionEditor,
+    type NotionEditorBlockActionsSelection,
     type NotionEditorButton,
     type NotionEditorComponents,
     type NotionEditorCustomButton,
@@ -28,6 +29,7 @@ export {
     type NotionEditorPageReferenceSelection,
     type NotionEditorProps
 } from "./NotionEditor.tsx";
+export { type NotionEditorBlockAction } from "./ActionsBottomSheet.tsx";
 
 /** Editor UI configuration -- currently localization, with room to grow to theming. */
 export {

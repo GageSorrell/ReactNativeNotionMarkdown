@@ -97,11 +97,9 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
     input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
     input.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_ACTION_NEXT
     input.setTextSize(16f)
-    // Added as `extra` (px), not a `multiplier`, so the extra room is excluded from the caret's
-    // height the way Android excludes lineSpacingExtra but not lineSpacingMultiplier -- a
-    // multiplier scales the line's real ascent/descent, which the caret is drawn from too.
-    val naturalLineHeight = input.paint.fontMetrics.let { it.descent - it.ascent }
-    input.setLineSpacing(naturalLineHeight * 0.125f, 1f)
+    // A multiplier adds one eighth of each line's natural height. Android keeps that extra out
+    // of the cursor bounds, just as it does with additive line spacing.
+    input.setLineSpacing(0f, 1.125f)
     input.setPadding(0, 0, 0, 0)
     input.setBackgroundColor(Color.TRANSPARENT)
     addView(input, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))

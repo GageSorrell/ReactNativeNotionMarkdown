@@ -56,6 +56,26 @@ export type EditorMessageId =
     | "linkSheet.label"
     | "linkSheet.cancel"
     | "linkSheet.apply"
+    | "actionsSheet.title"
+    | "actionsSheet.insertAbove"
+    | "actionsSheet.insertBelow"
+    | "actionsSheet.duplicate"
+    | "actionsSheet.delete"
+    | "blockName.text"
+    | "blockName.heading1"
+    | "blockName.heading2"
+    | "blockName.heading3"
+    | "blockName.heading4"
+    | "blockName.bulletedListItem"
+    | "blockName.numberedListItem"
+    | "blockName.toDo"
+    | "blockName.callout"
+    | "blockName.divider"
+    | "blockName.tableOfContents"
+    | "blockName.columnList"
+    | "blockName.image"
+    | "blockName.video"
+    | "blockName.linkToPage"
     | "insertPanel.title"
     | "insertPanel.callout"
     | "insertPanel.columns"
@@ -111,6 +131,126 @@ export/**
        */
 const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessageDescriptor>> =
     {
+        "actionsSheet.delete":
+        {
+            defaultMessage: "Delete",
+            description: "Block-actions sheet button that deletes the target block",
+            id: "actionsSheet.delete"
+        },
+        "actionsSheet.duplicate":
+        {
+            defaultMessage: "Duplicate",
+            description: "Block-actions sheet button that duplicates the target block",
+            id: "actionsSheet.duplicate"
+        },
+        "actionsSheet.insertAbove":
+        {
+            defaultMessage: "Insert above",
+            description: "Block-actions sheet button that inserts an empty block above the target block",
+            id: "actionsSheet.insertAbove"
+        },
+        "actionsSheet.insertBelow":
+        {
+            defaultMessage: "Insert below",
+            description: "Block-actions sheet button that inserts an empty block below the target block",
+            id: "actionsSheet.insertBelow"
+        },
+        "actionsSheet.title":
+        {
+            defaultMessage: "Actions",
+            description: "Header title of the block-actions bottom sheet",
+            id: "actionsSheet.title"
+        },
+        "blockName.bulletedListItem":
+        {
+            defaultMessage: "Bulleted list",
+            description: "Block-actions sheet section label naming a bulleted-list-item block",
+            id: "blockName.bulletedListItem"
+        },
+        "blockName.callout":
+        {
+            defaultMessage: "Callout",
+            description: "Block-actions sheet section label naming a callout block",
+            id: "blockName.callout"
+        },
+        "blockName.columnList":
+        {
+            defaultMessage: "Columns",
+            description: "Block-actions sheet section label naming a column-list block",
+            id: "blockName.columnList"
+        },
+        "blockName.divider":
+        {
+            defaultMessage: "Divider",
+            description: "Block-actions sheet section label naming a divider block",
+            id: "blockName.divider"
+        },
+        "blockName.heading1":
+        {
+            defaultMessage: "Heading 1",
+            description: "Block-actions sheet section label naming a heading 1 block",
+            id: "blockName.heading1"
+        },
+        "blockName.heading2":
+        {
+            defaultMessage: "Heading 2",
+            description: "Block-actions sheet section label naming a heading 2 block",
+            id: "blockName.heading2"
+        },
+        "blockName.heading3":
+        {
+            defaultMessage: "Heading 3",
+            description: "Block-actions sheet section label naming a heading 3 block",
+            id: "blockName.heading3"
+        },
+        "blockName.heading4":
+        {
+            defaultMessage: "Heading 4",
+            description: "Block-actions sheet section label naming a heading 4 block",
+            id: "blockName.heading4"
+        },
+        "blockName.image":
+        {
+            defaultMessage: "Image",
+            description: "Block-actions sheet section label naming an image block",
+            id: "blockName.image"
+        },
+        "blockName.linkToPage":
+        {
+            defaultMessage: "Page reference",
+            description: "Block-actions sheet section label naming a page-reference block",
+            id: "blockName.linkToPage"
+        },
+        "blockName.numberedListItem":
+        {
+            defaultMessage: "Numbered list",
+            description: "Block-actions sheet section label naming a numbered-list-item block",
+            id: "blockName.numberedListItem"
+        },
+        "blockName.tableOfContents":
+        {
+            defaultMessage: "Table of contents",
+            description: "Block-actions sheet section label naming a table-of-contents block",
+            id: "blockName.tableOfContents"
+        },
+        "blockName.text":
+        {
+            defaultMessage: "Text",
+            description: "Block-actions sheet section label naming a plain text block",
+            id: "blockName.text"
+        },
+        "blockName.toDo":
+        {
+            defaultMessage: "To-do",
+            description: "Block-actions sheet section label naming a to-do block",
+            id: "blockName.toDo"
+        },
+        "blockName.video":
+        {
+            defaultMessage: "Video",
+            description: "Block-actions sheet section label naming a video block",
+            id: "blockName.video"
+        },
         "colorPanel.background":
         {
             defaultMessage: "Background color",
@@ -215,7 +355,7 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
         },
         "insertPanel.text":
         {
-            defaultMessage: "Text block",
+            defaultMessage: "Text",
             description: "Insert-panel button that inserts a plain text block",
             id: "insertPanel.text"
         },

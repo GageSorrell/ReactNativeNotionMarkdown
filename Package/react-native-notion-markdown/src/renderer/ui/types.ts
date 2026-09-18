@@ -39,6 +39,9 @@ export interface NotionRendererTheme
     /** Text color of an inline `code` span. */
     readonly inlineCodeForeground: string;
     readonly error: string;
+
+    /** Color used for destructive actions and labels (e.g. a "Delete" button). */
+    readonly danger: string;
     readonly fontSize: number;
     readonly spacing: number;
 

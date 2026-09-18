@@ -21,7 +21,7 @@ import type { ReactNode } from "react";
 import { notionMarkdownInterFonts } from "react-native-notion-markdown/renderer/ui/inter-font";
 import { parseNotionMarkdown } from "react-native-notion-markdown/renderer";
 import { resolveFixture } from "./fixtures";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useFonts } from "expo-font";
 
 const colorOptions =
@@ -136,7 +136,10 @@ interface StoryHeaderFrameProps
 function StoryHeaderFrame({ children, name }: StoryHeaderFrameProps)
 {
     const [ interLoaded ] = useFonts(notionMarkdownInterFonts);
-    const titleStyle = [ headerStyles.headerText, interLoaded && headerStyles.headerTextInter ];
+    const titleStyle = useMemo(
+        () => [ headerStyles.headerText, interLoaded && headerStyles.headerTextInter ],
+        [ interLoaded ]
+    );
 
     return <View style={ headerStyles.page }>
         <View style={ headerStyles.header }>
@@ -152,7 +155,7 @@ function StoryHeaderFrame({ children, name }: StoryHeaderFrameProps)
  * Storybook decorators receive the story context as their second argument, which is where
  * `name` comes from--there is no per-story JSX change needed to get this.
  */
-const withStoryHeader: Decorator = (StoryComponent, context) => (
+const withStoryHeader: Decorator = (StoryComponent: any, context: any) => (
     <StoryHeaderFrame name={ context.name }>
         <StoryComponent />
     </StoryHeaderFrame>
@@ -183,7 +186,7 @@ const headerStyles = StyleSheet.create({
 const meta =
     {
         decorators: [ withStoryHeader ],
-        parameters: { layout: "fullscreen" },
+        parameters: { controls: { exclude: [ "components", "style" ] }, layout: "fullscreen" },
         title: "Renderer/Blocks"
     } satisfies Meta;
 export default meta;

@@ -136,6 +136,7 @@ const meta =
         component: NotionEditor,
         parameters:
         {
+            controls: { exclude: [ "components", "style" ] },
             layout: "fullscreen"
         },
         render: editorStoryRender,

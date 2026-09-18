@@ -13,8 +13,10 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.graphics.drawable.DrawableWrapper
 import android.net.Uri
 import android.media.MediaMetadataRetriever
+import android.os.Build
 import android.text.Editable
 import android.text.InputType
 import android.text.Spanned
@@ -89,6 +91,13 @@ private val proofValidBlockTypes = listOf(
   "link_to_page"
 )
 private val proofValidColors = proofTextColors.keys + proofBackgroundColors.keys
+
+/** Block types with mergeable text content -- eligible on either side of a divider-skipping
+ *  backspace merge (see [NotionProofView.handleDividerBackspace]). */
+private val proofMergeableBlockTypes = setOf(
+  "text", "heading_1", "heading_2", "heading_3", "heading_4",
+  "bulleted_list_item", "numbered_list_item", "to_do", "callout"
+)
 
 /** A checked to-do's checkbox fill and its unchecked border, matching the renderer's theme accent. */
 private fun proofAccentColor(dark: Boolean) = if (dark) Color.rgb(0x81, 0xB8, 0xE7) else Color.rgb(0x2F, 0x6E, 0xAB)
@@ -188,7 +197,7 @@ private class ProofInlineMarkSpan(val kind: String, val url: String? = null) : a
 }
 
 /**
- * Adds a block's top/bottom padding as extra line height on its first and last wrapped line.
+ * Adds a block's top/bottom padding and a one-eighth natural-height gap between wrapped lines.
  * [blockStart] and [blockEnd] are the block's own fixed offsets at span-creation time (recomputed
  * every [NotionProofView.styleBlocks] pass), compared against the line range Android passes to
  * [chooseHeight] to tell a block's boundary line from an interior wrapped line.
@@ -199,6 +208,14 @@ private class BlockPaddingSpan(
   private val blockStart: Int,
   private val blockEnd: Int
 ) : LineHeightSpan {
+  private var previousEnd = -1
+  private var previousAscent = 0
+  private var previousTop = 0
+  private var previousDescent = 0
+  private var previousBottom = 0
+  private var addedTop = 0
+  private var addedBelow = 0
+
   override fun chooseHeight(
     text: CharSequence,
     start: Int,
@@ -207,14 +224,31 @@ private class BlockPaddingSpan(
     lineHeight: Int,
     fm: Paint.FontMetricsInt
   ) {
+    // StaticLayout carries a span's adjusted metrics into its next wrapped line. Undo only the
+    // values that survived that carry; a taller glyph on the new line may have replaced them.
+    if (start == previousEnd && start > blockStart) {
+      if (fm.ascent == previousAscent) fm.ascent += addedTop
+      if (fm.top == previousTop) fm.top += addedTop
+      if (fm.descent == previousDescent) fm.descent -= addedBelow
+      if (fm.bottom == previousBottom) fm.bottom -= addedBelow
+    }
+    val naturalHeight = fm.descent - fm.ascent
+    val firstLineTop = if (start <= blockStart) top else 0
+    val lastLineBottom = if (end >= blockEnd) bottom else 0
+    val wrapGap = if (end < blockEnd) (naturalHeight * 0.125f).roundToInt() else 0
     if (start <= blockStart) {
       fm.ascent -= top
       fm.top -= top
     }
-    if (end >= blockEnd) {
-      fm.descent += bottom
-      fm.bottom += bottom
-    }
+    fm.descent += lastLineBottom + wrapGap
+    fm.bottom += lastLineBottom + wrapGap
+    previousEnd = end
+    previousAscent = fm.ascent
+    previousTop = fm.top
+    previousDescent = fm.descent
+    previousBottom = fm.bottom
+    addedTop = firstLineTop
+    addedBelow = lastLineBottom + wrapGap
   }
 }
 
@@ -847,6 +881,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   override val shouldUseAndroidLayout = true
   private val onEdit by EventDispatcher()
   private val onPageReferencePress by EventDispatcher()
+  private val onBlockActionsPress by EventDispatcher()
   private var pageReferenceFallbackIcon: String? = null
   private var emptyTogglePlaceholder = DEFAULT_EMPTY_TOGGLE_PLACEHOLDER
   private var imageMaxWidth = 960
@@ -872,11 +907,9 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
     input.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
     input.setTextSize(16f)
-    // Added as `extra` (px), not a `multiplier`, so the extra room is excluded from the caret's
-    // height the way Android excludes lineSpacingExtra but not lineSpacingMultiplier -- a
-    // multiplier scales the line's real ascent/descent, which the caret is drawn from too.
-    val naturalLineHeight = input.paint.fontMetrics.let { it.descent - it.ascent }
-    input.setLineSpacing(naturalLineHeight * 0.125f, 1f)
+    // BlockPaddingSpan measures each wrapped line before adding its own padding and wrap gap.
+    input.setLineSpacing(0f, 1f)
+    input.useGlyphHeightCursor()
     // Horizontal padding is uniform across every block type; vertical spacing instead comes from
     // each block's own BlockPaddingSpan (see styleBlocks), so it can vary by block type/level.
     val horizontalPadding = (8 * resources.displayMetrics.density).toInt()
@@ -1072,7 +1105,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       "copy" -> copy(false)
       "cut" -> copy(true)
       "paste" -> paste()
-      "split" -> replaceSelection("\n")
+      "split" -> if (!handleListEnter() && !handleDividerEnter()) replaceSelection("\n")
       "divider" -> insertDivider()
       "tableOfContents" -> insertTableOfContents()
       "columns" -> insertColumns((value["columnCount"] as? Number)?.toInt() ?: 2)
@@ -1124,6 +1157,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       "outdent" -> outdentBlocks()
       "moveBlockUp" -> moveBlocks(-1)
       "moveBlockDown" -> moveBlocks(1)
+      "insertAbove" -> insertBlockRelativeToId(value["blockId"] as? String, before = true)
+      "insertBelow" -> insertBlockRelativeToId(value["blockId"] as? String, before = false)
+      "duplicateBlock" -> duplicateBlockById(value["blockId"] as? String)
+      "deleteBlock" -> deleteBlockById(value["blockId"] as? String)
       "softBreak" -> replaceSelection("\u2028")
       // Acceptance probe uses the actual EditText connection, not fabricated composing events.
       "compose" -> {
@@ -1140,7 +1177,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         val start = minOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
         val end = maxOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
         if (start != end) replaceSelection("")
-        else if (start > 0) {
+        else if (start > 0 && !handleDividerBackspace()) {
           val previous = Character.offsetByCodePoints(input.text, start, -1)
           input.text.delete(previous, start)
           input.setSelection(previous)
@@ -1426,14 +1463,134 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     return true
   }
 
-  /** Reload the shared native text buffer after a structural operation and place the cursor. */
-  private fun replaceNativeTextAndSelect(index: Int) {
+  /**
+   * Reload the shared native text buffer after a structural operation and place the cursor at
+   * [offset] within block [index] -- defaulting to that block's own start.
+   */
+  private fun replaceNativeTextAndSelect(index: Int, offset: Int = 0) {
     applying = true
     BaseInputConnection.removeComposingSpans(input.text)
     input.setText(blocks.nativeText())
     applying = false
-    input.setSelection(offsetOf(index.coerceIn(0, blocks.lastIndex)))
+    val clampedIndex = index.coerceIn(0, blocks.lastIndex)
+    val clampedOffset = offset.coerceIn(0, blocks[clampedIndex].text.length)
+    input.setSelection(offsetOf(clampedIndex) + clampedOffset)
     styleBlocks()
+  }
+
+  /** Handle Enter at the end of a list item before the native buffer inserts a newline. */
+  private fun handleListEnter(): Boolean {
+    if (input.selectionStart != input.selectionEnd || blocks.isEmpty()) return false
+    val (index, offset) = logicalSelectionPoint(input.selectionStart)
+    val block = blocks[index]
+    if (block.type != "bulleted_list_item" && block.type != "numbered_list_item" && block.type != "to_do") {
+      return false
+    }
+    if (offset != block.text.length) return false
+
+    val next = blocks.getOrNull(index + 1)
+    if (next?.type == block.type && next.depth == block.depth) {
+      blocks.removeAt(index)
+      blocks.add(index, ProofBlock(newId(), "text", "", depth = block.depth))
+      blocks.add(index + 1, ProofBlock(newId(), "text", "", depth = block.depth))
+      replaceNativeTextAndSelect(index)
+      scheduleEvent("list-break")
+      return true
+    }
+
+    if (block.text.isEmpty()) {
+      block.type = "text"
+      block.checked = false
+      styleBlocks()
+      scheduleEvent("list-exit")
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Handle Enter at the end of a block immediately followed by a divider: the new block is
+   * inserted after the divider instead of between the current block and it, so the divider stays
+   * attached to the content above it rather than sliding down ahead of the split-off block.
+   */
+  private fun handleDividerEnter(): Boolean {
+    if (input.selectionStart != input.selectionEnd || blocks.isEmpty()) return false
+    val (index, offset) = logicalSelectionPoint(input.selectionStart)
+    val block = blocks[index]
+    if (offset != block.text.length) return false
+    val next = blocks.getOrNull(index + 1) ?: return false
+    if (next.type != "divider") return false
+
+    val continuedType = if (block.type == "bulleted_list_item" || block.type == "numbered_list_item"
+      || block.type == "to_do") block.type else "text"
+    blocks.add(index + 2, ProofBlock(newId(), continuedType, "", depth = block.depth))
+    replaceNativeTextAndSelect(index + 2)
+    scheduleEvent("divider-split")
+    return true
+  }
+
+  /**
+   * Handle Backspace at the start of a block immediately preceded by a divider: the divider is
+   * skipped over -- as though it weren't there -- merging this block into the block before the
+   * divider instead, and the divider is left in place immediately after the merged result.
+   */
+  private fun handleDividerBackspace(): Boolean {
+    if (input.selectionStart != input.selectionEnd || blocks.isEmpty()) return false
+    val (index, offset) = logicalSelectionPoint(input.selectionStart)
+    if (offset != 0) return false
+    val dividerIndex = index - 1
+    val divider = blocks.getOrNull(dividerIndex) ?: return false
+    if (divider.type != "divider") return false
+    val beforeIndex = dividerIndex - 1
+    val before = blocks.getOrNull(beforeIndex) ?: return false
+    val current = blocks[index]
+    if (before.type !in proofMergeableBlockTypes || current.type !in proofMergeableBlockTypes) return false
+
+    val joinOffset = before.text.length
+    before.marks.addAll(current.marks.map { ProofMark(it.kind, it.start + joinOffset, it.end + joinOffset, it.url) })
+    before.text += current.text
+    blocks.removeAt(index)
+    blocks.removeAt(dividerIndex)
+    blocks.add(dividerIndex, divider)
+    replaceNativeTextAndSelect(beforeIndex, joinOffset)
+    scheduleEvent("divider-backspace")
+    return true
+  }
+
+  /** Resolve a block's index by id, e.g. for actions-sheet commands that target a tapped block
+   *  which may never have received the text cursor (a divider). */
+  private fun blockIndexById(id: String?): Int? {
+    if (id.isNullOrEmpty()) return null
+    return blocks.indexOfFirst { it.id == id }.takeIf { it >= 0 }
+  }
+
+  /** Insert an empty text block immediately above or below the identified block. */
+  private fun insertBlockRelativeToId(id: String?, before: Boolean) {
+    val index = blockIndexById(id) ?: return
+    val target = blocks[index]
+    val insertAt = if (before) index else index + 1
+    blocks.add(insertAt, ProofBlock(newId(), "text", "", depth = target.depth))
+    replaceNativeTextAndSelect(insertAt)
+    scheduleEvent(if (before) "insert-block-above" else "insert-block-below")
+  }
+
+  /** Insert a copy of the identified block immediately after it. */
+  private fun duplicateBlockById(id: String?) {
+    val index = blockIndexById(id) ?: return
+    val source = blocks[index]
+    val copy = source.copy(id = newId(), marks = source.marks.map { it.copy() }.toMutableList())
+    blocks.add(index + 1, copy)
+    replaceNativeTextAndSelect(index + 1, copy.text.length)
+    scheduleEvent("duplicate-block")
+  }
+
+  /** Remove the identified block, matching `removeBlocks()`'s never-empty-document guarantee. */
+  private fun deleteBlockById(id: String?) {
+    val index = blockIndexById(id) ?: return
+    blocks.removeAt(index)
+    if (blocks.isEmpty()) blocks.add(ProofBlock(newId(), "text", ""))
+    replaceNativeTextAndSelect(index.coerceAtMost(blocks.lastIndex))
+    scheduleEvent("delete-block")
   }
 
   private fun logicalSelectionPoint(position: Int): Pair<Int, Int> {
@@ -1993,6 +2150,32 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     private var pressedToggleBlock = -1
     private var pressedTodoBlock = -1
     private var pressedPageReferenceBlock = -1
+    private var pressedDividerBlock = -1
+
+    /** BlockPaddingSpan enlarges a line's metrics, including Android's default cursor bounds. */
+    fun useGlyphHeightCursor() {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+      val nativeCursor = textCursorDrawable ?: return
+      setTextCursorDrawable(object : DrawableWrapper(nativeCursor) {
+        override fun draw(canvas: Canvas) {
+          val textLayout = layout ?: return super.draw(canvas)
+          val offset = selectionStart.takeIf { it >= 0 } ?: return super.draw(canvas)
+          val line = textLayout.getLineForOffset(offset)
+          val blockIndex = text.take(textLayout.getLineStart(line)).count { it == '\n' }
+          val scale = blocks.getOrNull(blockIndex)?.type?.let(::proofHeadingLevel)
+            ?.let(headingScale::get) ?: 1f
+          val glyphPaint = Paint(paint).apply { textSize *= scale }
+          val metrics = glyphPaint.fontMetricsInt
+          val baseline = textLayout.getLineBaseline(line)
+          val glyphTop = baseline + metrics.ascent
+          val glyphBottom = baseline + metrics.descent
+          val saved = canvas.save()
+          canvas.clipRect(bounds.left, glyphTop, bounds.right, glyphBottom)
+          super.draw(canvas)
+          canvas.restoreToCount(saved)
+        }
+      })
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
       super.onSizeChanged(w, h, oldw, oldh)
@@ -2051,26 +2234,44 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       return range.first == range.last && blocks[range.first].type == "link_to_page"
     }
 
+    /** A divider fills its whole line, so any tap along that line -- not just a narrow inline
+     *  button region -- opens the actions sheet for it. */
+    private fun dividerBlockAt(event: MotionEvent): Int? {
+      val textLayout = layout ?: return null
+      if (textLayout.height == 0) return null
+      val lineY = (event.y - totalPaddingTop).toInt().coerceIn(0, textLayout.height - 1)
+      val line = textLayout.getLineForVertical(lineY)
+      val lineStart = textLayout.getLineStart(line)
+      val blockIndex = text.take(lineStart).count { it == '\n' }
+      val block = blocks.getOrNull(blockIndex) ?: return null
+      return if (block.type == "divider") blockIndex else null
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
       val toggleBlock = toggleBlockAt(event)
       val todoBlock = todoBlockAt(event)
       val pageReferenceBlock = pageReferenceBlockAt(event)
+      val dividerBlock = dividerBlockAt(event)
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
           pressedToggleBlock = toggleBlock ?: -1
           pressedTodoBlock = todoBlock ?: -1
           pressedPageReferenceBlock = pageReferenceBlock ?: -1
+          pressedDividerBlock = dividerBlock ?: -1
           if (pressedToggleBlock >= 0) return true
           if (pressedTodoBlock >= 0) return true
           if (pressedPageReferenceBlock >= 0) return true
+          if (pressedDividerBlock >= 0) return true
         }
         MotionEvent.ACTION_UP -> {
           val pressed = pressedToggleBlock
           val pressedTodo = pressedTodoBlock
           val pressedPageReference = pressedPageReferenceBlock
+          val pressedDivider = pressedDividerBlock
           pressedToggleBlock = -1
           pressedTodoBlock = -1
           pressedPageReferenceBlock = -1
+          pressedDividerBlock = -1
           if (pressed >= 0 && toggleBlock == pressed) {
             blocks[pressed].collapsed = !blocks[pressed].collapsed
             styleBlocks()
@@ -2099,11 +2300,18 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             performClick()
             return true
           }
+          if (pressedDivider >= 0 && dividerBlock == pressedDivider) {
+            val block = blocks[pressedDivider]
+            onBlockActionsPress(mapOf("id" to block.id, "type" to block.type))
+            performClick()
+            return true
+          }
         }
         MotionEvent.ACTION_CANCEL -> {
           pressedToggleBlock = -1
           pressedTodoBlock = -1
           pressedPageReferenceBlock = -1
+          pressedDividerBlock = -1
         }
       }
       return super.onTouchEvent(event)
@@ -2133,11 +2341,15 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         && keyCode != KeyEvent.KEYCODE_DPAD_DOWN) {
         return true
       }
-      if (keyCode == KeyEvent.KEYCODE_ENTER && !event.isShiftPressed && createDividerFromShortcut()) {
+      if (keyCode == KeyEvent.KEYCODE_ENTER && !event.isShiftPressed
+        && (createDividerFromShortcut() || handleListEnter() || handleDividerEnter())) {
         return true
       }
       if (keyCode == KeyEvent.KEYCODE_ENTER && event.isShiftPressed) {
         replaceSelection("\u2028")
+        return true
+      }
+      if (keyCode == KeyEvent.KEYCODE_DEL && handleDividerBackspace()) {
         return true
       }
       return super.onKeyDown(keyCode, event)
@@ -2157,7 +2369,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
           if (epoch != connectionEpoch) return false
           if (pageReferenceIsSelected()) return true
-          if (text?.toString() == "\n" && createDividerFromShortcut()) return true
+          if (text?.toString() == "\n" && (createDividerFromShortcut() || handleListEnter() || handleDividerEnter())) return true
           val result = super.commitText(text, newCursorPosition)
           scheduleEvent("ime-commit")
           return result
@@ -2177,6 +2389,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         override fun commitText(text: CharSequence, newCursorPosition: Int, textAttribute: TextAttribute?): Boolean {
           if (epoch != connectionEpoch) return false
           if (pageReferenceIsSelected()) return true
+          if (text.toString() == "\n" && (createDividerFromShortcut() || handleListEnter() || handleDividerEnter())) return true
           val result = super.commitText(text, newCursorPosition, textAttribute)
           scheduleEvent("ime-commit")
           return result
@@ -2206,10 +2419,18 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           epoch == connectionEpoch && super.performEditorAction(editorAction)
         override fun beginBatchEdit(): Boolean = epoch == connectionEpoch && super.beginBatchEdit()
         override fun endBatchEdit(): Boolean = epoch == connectionEpoch && super.endBatchEdit()
-        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean =
-          epoch == connectionEpoch && !pageReferenceIsSelected() && super.deleteSurroundingText(beforeLength, afterLength)
-        override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean =
-          epoch == connectionEpoch && !pageReferenceIsSelected() && super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
+        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
+          if (epoch != connectionEpoch) return false
+          if (pageReferenceIsSelected()) return true
+          if (beforeLength > 0 && afterLength == 0 && handleDividerBackspace()) return true
+          return super.deleteSurroundingText(beforeLength, afterLength)
+        }
+        override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean {
+          if (epoch != connectionEpoch) return false
+          if (pageReferenceIsSelected()) return true
+          if (beforeLength > 0 && afterLength == 0 && handleDividerBackspace()) return true
+          return super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
+        }
         override fun setSelection(start: Int, end: Int): Boolean =
           epoch == connectionEpoch && super.setSelection(start, end)
         override fun sendKeyEvent(event: KeyEvent): Boolean =

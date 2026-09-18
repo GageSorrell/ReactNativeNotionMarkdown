@@ -26,6 +26,7 @@ import {
     useReanimatedKeyboardAnimation
 } from "react-native-keyboard-controller";
 import {
+    type NativeBlockActionsPressEvent,
     type NativePageReferencePressEvent,
     NativeProofEditor,
     type NativeProofEditorProps
@@ -40,12 +41,15 @@ import {
     useWindowDimensions
 } from "react-native";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
 import type { ComponentType } from "react";
 import type { LayoutChangeEvent } from "react-native";
 import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
 import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
+import type { NotionEditorBlockAction } from "./ActionsBottomSheet.tsx";
 import type { NotionMarkdownColor } from "../../document/types.ts";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
+import type { EditorMessageId } from "./messages.ts";
 import { useNotionEditorTranslate } from "./config.tsx";
 
 /**
@@ -174,6 +178,19 @@ export interface NotionEditorPageReferenceSelection
 {
     readonly anchor: ProofPoint;
     readonly focus: ProofPoint;
+}
+
+/**
+ * Identifies the block a tap opened the actions sheet for -- a block that may never receive the
+ * text cursor (e.g. a divider), so it's identified directly rather than via selection.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
+export interface NotionEditorBlockActionsSelection
+{
+    readonly blockId: string;
+    readonly blockType: ProofBlock["type"];
 }
 
 /** The current text selection handed to a host link prompt. */
@@ -310,7 +327,7 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
     readonly onCommand?: (
         Action: ProofCommand["action"],
         Extra?: Pick<ProofCommand,
-            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
+            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label" | "blockId">
     ) => void;
 
     /** Optional icon overrides for the editor UI. */
@@ -350,6 +367,14 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
 
     /** Handles page-reference taps, or falls back to the optional expo-linking peer. */
     readonly onOpenPageReference?: (url: string) => void | Promise<void>;
+
+    /**
+     * Replaces the built-in block-actions sheet -- opened by tapping a block that doesn't
+     * otherwise receive the text cursor, currently the divider.
+     */
+    readonly onBlockActions?: (
+        Selection: NotionEditorBlockActionsSelection
+    ) => void | Promise<void>;
 
     /** Buttons spliced into the main toolbar row. Never shown in the format row or trailing slot. */
     readonly customButtons?: Array<NotionEditorCustomButton>;
@@ -438,6 +463,7 @@ function ActionButton({
     const buttonStyle = useMemo(
         () => [
             styles.button,
+            active === true ? styles.buttonActive : undefined,
             active === true ? { backgroundColor: activeBackground, borderRadius: 8 } : undefined,
             disabled === true ? styles.buttonDisabled : undefined
         ],
@@ -505,7 +531,7 @@ function BlockOption({
         onPress={ onPress }
         style={ cardStyle }>
         {
-            Icon !== undefined && createElement(Icon, { color, size: 20, strokeWidth: 2 })
+            Icon !== undefined && createElement(Icon, { color, size: 22, strokeWidth: 2 })
         }
         <Text style={ labelStyle }>{ label }</Text>
     </Pressable>;
@@ -545,6 +571,26 @@ const proofColorOptions: ReadonlyArray<ProofColorOption> =
 
 const proofTurnIntoTypes: ReadonlyArray<ProofBlock["type"]> =
     [ "text", "heading_1", "heading_2", "heading_3", "heading_4" ];
+
+/** Message id naming each block type, for the actions sheet's section-title label. */
+const proofBlockNameMessageIds: Readonly<Record<ProofBlock["type"], EditorMessageId>> =
+    {
+        bulleted_list_item: "blockName.bulletedListItem",
+        callout: "blockName.callout",
+        column_list: "blockName.columnList",
+        divider: "blockName.divider",
+        heading_1: "blockName.heading1",
+        heading_2: "blockName.heading2",
+        heading_3: "blockName.heading3",
+        heading_4: "blockName.heading4",
+        image: "blockName.image",
+        link_to_page: "blockName.linkToPage",
+        numbered_list_item: "blockName.numberedListItem",
+        table_of_contents: "blockName.tableOfContents",
+        text: "blockName.text",
+        to_do: "blockName.toDo",
+        video: "blockName.video"
+    };
 
 /** Return whether a proof block supports conversion to the requested proof block type. */
 function canConvertProofBlock(block: ProofBlock, type: ProofBlock["type"]): boolean
@@ -766,6 +812,7 @@ export function NotionEditor({
     components,
     customButtons,
     dark: suppliedDark,
+    onBlockActions,
     onCommand,
     onCreatePageReference,
     onEditPageReference,
@@ -793,6 +840,7 @@ export function NotionEditor({
     const [ mediaSheetVisible, setMediaSheetVisible ] = useState(false);
     const [ linkSheetVisible, setLinkSheetVisible ] = useState(false);
     const [ linkRequest, setLinkRequest ] = useState<NotionEditorLinkSelection>();
+    const [ blockActionsRequest, setBlockActionsRequest ] = useState<NotionEditorBlockActionsSelection>();
     const sequence = useRef(0);
     const currentSnapshot = useRef(suppliedSnapshot ?? internalSnapshot ?? defaultSnapshot);
     /* A JS-side history of past/undone snapshots for the internally-managed document. This needs
@@ -1049,7 +1097,7 @@ export function NotionEditor({
     const send = useCallback((
         action: ProofCommand["action"],
         extra?: Pick<ProofCommand,
-            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
+            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label" | "blockId">
     ) =>
     {
         if (onCommand !== undefined)
@@ -1132,6 +1180,38 @@ export function NotionEditor({
             void openPageReferenceUrl(nativeEvent.url);
         }
     }, [ onOpenPageReference ]);
+    const handleBlockActionsPress = useCallback(({
+        nativeEvent
+    }: { nativeEvent: NativeBlockActionsPressEvent }) =>
+    {
+        const selection: NotionEditorBlockActionsSelection =
+            { blockId: nativeEvent.id, blockType: nativeEvent.type };
+        send("dismiss");
+        if (onBlockActions !== undefined)
+        {
+            void onBlockActions(selection);
+            return;
+        }
+        setBlockActionsRequest(selection);
+    }, [ onBlockActions, send ]);
+    const handleBlockActionsDismiss = useCallback(() =>
+    {
+        setBlockActionsRequest(undefined);
+        send("focus");
+    }, [ send ]);
+    const handleBlockAction = useCallback((action: NotionEditorBlockAction) =>
+    {
+        const blockId = blockActionsRequest?.blockId;
+        setBlockActionsRequest(undefined);
+        if (blockId === undefined) { send("focus"); return; }
+        switch (action)
+        {
+            case "insertAbove": send("insertAbove", { blockId }); break;
+            case "insertBelow": send("insertBelow", { blockId }); break;
+            case "duplicate": send("duplicateBlock", { blockId }); break;
+            case "delete": send("deleteBlock", { blockId }); break;
+        }
+    }, [ blockActionsRequest, send ]);
 
     const handleMode = useCallback((nextRow: ToolbarRow) => () =>
     {
@@ -1481,6 +1561,16 @@ export function NotionEditor({
         title: t("linkSheet.title"),
         url: t("linkSheet.url")
     }), [ t ]);
+    const actionsLabels = useMemo(() => ({
+        delete: t("actionsSheet.delete"),
+        duplicate: t("actionsSheet.duplicate"),
+        insertAbove: t("actionsSheet.insertAbove"),
+        insertBelow: t("actionsSheet.insertBelow"),
+        title: t("actionsSheet.title")
+    }), [ t ]);
+    const blockActionsName = blockActionsRequest === undefined
+        ? undefined
+        : t(proofBlockNameMessageIds[ blockActionsRequest.blockType ]);
     return (
         <View
             { ...nativeViewProps }
@@ -1495,6 +1585,7 @@ export function NotionEditor({
                         dark={ dark }
                         emptyTogglePlaceholder={ suppliedEmptyTogglePlaceholder }
                         imageMaxWidth={ imageMaxWidth }
+                        onBlockActionsPress={ handleBlockActionsPress }
                         onEdit={ receiveEdit }
                         onPageReferencePress={ handlePageReferencePress }
                         pageReferenceFallbackIcon={ suppliedPageReferenceFallbackIcon
@@ -1768,7 +1859,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.text") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleSplit } />
                                 {
                                     onCreatePageReference !== undefined && <BlockOption
@@ -1778,7 +1869,7 @@ export function NotionEditor({
                                         components={ components }
                                         grid
                                         label={ t("insertPanel.pageReference") }
-                                        labelColor={ foreground }
+                                        labelColor={ iconColor }
                                         onPress={ handleCreatePageReference } />
                                 }
                                 <BlockOption background={ cardBackground }
@@ -1787,7 +1878,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.divider") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleDivider } />
                                 <BlockOption background={ cardBackground }
                                     button="tableOfContents"
@@ -1795,7 +1886,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.tableOfContents") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleTableOfContents } />
                                 { ([ 2, 3, 4, 5 ] as const).map((columnCount: ProofColumnCount) =>
                                     <BlockOption background={ cardBackground }
@@ -1805,7 +1896,7 @@ export function NotionEditor({
                                         grid
                                         key={ columnCount }
                                         label={ columnLabels[ columnCount ] }
-                                        labelColor={ foreground }
+                                        labelColor={ iconColor }
                                         onPress={ handleColumns(columnCount) } />
                                 ) }
                                 <BlockOption background={ cardBackground }
@@ -1814,7 +1905,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.toDo") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleToDo } />
                                 <BlockOption background={ cardBackground }
                                     button="callout"
@@ -1822,7 +1913,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.callout") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleCallout } />
                                 <BlockOption background={ cardBackground }
                                     button="heading1"
@@ -1830,7 +1921,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.heading1") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleHeading1 } />
                                 <BlockOption background={ cardBackground }
                                     button="heading2"
@@ -1838,7 +1929,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.heading2") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleHeading2 } />
                                 <BlockOption background={ cardBackground }
                                     button="heading3"
@@ -1846,7 +1937,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.heading3") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleHeading3 } />
                                 <BlockOption background={ cardBackground }
                                     button="heading4"
@@ -1854,7 +1945,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.heading4") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleHeading4 } />
                                 <BlockOption background={ cardBackground }
                                     button="toggleHeading1"
@@ -1862,7 +1953,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.toggleHeading1") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleToggleHeading1 } />
                                 <BlockOption background={ cardBackground }
                                     button="toggleHeading2"
@@ -1870,7 +1961,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.toggleHeading2") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleToggleHeading2 } />
                                 <BlockOption background={ cardBackground }
                                     button="toggleHeading3"
@@ -1878,7 +1969,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.toggleHeading3") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleToggleHeading3 } />
                                 <BlockOption background={ cardBackground }
                                     button="toggleHeading4"
@@ -1886,7 +1977,7 @@ export function NotionEditor({
                                     components={ components }
                                     grid
                                     label={ t("insertPanel.toggleHeading4") }
-                                    labelColor={ foreground }
+                                    labelColor={ iconColor }
                                     onPress={ handleToggleHeading4 } />
                             </View>
                         </ScrollView>
@@ -1896,7 +1987,7 @@ export function NotionEditor({
                             components={ components }
                             fullWidth
                             label={ t("insertPanel.returnToKeyboard") }
-                            labelColor={ foreground }
+                            labelColor={ iconColor }
                             onPress={ closePanel } /> */}
                     </Animated.View>
                 }
@@ -1913,7 +2004,7 @@ export function NotionEditor({
                                 components={ components }
                                 disabled={ !allowedTurnIntoTypes.has("text") }
                                 label={ t("insertPanel.text") }
-                                labelColor={ foreground }
+                                labelColor={ iconColor }
                                 onPress={ handleTurnInto("text") } />
                             <BlockOption background={ cardBackground }
                                 button="heading1"
@@ -1921,7 +2012,7 @@ export function NotionEditor({
                                 components={ components }
                                 disabled={ !allowedTurnIntoTypes.has("heading_1") }
                                 label={ t("insertPanel.heading1") }
-                                labelColor={ foreground }
+                                labelColor={ iconColor }
                                 onPress={ handleTurnInto("heading_1") } />
                         </View>
                         <View style={ styles.blockRow }>
@@ -1931,7 +2022,7 @@ export function NotionEditor({
                                 components={ components }
                                 disabled={ !allowedTurnIntoTypes.has("heading_2") }
                                 label={ t("insertPanel.heading2") }
-                                labelColor={ foreground }
+                                labelColor={ iconColor }
                                 onPress={ handleTurnInto("heading_2") } />
                             <BlockOption background={ cardBackground }
                                 button="heading3"
@@ -1939,7 +2030,7 @@ export function NotionEditor({
                                 components={ components }
                                 disabled={ !allowedTurnIntoTypes.has("heading_3") }
                                 label={ t("insertPanel.heading3") }
-                                labelColor={ foreground }
+                                labelColor={ iconColor }
                                 onPress={ handleTurnInto("heading_3") } />
                         </View>
                         <BlockOption background={ cardBackground }
@@ -1949,7 +2040,7 @@ export function NotionEditor({
                             disabled={ !allowedTurnIntoTypes.has("heading_4") }
                             fullWidth
                             label={ t("insertPanel.heading4") }
-                            labelColor={ foreground }
+                            labelColor={ iconColor }
                             onPress={ handleTurnInto("heading_4") } />
                     </Animated.View>
                 }
@@ -2016,6 +2107,17 @@ export function NotionEditor({
                     onDismiss={ () => handleLinkResult(undefined) }
                     onSubmit={ handleLinkResult } />
             }
+            {
+                blockActionsRequest !== undefined && blockActionsName !== undefined
+                    && <ActionsBottomSheet
+                        blockName={ blockActionsName }
+                        components={ components }
+                        dark={ dark }
+                        labels={ actionsLabels }
+                        onAction={ handleBlockAction }
+                        onDismiss={ handleBlockActionsDismiss }
+                        showInsertAbove={ blockActionsRequest.blockType !== "divider" } />
+            }
         </View>
     );
 }
@@ -2030,11 +2132,11 @@ const styles = StyleSheet.create({
     blockOption:
     {
         alignItems: "center",
-        borderRadius: 10,
+        borderRadius: 5,
         flexDirection: "row",
-        gap: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 14
+        gap: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 16
     },
     blockOptionFull:
     {
@@ -2073,6 +2175,11 @@ const styles = StyleSheet.create({
         minHeight: 40,
         minWidth: 40,
         paddingHorizontal: 9
+    },
+    buttonActive:
+    {
+        /* The scroll row stretches buttons to 48px; keep the selected fill at 40px. */
+        marginVertical: 4
     },
     buttonDisabled:
     {

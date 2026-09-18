@@ -1,54 +1,50 @@
 /**
- * Lazily loaded native insert-media bottom sheet.
+ * Built-in block-actions bottom sheet, opened for blocks (e.g. a divider) that aren't otherwise
+ * reachable by the text cursor.
  *
- * @module react-native-notion-markdown/editor/ui/MediaBottomSheet
+ * @module react-native-notion-markdown/editor/ui/ActionsBottomSheet
  *
- * @file      MediaBottomSheet.tsx
+ * @file      ActionsBottomSheet.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
  */
 
-/**
- * Optional native insert-media sheet.
- *
- * This module is loaded lazily by `NotionEditor`. Keeping the Expo ImagePicker import here means
- * applications that provide their own `onInsertMedia` handler do not need to install that peer.
- */
-
-import * as ImagePicker from "expo-image-picker";
-import { CameraIcon, GalleryIcon, VideoIcon } from "./mediaIcons.tsx";
-import { Modal, Pressable, StyleSheet, Text, View, useColorScheme } from "react-native";
-import type {
-    NotionEditorComponents,
-    NotionEditorIconProps,
-    NotionEditorMediaAction,
-    NotionEditorMediaSelection
-} from "./NotionEditor.tsx";
+import { CopyActionIcon, TrashActionIcon } from "./actionIcons.tsx";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import type { NotionEditorComponents, NotionEditorIconProps } from "./NotionEditor.tsx";
 import type { ComponentType } from "react";
 import { useCallback } from "react";
 
-/** Public props for the native insert-media sheet. */
-export interface MediaBottomSheetProps
+/** An action selected in the built-in block-actions sheet. */
+export type NotionEditorBlockAction = "delete" | "duplicate" | "insertAbove" | "insertBelow";
+
+/** Public props for the built-in block-actions sheet. */
+export interface ActionsBottomSheetProps
 {
+    /** Translated display name of the target block, e.g. "Divider". */
+    readonly blockName: string;
     readonly components?: NotionEditorComponents;
-    readonly onDismiss: () => void;
-    readonly onSelected: (selection: NotionEditorMediaSelection) => void | Promise<void>;
+    readonly dark: boolean;
     readonly labels: {
-        readonly captureVideo: string;
-        readonly openGallery: string;
-        readonly takePicture: string;
+        readonly delete: string;
+        readonly duplicate: string;
+        readonly insertAbove: string;
+        readonly insertBelow: string;
         readonly title: string;
     };
+    readonly onAction: (action: NotionEditorBlockAction) => void;
+    readonly onDismiss: () => void;
+    /** Hidden for block types (the divider) that can't take content above themselves. */
+    readonly showInsertAbove: boolean;
 }
 
-interface MediaOptionProps
+interface ActionOptionProps
 {
-    readonly action: NotionEditorMediaAction;
     readonly color: string;
-    readonly icon: ComponentType<NotionEditorIconProps>;
+    readonly icon?: ComponentType<NotionEditorIconProps>;
     readonly label: string;
-    readonly onPress: (action: NotionEditorMediaAction) => void;
+    readonly onPress: () => void;
 }
 
 type LucideModule = Record<string, ComponentType<NotionEditorIconProps>> &
@@ -56,11 +52,10 @@ type LucideModule = Record<string, ComponentType<NotionEditorIconProps>> &
     readonly default?: Record<string, ComponentType<NotionEditorIconProps>>;
 };
 
-const lucideNames: Readonly<Record<NotionEditorMediaAction, string>> =
+const lucideNames: Readonly<Record<"copy" | "remove", string>> =
     {
-        gallery: "Image",
-        picture: "Camera",
-        video: "SquarePlay"
+        copy: "Copy",
+        remove: "Trash2"
     } as const;
 
 let optionalLucide: LucideModule | null | undefined;
@@ -89,32 +84,30 @@ function getLucideIcons(): LucideModule | undefined
 }
 
 /** Resolve an override, an installed Lucide icon, or the dependency-free SVG fallback. */
-function getMediaIcon(
-    action: NotionEditorMediaAction,
-    components: MediaBottomSheetProps["components"]
+function getActionIcon(
+    button: "copy" | "remove",
+    components: ActionsBottomSheetProps["components"]
 ): ComponentType<NotionEditorIconProps>
 {
-    const override = components?.[action];
+    const override = components?.[button];
 
     if (override !== undefined)
     {
         return override;
     }
 
-    const lucideIcon = getLucideIcons()?.[lucideNames[action]];
+    const lucideIcon = getLucideIcons()?.[lucideNames[button]];
 
     if (lucideIcon !== undefined)
     {
         return lucideIcon;
     }
 
-    return action === "gallery"
-        ? GalleryIcon
-        : action === "picture" ? CameraIcon : VideoIcon;
+    return button === "copy" ? CopyActionIcon : TrashActionIcon;
 }
 
-/** Render one labeled media action. */
-function MediaOption({ action, color, icon: Icon, label, onPress }: MediaOptionProps)
+/** Render one labeled action row. */
+function ActionOption({ color, icon: Icon, label, onPress }: ActionOptionProps)
 {
     const optionStyle = useCallback(({ pressed }: { pressed: boolean }) => [
         styles.option,
@@ -126,65 +119,38 @@ function MediaOption({ action, color, icon: Icon, label, onPress }: MediaOptionP
     return <Pressable accessibilityLabel={ label }
         accessibilityRole="button"
         android_ripple={ { color: `${ color }22` } }
-        onPress={ () => onPress(action) }
+        onPress={ onPress }
         style={ optionStyle }>
-        <Icon
-            color={ color }
-            size={ 20 }
-            strokeWidth={ 1.75 }
-        />
+        {
+            Icon !== undefined && <Icon
+                color={ color }
+                size={ 20 }
+                strokeWidth={ 1.75 } />
+        }
         <Text style={ [ styles.optionLabel, { color } ] }>{ label }</Text>
     </Pressable>;
 }
 
-/** Convert Expo's picker result to the package's dependency-free public shape. */
-function normalizeSelection(
-    action: NotionEditorMediaAction,
-    result: ImagePicker.ImagePickerResult
-): NotionEditorMediaSelection
+/** Render the built-in block-actions sheet. */
+export function ActionsBottomSheet({
+    blockName,
+    components,
+    dark,
+    labels,
+    onAction,
+    onDismiss,
+    showInsertAbove
+}: ActionsBottomSheetProps)
 {
-    return {
-        action,
-        assets: result.canceled
-            ? undefined
-            : result.assets?.map((asset: ImagePicker.ImagePickerAsset) => ({
-                duration: asset.duration,
-                fileName: asset.fileName,
-                fileSize: asset.fileSize,
-                height: asset.height,
-                mimeType: asset.mimeType,
-                type: asset.type,
-                uri: asset.uri,
-                width: asset.width
-            })),
-        canceled: result.canceled
-    };
-}
-
-/** Render the native insert-media sheet. */
-export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: MediaBottomSheetProps)
-{
-    const dark = useColorScheme() === "dark";
     const foreground = dark ? "#F5F5F5" : "#2C2C2B";
     const muted = dark ? "#D0CDC7" : "#45433F";
     const surface = dark ? "#202020" : "#F9F8F6";
     const optionSurface = dark ? "#30302F" : "#FFFFFF";
     const divider = dark ? "rgba(255, 255, 255, 0.10)" : "#EEECE9";
     const scrim = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.25)";
-
-    const handleAction = useCallback(async (action: NotionEditorMediaAction) =>
-    {
-        const result = action === "gallery"
-            ? await ImagePicker.launchImageLibraryAsync({ mediaTypes: [ "images", "videos" ] })
-            : await ImagePicker.launchCameraAsync({
-                mediaTypes: action === "picture" ? [ "images" ] : [ "videos" ]
-            });
-
-        /* Close first: NotionEditor sends a focus command on dismissal. Sending the selected
-           asset afterwards keeps insertImage/insertVideo as the final command in the batch. */
-        onDismiss();
-        await onSelected(normalizeSelection(action, result));
-    }, [ onDismiss, onSelected ]);
+    /* The package's "danger" color -- see NotionRendererTheme.danger -- deliberately the same
+       hex in both themes, unlike the other colors on this sheet. */
+    const danger = "#E56458";
 
     return <Modal
         animationType="slide"
@@ -195,7 +161,7 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
         visible>
         <View style={ styles.modalRoot }>
             <Pressable
-                accessibilityLabel="Dismiss insert media"
+                accessibilityLabel="Dismiss actions"
                 accessibilityRole="button"
                 onPress={ onDismiss }
                 style={ [ styles.scrim, { backgroundColor: scrim } ] } />
@@ -206,27 +172,42 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
                         style={ [ styles.title, { color: foreground } ] }>
                         { labels.title }
                     </Text>
+                    <Text style={ [ styles.blockNameLabel, { color: muted } ] }>{ blockName }</Text>
                     <View style={ [
                         styles.options,
                         { backgroundColor: optionSurface, borderColor: divider }
                     ] }>
-                        <MediaOption action="gallery"
+                        {
+                            showInsertAbove && <ActionOption
+                                color={ muted }
+                                label={ labels.insertAbove }
+                                onPress={ () => onAction("insertAbove") } />
+                        }
+                        {
+                            showInsertAbove
+                                && <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                        }
+                        <ActionOption
                             color={ muted }
-                            icon={ getMediaIcon("gallery", components) }
-                            label={ labels.openGallery }
-                            onPress={ handleAction } />
+                            label={ labels.insertBelow }
+                            onPress={ () => onAction("insertBelow") } />
+                    </View>
+                    <View style={ styles.groupGap } />
+                    <View style={ [
+                        styles.options,
+                        { backgroundColor: optionSurface, borderColor: divider }
+                    ] }>
+                        <ActionOption
+                            color={ muted }
+                            icon={ getActionIcon("copy", components) }
+                            label={ labels.duplicate }
+                            onPress={ () => onAction("duplicate") } />
                         <View style={ [ styles.divider, { backgroundColor: divider } ] } />
-                        <MediaOption action="picture"
-                            color={ muted }
-                            icon={ getMediaIcon("picture", components) }
-                            label={ labels.takePicture }
-                            onPress={ handleAction } />
-                        <View style={ [ styles.divider, { backgroundColor: divider } ] } />
-                        <MediaOption action="video"
-                            color={ muted }
-                            icon={ getMediaIcon("video", components) }
-                            label={ labels.captureVideo }
-                            onPress={ handleAction } />
+                        <ActionOption
+                            color={ danger }
+                            icon={ getActionIcon("remove", components) }
+                            label={ labels.delete }
+                            onPress={ () => onAction("delete") } />
                     </View>
                 </View>
             </View>
@@ -235,6 +216,16 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
 }
 
 const styles = StyleSheet.create({
+    blockNameLabel:
+    {
+        fontSize: 11,
+        fontWeight: "600",
+        /* Aligns flush with the icons in the rows below, not with the rows' own left edge --
+           matching each `option`'s own 24px inset. */
+        marginBottom: 6,
+        marginLeft: 24,
+        textTransform: "uppercase"
+    },
     content:
     {
         paddingBottom: 64,
@@ -244,6 +235,10 @@ const styles = StyleSheet.create({
     divider:
     {
         height: StyleSheet.hairlineWidth
+    },
+    groupGap:
+    {
+        height: 12
     },
     modalRoot:
     {

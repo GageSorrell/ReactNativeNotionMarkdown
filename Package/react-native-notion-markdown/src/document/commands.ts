@@ -355,9 +355,10 @@ function getNextSiblingBlock(document: NotionDocument, blockId: string): NotionB
  * same type; an empty list item exits the list instead of splitting. Headings always split
  * into (heading, text block); every other text-bearing type continues as its own type, matching
  * "Enter splits text" as the default with headings and lists as the stated exceptions. As a
- * further exception, pressing Enter at the end of a (non-empty) list item that is immediately
+ * further exception, pressing Enter at the end of a list item (empty or not) that is immediately
  * followed by a sibling list item of the same type replaces the current item with two empty
- * text blocks instead of continuing the list, since the list already resumes right after them.
+ * text blocks instead of continuing (or exiting) the list, since the list already resumes right
+ * after them.
  *
  * @since 1.0.0
  */
@@ -370,15 +371,6 @@ function handleEnter(store: NotionEditorStore, event: NotionFieldBoundaryEvent):
     if (block === undefined || !isNotionTextBearingBlockType(block.type)) {return;}
 
     const { marks, text } = fieldMarksOf(block, "rich_text", undefined);
-
-    if (isNotionListBlockType(block.type) && text.length === 0)
-    {
-        store.transact((doc: NotionDocument) =>
-            updateNotionBlock(doc, event.blockId, (b: NotionBlock) =>
-                turnNotionBlockInto(b, "paragraph")), "user");
-        store.setSelection(collapsedSelection(fieldPoint(event.blockId, "rich_text", undefined, 0)));
-        return;
-    }
 
     if (isNotionListBlockType(block.type) && event.offset === text.length)
     {
@@ -400,6 +392,15 @@ function handleEnter(store: NotionEditorStore, event: NotionFieldBoundaryEvent):
             store.setSelection(collapsedSelection(fieldPoint(firstBlockId, "rich_text", undefined, 0)));
             return;
         }
+    }
+
+    if (isNotionListBlockType(block.type) && text.length === 0)
+    {
+        store.transact((doc: NotionDocument) =>
+            updateNotionBlock(doc, event.blockId, (b: NotionBlock) =>
+                turnNotionBlockInto(b, "paragraph")), "user");
+        store.setSelection(collapsedSelection(fieldPoint(event.blockId, "rich_text", undefined, 0)));
+        return;
     }
 
     const [ before, after ] = splitFieldMarks(text, marks, event.offset);

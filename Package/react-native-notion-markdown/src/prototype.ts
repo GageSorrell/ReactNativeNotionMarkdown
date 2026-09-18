@@ -145,7 +145,11 @@ export type Action =
     | "insertVideo"
     | "callout"
     | "compose"
-    | "commit";
+    | "commit"
+    | "insertAbove"
+    | "insertBelow"
+    | "duplicateBlock"
+    | "deleteBlock";
 
 /**
  * A uniquely identified command sent to the native editor coordinator.
@@ -181,6 +185,14 @@ export interface ProofCommand
 
     /** Replacement label for a `"link"` action. Defaults to the selected text. */
     readonly label?: string;
+
+    /**
+     * Target block id for a `"insertAbove"`, `"insertBelow"`, `"duplicateBlock"`, or
+     * `"deleteBlock"` action -- these act on the identified block directly rather than on the
+     * current selection, since the block-actions sheet can be opened for a block (e.g. a divider)
+     * that never receives the text cursor.
+     */
+    readonly blockId?: string;
 };
 
 /**

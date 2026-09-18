@@ -7,7 +7,7 @@
  * @license   MIT
  */
 
-import type { ProofCommand, ProofEvent, ProofSnapshot } from "./prototype.ts";
+import type { ProofBlock, ProofCommand, ProofEvent, ProofSnapshot } from "./prototype.ts";
 import type { ComponentType } from "react";
 import type { ViewProps } from "react-native";
 import { requireNativeViewManager } from "expo-modules-core";
@@ -25,6 +25,10 @@ export interface NativeProofEditorProps extends ViewProps
     readonly onEdit?: (Event: { nativeEvent: ProofEvent }) => void;
     readonly onPageReferencePress?: (
         Event: { nativeEvent: NativePageReferencePressEvent }
+    ) => void;
+    /** Fired when a block that opens the actions sheet (e.g. a divider) is tapped. */
+    readonly onBlockActionsPress?: (
+        Event: { nativeEvent: NativeBlockActionsPressEvent }
     ) => void;
     /** Optional glyph used by the native proof view when a page has no fetched icon. */
     readonly pageReferenceFallbackIcon?: string;
@@ -50,6 +54,19 @@ export interface NativePageReferencePressEvent
     readonly text: string;
     readonly url: string;
     readonly icon?: string;
+}
+
+/**
+ * Data emitted when a block that opens the actions sheet (e.g. a divider) is tapped in the
+ * native proof editor.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
+export interface NativeBlockActionsPressEvent
+{
+    readonly id: string;
+    readonly type: ProofBlock["type"];
 }
 
 /**
