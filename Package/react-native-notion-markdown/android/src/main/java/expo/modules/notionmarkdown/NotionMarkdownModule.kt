@@ -20,6 +20,7 @@ class NotionMarkdownModule : Module() {
       Prop("dark") { view: NotionProofView, value: Boolean -> view.setDark(value) }
       Prop("emptyTogglePlaceholder") { view: NotionProofView, value: String? -> view.setEmptyTogglePlaceholder(value) }
       Prop("pageReferenceFallbackIcon") { view: NotionProofView, value: String? -> view.setPageReferenceFallbackIcon(value) }
+      Prop("imageMaxWidth") { view: NotionProofView, value: Int? -> view.setImageMaxWidth(value) }
     }
 
     // One editable native field per block's rich_text/caption/cell. Many mount at once; a

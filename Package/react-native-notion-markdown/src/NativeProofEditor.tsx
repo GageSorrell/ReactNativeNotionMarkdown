@@ -29,6 +29,9 @@ export interface NativeProofEditorProps extends ViewProps
     /** Optional glyph used by the native proof view when a page has no fetched icon. */
     readonly pageReferenceFallbackIcon?: string;
 
+    /** Maximum rendered width of image and video blocks, in logical pixels. */
+    readonly imageMaxWidth?: number;
+
     /**
      * Hint shown inside the empty child created for a toggle heading.
      */

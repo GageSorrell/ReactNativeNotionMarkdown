@@ -43,6 +43,7 @@ import {
     appendNotionChild,
     findNotionBlockPath,
     getNotionBlock,
+    getNotionBlockAtPath,
     getNotionBlockCaption,
     getNotionBlockCell,
     getNotionBlockRichText,
@@ -334,10 +335,29 @@ function fieldMarksOf(block: NotionBlock, field: NotionFieldKind, index: number 
 }
 
 /**
+ * Find the block that immediately follows the given block within its own parent's children
+ * (i.e. the next sibling at the same nesting depth), or `undefined` if there is none.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function getNextSiblingBlock(document: NotionDocument, blockId: string): NotionBlock | undefined
+{
+    const path = findNotionBlockPath(document, blockId);
+    if (path === undefined || path.length === 0) {return undefined;}
+
+    const siblingPath = [ ...path.slice(0, -1), path[ path.length - 1 ]! + 1 ];
+    return getNotionBlockAtPath(document, siblingPath);
+}
+
+/**
  * Enter splits a text block at the caret. A list item continues as a new sibling item of the
  * same type; an empty list item exits the list instead of splitting. Headings always split
  * into (heading, text block); every other text-bearing type continues as its own type, matching
- * "Enter splits text" as the default with headings and lists as the stated exceptions.
+ * "Enter splits text" as the default with headings and lists as the stated exceptions. As a
+ * further exception, pressing Enter at the end of a (non-empty) list item that is immediately
+ * followed by a sibling list item of the same type replaces the current item with two empty
+ * text blocks instead of continuing the list, since the list already resumes right after them.
  *
  * @since 1.0.0
  */
@@ -358,6 +378,28 @@ function handleEnter(store: NotionEditorStore, event: NotionFieldBoundaryEvent):
                 turnNotionBlockInto(b, "paragraph")), "user");
         store.setSelection(collapsedSelection(fieldPoint(event.blockId, "rich_text", undefined, 0)));
         return;
+    }
+
+    if (isNotionListBlockType(block.type) && event.offset === text.length)
+    {
+        const nextSibling = getNextSiblingBlock(document, event.blockId);
+        if (nextSibling !== undefined && nextSibling.type === block.type)
+        {
+            const firstBlockId = generateNotionBlockId();
+            const secondBlockId = generateNotionBlockId();
+            const firstBlock = makeNotionBlock("paragraph", firstBlockId);
+            const secondBlock = makeNotionBlock("paragraph", secondBlockId);
+
+            store.transact((doc: NotionDocument) =>
+            {
+                const withSecond = insertNotionBlockRelative(doc, event.blockId, secondBlock, "after");
+                const withFirst = insertNotionBlockRelative(withSecond, event.blockId, firstBlock, "before");
+                return removeNotionBlock(withFirst, event.blockId);
+            }, "user");
+
+            store.setSelection(collapsedSelection(fieldPoint(firstBlockId, "rich_text", undefined, 0)));
+            return;
+        }
     }
 
     const [ before, after ] = splitFieldMarks(text, marks, event.offset);

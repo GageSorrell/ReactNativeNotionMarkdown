@@ -150,7 +150,7 @@ function StoryHeaderFrame({ children, name }: StoryHeaderFrameProps)
 
 /**
  * Storybook decorators receive the story context as their second argument, which is where
- * `name` comes from -- there is no per-story JSX change needed to get this.
+ * `name` comes from--there is no per-story JSX change needed to get this.
  */
 const withStoryHeader: Decorator = (StoryComponent, context) => (
     <StoryHeaderFrame name={ context.name }>
@@ -162,7 +162,7 @@ const headerStyles = StyleSheet.create({
     body: { flex: 1 },
     header:
     {
-        backgroundColor: "#ffffff",
+        backgroundColor: "#ff00ff",
         paddingHorizontal: 24,
         paddingTop: 28
     },
@@ -171,7 +171,7 @@ const headerStyles = StyleSheet.create({
         color: "#2C2C2B",
         fontSize: 40,
         fontWeight: "900",
-        marginBottom: 20
+        marginBottom: 24
     },
     headerTextInter:
     {

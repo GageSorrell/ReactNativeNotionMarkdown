@@ -41,6 +41,7 @@ import {
     KeyboardOff,
     Link2,
     ListChecks,
+    MessageSquare,
     Mic,
     MoveDown,
     MoveUp,
@@ -122,6 +123,7 @@ const notionEditorLucideIcons: NotionEditorComponents =
     {
         back: ArrowLeft,
         bold: Bold,
+        callout: MessageSquare,
         close: CircleX,
         code: Code2,
         color: Palette,

@@ -33,6 +33,7 @@ type OptionalLucideModule = Record<string, ComponentType<{
 
 let optionalLucide: OptionalLucideModule | null | undefined;
 
+/** Resolve Lucide's document icon without making the package a hard dependency. */
 function getDocumentIcon(): ComponentType<{
     readonly color: string;
     readonly size: number;
@@ -56,6 +57,7 @@ function getDocumentIcon(): ComponentType<{
     return optionalLucide?.FileText ?? optionalLucide?.FileTextIcon;
 }
 
+/** Resolve a favicon href from a link element in the fetched document. */
 function hrefFromTag(tag: string, pageUrl: string): string | undefined
 {
     const rel = tag.match(/\brel\s*=\s*["']([^"']+)["']/i)?.[ 1 ] ?? "";
@@ -129,28 +131,30 @@ export function FaviconIcon({
     url
 }: FaviconIconProps)
 {
-    const [ favicon, setFavicon ] = useState<string>();
-    const [ failed, setFailed ] = useState(false);
+    const [ favicon, setFavicon ] = useState<{ readonly url: string; readonly value?: string }>();
+    const [ failedUrl, setFailedUrl ] = useState<string>();
     const LucideDocument = getDocumentIcon();
 
     useEffect(() =>
     {
         let live = true;
-        setFavicon(undefined);
-        setFailed(false);
         void resolveFaviconUrl(url).then((value: string | undefined) =>
         {
-            if (live) {setFavicon(value);}
+            if (live)
+            {
+                setFavicon({ url, value });
+                setFailedUrl(undefined);
+            }
         });
         return () => { live = false; };
     }, [ url ]);
 
-    if (favicon !== undefined && !failed)
+    if (favicon?.url === url && favicon.value !== undefined && failedUrl !== url)
     {
         return <Image
             accessibilityLabel="Web page favicon"
-            onError={ () => setFailed(true) }
-            source={ { uri: favicon } }
+            onError={ () => setFailedUrl(url) }
+            source={ { uri: favicon.value } }
             style={ { height: size, width: size } }
         />;
     }

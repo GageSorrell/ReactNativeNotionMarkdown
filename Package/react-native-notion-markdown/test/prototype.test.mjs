@@ -92,6 +92,25 @@ test('page-reference proof blocks preserve URL and icon metadata', () => {
   });
   assert.equal(invalid, initial);
 });
+test('media proof blocks preserve image and video URLs', () => {
+  const initial = createProofDocument();
+  for (const type of [ 'image', 'video' ]) {
+    const media = { ...initial.blocks[0], text: '', type, url: `file:///tmp/${type}.asset` };
+    const accepted = acceptProofEvent(initial, {
+      ...initial,
+      blocks: [media, ...initial.blocks.slice(1)],
+      revision: 1
+    });
+    assert.equal(accepted.blocks[0].type, type);
+    assert.equal(accepted.blocks[0].url, media.url);
+    const invalid = acceptProofEvent(initial, {
+      ...initial,
+      blocks: [{ ...media, url: undefined }, ...initial.blocks.slice(1)],
+      revision: 1
+    });
+    assert.equal(invalid, initial);
+  }
+});
 test('proof link marks preserve URLs and reject malformed links', () => {
   const initial = createProofDocument();
   const linked = {

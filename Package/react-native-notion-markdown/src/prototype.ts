@@ -32,14 +32,17 @@ export interface ProofBlock
         | "bulleted_list_item"
         | "numbered_list_item"
         | "to_do"
+        | "callout"
         | "divider"
         | "table_of_contents"
         | "column_list"
+        | "image"
+        | "video"
         | "link_to_page";
     readonly text: string;
     /** URL opened when the page reference is tapped. */
     readonly url?: string;
-    /** Optional page icon, commonly an emoji or a fetched icon identifier. */
+    /** Optional icon: a page icon for `link_to_page`, or a callout's emoji. */
     readonly icon?: string;
     readonly color?: NotionMarkdownColor;
     /** Whether a to-do block is checked. */
@@ -138,6 +141,9 @@ export type Action =
     | "outdent"
     | "moveBlockUp"
     | "moveBlockDown"
+    | "insertImage"
+    | "insertVideo"
+    | "callout"
     | "compose"
     | "commit";
 
@@ -221,7 +227,7 @@ const validProofBlockTypes: ReadonlyArray<ProofBlock[ "type" ]> =
     [
         "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
         "numbered_list_item", "divider",
-        "to_do", "table_of_contents", "column_list", "link_to_page"
+        "to_do", "callout", "table_of_contents", "column_list", "image", "video", "link_to_page"
     ];
 
 /* Valid ProofBlock colors, matching `NotionMarkdownColor` exactly. */
@@ -266,9 +272,12 @@ export function AcceptProofEvent(current: ProofSnapshot, event: ProofEvent): Pro
         (Block.checked !== undefined && Block.type !== "to_do") ||
         (Block.columnCount !== undefined && (Block.type !== "column_list"
             || ![ 2, 3, 4, 5 ].includes(Block.columnCount))) ||
-        (Block.url !== undefined && (Block.type !== "link_to_page" || typeof Block.url !== "string")) ||
-        (Block.icon !== undefined && (Block.type !== "link_to_page" || typeof Block.icon !== "string")) ||
-        (Block.type === "link_to_page" && typeof Block.url !== "string") ||
+        (Block.url !== undefined && ((Block.type !== "link_to_page" && Block.type !== "image" && Block.type !== "video") || typeof Block.url !== "string")) ||
+        (Block.icon !== undefined && (
+            !(Block.type === "link_to_page" || Block.type === "callout") ||
+            typeof Block.icon !== "string"
+        )) ||
+        ((Block.type === "link_to_page" || Block.type === "image" || Block.type === "video") && typeof Block.url !== "string") ||
         (Block.color !== undefined && !validProofColors.includes(Block.color)) ||
         (Block.marks !== undefined && Block.marks.some((mark: ProofTextMark) =>
             mark.start < 0 || mark.end <= mark.start || mark.end > Block.text.length ||

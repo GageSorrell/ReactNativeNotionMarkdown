@@ -146,6 +146,21 @@ function numberedOrdinal(blocks: ReadonlyArray<NotionBlock>, index: number): num
 }
 
 /**
+ * Whether the block at this index is the first/last of a run of same-type siblings, used to
+ * collapse the space between adjacent list items of one list down to 4px while keeping the
+ * 8px edge above the first item and below the last.
+ */
+function listItemRunPosition(blocks: ReadonlyArray<NotionBlock>, index: number):
+{ readonly first: boolean; readonly last: boolean; }
+{
+    const type = blocks[index]?.type;
+    return {
+        first: index === 0 || blocks[index - 1]?.type !== type,
+        last: index === blocks.length - 1 || blocks[index + 1]?.type !== type
+    };
+}
+
+/**
  * Check whether the given block tree contains a heading with the given identifier.
  *
  * @category Functions
@@ -205,11 +220,13 @@ function BlockList({ blocks, context, depth = 0, seen = new Set<string>() }: {
                 blocks.map((block: NotionBlock, index: number) =>
                 {
                     const ordinal = numberedOrdinal(blocks, index);
+                    const listItemPosition = listItemRunPosition(blocks, index);
                     return (
                         <NotionBlockView block={ block }
                             context={ context }
                             depth={ depth }
                             key={ getNotionMarkdownMetadata(block).editorId ?? block.id }
+                            listItemPosition={ listItemPosition }
                             ordinal={ ordinal }
                             seen={ seen }
                         />
@@ -685,10 +702,18 @@ function TableView({ block, context }: { readonly block: NotionBlock; readonly c
 }
 
 /** Reusable recursive block presentation. */
-export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen = new Set<string>() }: {
+export function NotionBlockView({
+    block,
+    context,
+    depth = 0,
+    listItemPosition = { first: true, last: true },
+    ordinal = 0,
+    seen = new Set<string>()
+}: {
     readonly block: NotionBlock;
     readonly context: RenderContext;
     readonly depth?: number;
+    readonly listItemPosition?: { readonly first: boolean; readonly last: boolean };
     readonly ordinal?: number;
     readonly seen?: ReadonlySet<string>;
 })
@@ -759,7 +784,7 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
         case "paragraph":
             return (
                 <View
-                    style={ { ...base, paddingVertical: 6 } }
+                    style={ { ...base, paddingBottom: 8, paddingLeft: 8, paddingRight: 8, paddingTop: 8 } }
                     testID={ `block-${ block.id }` }>
                     {
                         metadata.empty
@@ -780,9 +805,9 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
         case "heading_4":
         {
             const level = Number(block.type.slice(-1));
-            const headingFontSize = context.theme.fontSize * ([ 30 / 16, 24 / 16, 20 / 16, 16 / 16 ][ level - 1 ] ?? 1);
+            const headingFontSize = context.theme.fontSize * ([ 30 / 16, 24 / 16, 20 / 16, 18 / 16 ][ level - 1 ] ?? 1);
             const headingLineHeight = context.theme.fontSize * ([ 39 / 16, 31.2 / 16, 26 / 16, 24 / 16 ][ level - 1 ] ?? 1.5);
-            const headingPaddingTop = 30 - (level - 1) * 4;
+            const headingPaddingTop = [ 32, 28, 24, 20 ][ level - 1 ] ?? 8;
             const heading = text(
                 payload.rich_text,
                 headingFontSize,
@@ -798,7 +823,9 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                     ref={ (view: View | null) => context.registerHeading(block.id, view) }
                     style={ {
                         ...base,
-                        paddingBottom: 6,
+                        paddingBottom: 8,
+                        paddingLeft: 8,
+                        paddingRight: 8,
                         paddingTop: headingPaddingTop
                     } }
                     testID={ `heading-${block.id}` }>
@@ -823,7 +850,13 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                 : `${ ordinal }.`;
 
             return (
-                <View style={ { ...base, paddingBottom: 1, paddingLeft: 6 + depth * 32, paddingTop: 1 } }>
+                <View style={ {
+                    ...base,
+                    paddingBottom: listItemPosition.last ? 8 : 4,
+                    paddingLeft: 8 + depth * 32,
+                    paddingRight: 8,
+                    paddingTop: listItemPosition.first ? 8 : 4
+                } }>
                     <View style={ { alignItems: "flex-start", flexDirection: "row", paddingLeft: 2 } }>
                         <Text style={ {
                             color: foreground ?? context.theme.foreground,
@@ -848,7 +881,13 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
             const Checkbox = context.props.checkboxComponent;
 
             return (
-                <View style={ { ...base, paddingBottom: 1, paddingLeft: 6 + depth * 32, paddingTop: 1 } }>
+                <View style={ {
+                    ...base,
+                    paddingBottom: 8,
+                    paddingLeft: 8 + depth * 32,
+                    paddingRight: 8,
+                    paddingTop: 8
+                } }>
                     <View style={ { alignItems: "flex-start", flexDirection: "row", paddingLeft: 2 } }>
                         <View
                             accessibilityLabel={ checked ? "Checked" : "Unchecked" }
@@ -904,10 +943,10 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                     ...base,
                     borderLeftColor: context.theme.border,
                     borderLeftWidth: 3,
-                    paddingBottom: 6,
-                    paddingLeft: 14,
+                    paddingBottom: 8,
+                    paddingLeft: 8,
                     paddingRight: 8,
-                    paddingTop: 6
+                    paddingTop: 8
                 } }>
                     { text(payload.rich_text) }
                     { childView }
@@ -926,7 +965,13 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                 </View>
             );
         case "callout":
-            return <View style={ { ...base, padding: 8 } }>
+            return <View style={ {
+                ...base,
+                paddingBottom: 8,
+                paddingLeft: 8,
+                paddingRight: 8,
+                paddingTop: 8
+            } }>
                 <View style={ {
                     backgroundColor: backgroundColor ?? context.theme.surface,
                     borderColor: context.theme.border,

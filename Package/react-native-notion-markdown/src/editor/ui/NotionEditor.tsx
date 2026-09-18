@@ -16,6 +16,7 @@ import {
     type ProofEvent,
     type ProofPoint,
     type ProofSnapshot,
+    type ProofTextMark,
     type ProofTextMarkKind
 } from "../../prototype.ts";
 import Animated, { FadeIn, FadeOut, useAnimatedStyle } from "react-native-reanimated";
@@ -24,6 +25,11 @@ import {
     useKeyboardState,
     useReanimatedKeyboardAnimation
 } from "react-native-keyboard-controller";
+import {
+    type NativePageReferencePressEvent,
+    NativeProofEditor,
+    type NativeProofEditorProps
+} from "../../NativeProofEditor.tsx";
 import {
     Pressable,
     ScrollView,
@@ -36,15 +42,10 @@ import {
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import type { LayoutChangeEvent } from "react-native";
-import {
-    NativeProofEditor,
-    type NativePageReferencePressEvent,
-    type NativeProofEditorProps
-} from "../../NativeProofEditor.tsx";
-import type { NotionMarkdownColor } from "../../document/types.ts";
-import { openPageReferenceUrl } from "../../openPageReference.ts";
 import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
 import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
+import type { NotionMarkdownColor } from "../../document/types.ts";
+import { openPageReferenceUrl } from "../../openPageReference.ts";
 import { useNotionEditorTranslate } from "./config.tsx";
 
 /**
@@ -89,6 +90,7 @@ export type NotionEditorButton =
     | "tableOfContents"
     | "columns"
     | "toDo"
+    | "callout"
     | "heading1"
     | "heading2"
     | "heading3"
@@ -289,6 +291,12 @@ export type NotionEditorCustomButton =
  */
 export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command" | "onEdit" | "snapshot">
 {
+    /** Horizontal inset applied to the WYSIWYG page content. The MAB is not affected. */
+    readonly pagePaddingHorizontal?: number;
+
+    /** Maximum width of the centered WYSIWYG page content. The default is 960 logical pixels. */
+    readonly pageMaxWidth?: number;
+
     /** Document state. When omitted, a starter document is created and managed internally. */
     readonly snapshot?: ProofSnapshot;
 
@@ -298,10 +306,11 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
     /** Receives native editing events. Omit this callback for internally managed document state. */
     readonly onEdit?: (Event: { nativeEvent: ProofEvent }) => void;
 
-    /** Receives actions selected in the editor UI, plus any level/color/type/mark it carries. */
+    /** Receives actions selected in the editor UI, plus any level/color/type/mark/url/label it carries. */
     readonly onCommand?: (
         Action: ProofCommand["action"],
-        Extra?: Pick<ProofCommand, "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
+        Extra?: Pick<ProofCommand,
+            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
     ) => void;
 
     /** Optional icon overrides for the editor UI. */
@@ -316,7 +325,10 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
     /** Alias for {@link onInsertMedia}, named after the built-in `filePicker` button id. */
     readonly onFilePicker?: () => void | Promise<void>;
 
-    /** Receives selections made by the built-in insert-media sheet. */
+    /**
+     * Receives selections made by the built-in insert-media sheet; image and
+     * video assets are also displayed in the editor automatically.
+     */
     readonly onMediaSelected?: (
         Selection: NotionEditorMediaSelection
     ) => void | Promise<void>;
@@ -711,9 +723,17 @@ type OpenPanel =
 
 const NoPanelOpen: OpenPanel = { kind: "none" };
 
-/* Height of the main toolbar row, shared between its style and the footer-height calculation
-   below so the two can't drift out of sync. */
+/**
+ * Height of the main toolbar row, shared between its style and the
+ * footer-height calculation below so the two can't drift out of sync.
+ */
 const ToolbarHeight = 48;
+
+/** Default horizontal inset for the WYSIWYG page content, in logical pixels. */
+const DefaultPagePaddingHorizontal = 24;
+
+/** Default maximum width for the WYSIWYG page content, in logical pixels. */
+const DefaultPageMaxWidth = 960;
 
 /* Fixed height of the "Basic blocks" panel. Its content scrolls internally, so this only needs
    to comfortably fit the color row plus a few block options above the fold. */
@@ -757,6 +777,9 @@ export function NotionEditor({
     onOpenPageReference,
     emptyTogglePlaceholder: suppliedEmptyTogglePlaceholder,
     pageReferenceFallbackIcon: suppliedPageReferenceFallbackIcon,
+    pagePaddingHorizontal = DefaultPagePaddingHorizontal,
+    pageMaxWidth = DefaultPageMaxWidth,
+    imageMaxWidth = DefaultPageMaxWidth,
     snapshot: suppliedSnapshot,
     ...viewProps
 }: NotionEditorProps)
@@ -928,7 +951,10 @@ export function NotionEditor({
             "insert", "format", "speech", "filePicker", "turnInto", "undo", "redo", "remove", "indent",
             "outdent", "moveUp", "moveDown"
         );
-        if (canEditPageReference) order.push("edit");
+        if (canEditPageReference)
+        {
+            order.push("edit");
+        }
 
         customButtons?.forEach((button: NotionEditorCustomButton) =>
         {
@@ -1022,7 +1048,8 @@ export function NotionEditor({
 
     const send = useCallback((
         action: ProofCommand["action"],
-        extra?: Pick<ProofCommand, "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
+        extra?: Pick<ProofCommand,
+            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
     ) =>
     {
         if (onCommand !== undefined)
@@ -1187,7 +1214,7 @@ export function NotionEditor({
         {
             const start = index === 0 ? startOffset : 0;
             const end = index === high - low ? endOffset : block.text.length;
-            block.marks?.forEach((mark) =>
+            block.marks?.forEach((mark: ProofTextMark) =>
             {
                 if (mark.kind === "link" && mark.url !== undefined
                     && mark.start < end && mark.end > start)
@@ -1276,7 +1303,13 @@ export function NotionEditor({
         send("dismiss");
     }, [ send ]);
     const handleTurnInto = useCallback((type: ProofBlock["type"]) => () =>
-        send("turnInto", { type }), [ send ]);
+    {
+        /* Turning a block into another type ends the MAB interaction. Close the panel before
+           dispatching the native command so the toolbar immediately returns to its compact
+           keyboard-adjacent state; the native transform requests the IME again. */
+        setOpenPanel(NoPanelOpen);
+        send("turnInto", { type });
+    }, [ send ]);
     const handleColor = useCallback(() =>
     {
         if (!canColorSelection) {return;}
@@ -1310,6 +1343,7 @@ export function NotionEditor({
     const handleColumns = useCallback((columnCount: ProofColumnCount) => () =>
         send("columns", { columnCount }), [ send ]);
     const handleToDo = useCallback(() => send("toDo"), [ send ]);
+    const handleCallout = useCallback(() => send("callout"), [ send ]);
     const handleCreatePageReference = useCallback(() =>
     {
         if (onCreatePageReference === undefined
@@ -1347,6 +1381,30 @@ export function NotionEditor({
             void onEditPageReference?.(selectedPageReference);
         }
     }, [ onEditPageReference, selectedPageReference ]);
+    const handleMediaSelected = useCallback(async (selection: NotionEditorMediaSelection) =>
+    {
+        if (!selection.canceled && selection.assets !== undefined)
+        {
+            const mediaAsset = selection.assets.find((asset: NotionEditorMediaAsset) =>
+            {
+                const type = asset.type?.toLowerCase();
+                const mimeType = asset.mimeType?.toLowerCase();
+                const isImage = type === "image" || mimeType?.startsWith("image/") === true;
+                const isVideo = type === "video" || mimeType?.startsWith("video/") === true;
+                const hasKnownMediaType = isImage || isVideo;
+                return selection.action === "video" ? isVideo || !hasKnownMediaType
+                    : selection.action === "picture" ? isImage || !hasKnownMediaType : hasKnownMediaType;
+            });
+            if (mediaAsset !== undefined)
+            {
+                const isVideo = selection.action === "video"
+                    || mediaAsset.type?.toLowerCase() === "video"
+                    || mediaAsset.mimeType?.toLowerCase().startsWith("video/") === true;
+                send(isVideo ? "insertVideo" : "insertImage", { url: mediaAsset.uri });
+            }
+        }
+        await onMediaSelected?.(selection);
+    }, [ onMediaSelected, send ]);
     const handleToggleHeading1 = useCallback(
         () => send("heading", { level: 1, toggle: true }), [ send ]
     );
@@ -1398,6 +1456,10 @@ export function NotionEditor({
         () => [ styles.trailingButton, { borderLeftColor: dividerColor } ],
         [ dividerColor ]
     );
+    const pageStyle = useMemo(
+        () => [ styles.page, { maxWidth: pageMaxWidth, paddingHorizontal: pagePaddingHorizontal } ],
+        [ pageMaxWidth, pagePaddingHorizontal ]
+    );
     const scrollFadeLayerStyles = useMemo(
         () => Array.from({ length: ScrollFadeSteps }, (_unused: unknown, index: number) =>
         {
@@ -1426,19 +1488,22 @@ export function NotionEditor({
             ref={ root }
             style={ handleLayout }>
             <Animated.View style={ surfaceStyle }>
-                <NativeProofEditor
-                    { ...nativeViewProps }
-                    command={ command }
-                    dark={ dark }
-                    emptyTogglePlaceholder={ suppliedEmptyTogglePlaceholder }
-                    onEdit={ receiveEdit }
-                    onPageReferencePress={ handlePageReferencePress }
-                    pageReferenceFallbackIcon={ suppliedPageReferenceFallbackIcon
-                        ?? (components?.linkToPage !== undefined ? "↗" : undefined) }
-                    snapshot={ snapshot }
-                    style={ styles.editor }
-                    testID={ testID }
-                />
+                <View style={ pageStyle }>
+                    <NativeProofEditor
+                        { ...nativeViewProps }
+                        command={ command }
+                        dark={ dark }
+                        emptyTogglePlaceholder={ suppliedEmptyTogglePlaceholder }
+                        imageMaxWidth={ imageMaxWidth }
+                        onEdit={ receiveEdit }
+                        onPageReferencePress={ handlePageReferencePress }
+                        pageReferenceFallbackIcon={ suppliedPageReferenceFallbackIcon
+                            ?? (components?.linkToPage !== undefined ? "↗" : undefined) }
+                        snapshot={ snapshot }
+                        style={ styles.editor }
+                        testID={ testID }
+                    />
+                </View>
             </Animated.View>
             <KeyboardStickyView
                 enabled={ !keyboardIsOutsideApp }
@@ -1752,6 +1817,14 @@ export function NotionEditor({
                                     labelColor={ foreground }
                                     onPress={ handleToDo } />
                                 <BlockOption background={ cardBackground }
+                                    button="callout"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.callout") }
+                                    labelColor={ foreground }
+                                    onPress={ handleCallout } />
+                                <BlockOption background={ cardBackground }
                                     button="heading1"
                                     color={ iconColor }
                                     components={ components }
@@ -1898,7 +1971,9 @@ export function NotionEditor({
                                 options={ proofColorOptions.filter(
                                     (option: ProofColorOption) => !option.background
                                 ) } />
-                            <Text style={ colorLabelStyle }>{ t("colorPanel.background") }</Text>
+                            <Text style={ colorLabelStyle }>
+                                { t("colorPanel.background") }
+                            </Text>
                             <ColorOptionGrid
                                 cardBackground={ cardBackground }
                                 defaultLabel={ t("colorPanel.default") }
@@ -1930,7 +2005,7 @@ export function NotionEditor({
                     components={ components }
                     labels={ mediaLabels }
                     onDismiss={ handleMediaSheetDismiss }
-                    onSelected={ onMediaSelected ?? handleNoop } />
+                    onSelected={ handleMediaSelected } />
             }
             {
                 linkSheetVisible && linkRequest !== undefined && <LinkBottomSheet
@@ -2063,6 +2138,12 @@ const styles = StyleSheet.create({
         left: 0,
         position: "absolute",
         right: 0
+    },
+    page:
+    {
+        alignSelf: "center",
+        flex: 1,
+        width: "100%"
     },
     panel:
     {

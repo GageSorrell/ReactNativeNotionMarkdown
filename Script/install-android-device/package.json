@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Interactively builds, installs, and launches the Application's debug Android APK on one or more connected devices/emulators, then optionally starts Metro.",
   "scripts": {
-    "install-android-device": "node index.mjs"
+    "start": "node index.mjs"
   },
   "dependencies": {
     "effect": "4.0.0-rc.115",

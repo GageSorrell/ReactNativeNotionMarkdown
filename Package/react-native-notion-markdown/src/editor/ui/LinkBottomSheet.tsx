@@ -45,6 +45,7 @@ interface LinkBottomSheetProps
     readonly onSubmit: (result: NotionEditorLinkResult) => void;
 }
 
+/** Normalize a user-entered URL, accepting hostnames without a scheme. */
 function normalizeUrl(value: string): string | undefined
 {
     const trimmed = value.trim();
@@ -117,7 +118,9 @@ export function LinkBottomSheet({
                     onChangeText={ setUrl }
                     placeholder="https://example.com"
                     placeholderTextColor={ muted }
-                    style={ [ styles.input, { backgroundColor: fieldSurface, borderColor: border, color: foreground } ] }
+                    style={ [ styles.input, {
+                        backgroundColor: fieldSurface, borderColor: border, color: foreground
+                    } ] }
                     value={ url }
                 />
                 <Text style={ [ styles.fieldLabel, { color: muted } ] }>{ labels.label }</Text>
@@ -125,7 +128,9 @@ export function LinkBottomSheet({
                     onChangeText={ setLabel }
                     placeholder={ labels.label }
                     placeholderTextColor={ muted }
-                    style={ [ styles.input, { backgroundColor: fieldSurface, borderColor: border, color: foreground } ] }
+                    style={ [ styles.input, {
+                        backgroundColor: fieldSurface, borderColor: border, color: foreground
+                    } ] }
                     value={ label }
                 />
                 <View style={ styles.actions }>

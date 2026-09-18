@@ -91,21 +91,21 @@ const editorStoryRender = (args: ComponentProps<typeof NotionEditor>) => (
 );
 
 const styles = StyleSheet.create({
-    editor:
-    {
-        flex: 1
-    },
     darkPage:
     {
         backgroundColor: "#191919"
     },
     darkPageTitle:
     {
-        color: "#eeeeee"
+        color: "#EEEEEE"
+    },
+    editor:
+    {
+        flex: 1
     },
     page:
     {
-        backgroundColor: "#ffffff",
+        backgroundColor: "#FFFFFF",
         flex: 1
     },
     pageTitle:
@@ -113,11 +113,11 @@ const styles = StyleSheet.create({
         color: "#2C2C2B",
         fontSize: 36,
         fontWeight: "700",
-        marginBottom: 28
+        marginBottom: 16
     },
     titleContainer:
     {
-        paddingHorizontal: 20,
+        paddingHorizontal: 28,
         paddingTop: 24
     }
 });

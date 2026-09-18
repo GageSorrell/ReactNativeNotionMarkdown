@@ -88,9 +88,17 @@ export function NativeProof({ components }: NativeProofProps = {})
     }, [ devtools ]);
 
     /** Dispatch a uniquely numbered command against the current document epoch. */
-    const send = useCallback((action: ProofCommand["action"]) =>
+    const send = useCallback((
+        action: ProofCommand["action"],
+        extra?: Pick<ProofCommand, "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
+    ) =>
     {
-        const next: ProofCommand = { action, epoch: currentSnapshot.current.epoch, id: ++sequence.current };
+        const next: ProofCommand = {
+            action,
+            epoch: currentSnapshot.current.epoch,
+            id: ++sequence.current,
+            ...extra
+        };
         setCommand(next);
         devtools.reportCommand(next);
     }, [ devtools ]);

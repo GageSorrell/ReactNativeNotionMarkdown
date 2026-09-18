@@ -57,6 +57,7 @@ export type EditorMessageId =
     | "linkSheet.cancel"
     | "linkSheet.apply"
     | "insertPanel.title"
+    | "insertPanel.callout"
     | "insertPanel.columns"
     | "insertPanel.columns2"
     | "insertPanel.columns3"
@@ -128,6 +129,12 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Section heading for foreground colors in the color panel",
             id: "colorPanel.foreground"
         },
+        "insertPanel.callout":
+        {
+            defaultMessage: "Callout",
+            description: "Insert-panel button that inserts a callout block",
+            id: "insertPanel.callout"
+        },
         "insertPanel.columns":
         {
             defaultMessage: "Columns",
@@ -188,12 +195,6 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Insert-panel button that inserts a heading 4 block",
             id: "insertPanel.heading4"
         },
-        "insertPanel.text":
-        {
-            defaultMessage: "Text block",
-            description: "Insert-panel button that inserts a plain text block",
-            id: "insertPanel.text"
-        },
         "insertPanel.pageReference":
         {
             defaultMessage: "Page",
@@ -211,6 +212,12 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Table of contents",
             description: "Insert-panel button that inserts a table of contents block",
             id: "insertPanel.tableOfContents"
+        },
+        "insertPanel.text":
+        {
+            defaultMessage: "Text block",
+            description: "Insert-panel button that inserts a plain text block",
+            id: "insertPanel.text"
         },
         "insertPanel.title":
         {
@@ -248,30 +255,6 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Insert-panel button that inserts a toggle heading 4 block",
             id: "insertPanel.toggleHeading4"
         },
-        "mediaSheet.captureVideo":
-        {
-            defaultMessage: "Capture Video",
-            description: "Button that opens the camera in video-recording mode",
-            id: "mediaSheet.captureVideo"
-        },
-        "mediaSheet.openGallery":
-        {
-            defaultMessage: "Open Gallery",
-            description: "Button that opens the device media gallery",
-            id: "mediaSheet.openGallery"
-        },
-        "mediaSheet.takePicture":
-        {
-            defaultMessage: "Take Picture",
-            description: "Button that opens the camera in picture mode",
-            id: "mediaSheet.takePicture"
-        },
-        "mediaSheet.title":
-        {
-            defaultMessage: "Insert Media",
-            description: "Header title of the insert-media bottom sheet",
-            id: "mediaSheet.title"
-        },
         "linkSheet.apply":
         {
             defaultMessage: "Apply",
@@ -301,6 +284,30 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "URL",
             description: "URL field in the link URL modal",
             id: "linkSheet.url"
+        },
+        "mediaSheet.captureVideo":
+        {
+            defaultMessage: "Capture Video",
+            description: "Button that opens the camera in video-recording mode",
+            id: "mediaSheet.captureVideo"
+        },
+        "mediaSheet.openGallery":
+        {
+            defaultMessage: "Open Gallery",
+            description: "Button that opens the device media gallery",
+            id: "mediaSheet.openGallery"
+        },
+        "mediaSheet.takePicture":
+        {
+            defaultMessage: "Take Picture",
+            description: "Button that opens the camera in picture mode",
+            id: "mediaSheet.takePicture"
+        },
+        "mediaSheet.title":
+        {
+            defaultMessage: "Insert Media",
+            description: "Header title of the insert-media bottom sheet",
+            id: "mediaSheet.title"
         },
         "toolbar.back":
         {
@@ -469,7 +476,7 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
         },
         "turnIntoPanel.title":
         {
-            defaultMessage: "Turn into",
+            defaultMessage: "Convert",
             description: "Header title of the block-conversion panel",
             id: "turnIntoPanel.title"
         }
