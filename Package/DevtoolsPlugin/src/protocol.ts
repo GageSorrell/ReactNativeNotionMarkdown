@@ -78,7 +78,7 @@ export function diagnoseRejection(current: ProofSnapshot, event: ProofEvent): st
   }
 
   const invalid = event.blocks.find((block: ProofBlock) => !block.id || block.text.includes("\n") ||
-    ![ "paragraph", "heading_1" ].includes(block.type));
+    ![ "text", "heading_1" ].includes(block.type));
 
   if (invalid) {
     return `Invalid block "${invalid.id || "(missing id)"}": missing id, embedded newline, ` +

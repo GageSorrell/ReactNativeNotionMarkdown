@@ -1,0 +1,25 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer--media-previews"
+      ASSERT_TEXT: "Offline media previews"
+- assertVisible: "Local audio"
+- tapOn: "Play audio"
+- extendedWaitUntil:
+    visible: "Pause audio"
+    timeout: 5000
+- tapOn: "Pause audio"
+- scrollUntilVisible:
+    element:
+      text: "Local video"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Open file"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Local PDF"
+    direction: DOWN

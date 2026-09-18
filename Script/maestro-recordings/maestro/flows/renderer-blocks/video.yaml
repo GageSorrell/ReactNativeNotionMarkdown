@@ -1,0 +1,7 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--video"
+      ASSERT_TEXT: "Local preview video"

@@ -1,0 +1,21 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--toggle-heading"
+      ASSERT_TEXT: "Toggle Heading"
+- assertVisible: "Release notes"
+- assertNotVisible: "Documented the toggle heading variant"
+- tapOn: "Expand toggle"
+- assertVisible: "Shipped the block gallery story."
+- assertVisible: "Documented the toggle heading variant"
+- assertVisible: "Thanks for reading!"
+- extendedWaitUntil:
+    visible: "Thanks for reading!"
+    timeout: 1000
+- tapOn: "Collapse toggle"
+- assertNotVisible: "Documented the toggle heading variant"
+- extendedWaitUntil:
+    visible: "Release notes"
+    timeout: 1000

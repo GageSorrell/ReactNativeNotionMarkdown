@@ -1,0 +1,10 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+# The checkbox is a plain View (not tappable in-canvas); toggling `checked` needs the
+# Controls addon (deferred). Shows the default unchecked state.
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--to-do"
+      ASSERT_TEXT: "Finish the block gallery"
+- assertVisible: "Unchecked"

@@ -22,11 +22,23 @@ import { mapNotionSelectionPoint } from "./selection.ts";
 import { parseNotionMarkdown } from "./parser.ts";
 import { serializeNotionMarkdown } from "./serializer.ts";
 
+/**
+ * Options for creating a document editor store.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface CreateNotionEditorOptions
 {
     readonly historyLimit?: number;
 }
 
+/**
+ * State and transaction operations exposed by the document editor store.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionEditorStore
 {
     getState(): NotionEditorState;
@@ -41,6 +53,12 @@ export interface NotionEditorStore
     redo(): boolean;
 }
 
+/**
+ * Clone the given document while preserving its block structure.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function cloneDocument(document: NotionDocument): NotionDocument
 {
     return {
@@ -49,6 +67,12 @@ function cloneDocument(document: NotionDocument): NotionDocument
     } as const;
 }
 
+/**
+ * Convert the given editor input into a document.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function inputDocument(input: NotionDocumentInput): NotionDocument
 {
     return typeof input === "string" ? parseNotionMarkdown(input).document : input;

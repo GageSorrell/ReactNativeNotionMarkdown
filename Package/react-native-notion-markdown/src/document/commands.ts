@@ -77,17 +77,39 @@ export function generateNotionBlockId(): string
     return `editor:${ Date.now().toString(36) }:${ nextBlockSequence.toString(36) }`;
 }
 
+/**
+ * Read rich text from the given editable field on a block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function readFieldRichText(
     block: NotionBlock,
     field: NotionFieldKind,
     index: number | undefined
 ): NotionRichText | undefined
 {
-    if (field === "rich_text") {return getNotionBlockRichText(block);}
-    if (field === "caption") {return getNotionBlockCaption(block);}
-    return index === undefined ? undefined : getNotionBlockCell(block, index);
+    if (field === "rich_text")
+    {
+        return getNotionBlockRichText(block);
+    }
+
+    if (field === "caption")
+    {
+        return getNotionBlockCaption(block);
+    }
+
+    return index === undefined
+        ? undefined
+        : getNotionBlockCell(block, index);
 }
 
+/**
+ * Return a copy of the given block with rich text written to an editable field.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function writeFieldRichText(
     block: NotionBlock,
     field: NotionFieldKind,
@@ -95,11 +117,27 @@ function writeFieldRichText(
     richText: NotionRichText
 ): NotionBlock
 {
-    if (field === "rich_text") {return setNotionBlockRichText(block, richText);}
-    if (field === "caption") {return setNotionBlockCaption(block, richText);}
-    return index === undefined ? block : setNotionBlockCell(block, index, richText);
+    if (field === "rich_text")
+    {
+        return setNotionBlockRichText(block, richText);
+    }
+
+    if (field === "caption")
+    {
+        return setNotionBlockCaption(block, richText);
+    }
+
+    return index === undefined
+        ? block
+        : setNotionBlockCell(block, index, richText);
 }
 
+/**
+ * Create a selection point for the given block field and offset.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function fieldPoint(
     blockId: string,
     field: NotionFieldKind,
@@ -107,14 +145,31 @@ function fieldPoint(
     offset: number
 ): NotionSelectionPoint
 {
-    return { blockId, field, offset, ...(index === undefined ? { } : { index }) };
+    return {
+        blockId,
+        field,
+        offset,
+        ...(index === undefined ? { } : { index })
+    } as const;
 }
 
+/**
+ * Create a collapsed selection at the given point.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function collapsedSelection(point: NotionSelectionPoint): NotionSelection
 {
-    return { anchor: point, focus: point };
+    return { anchor: point, focus: point } as const;
 }
 
+/**
+ * Check whether a selection field belongs to the given block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function sameField(
     field: NotionEditableField,
     blockId: string,
@@ -129,6 +184,12 @@ function sameField(
  * Default block payloads and the insertable-block catalog
  * ---------------------------------------------------------------------------------------- */
 
+/**
+ * Build the default payload for a given block type.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function defaultBlockPayload(type: NotionMarkdownBlockType): Record<string, unknown>
 {
     switch (type)
@@ -174,15 +235,16 @@ export interface NotionInsertableBlockOption
     readonly keywords: ReadonlyArray<string>;
 }
 
-/**
- * The block types a host's Insert/"Turn into" panel can offer, grouped by category. Composite
- * types that need more than a single empty payload (table, columns, synced blocks, media) are
- * intentionally excluded -- those need richer flows than "insert one empty block."
- *
- * @since 1.0.0
- */
-export const notionInsertableBlockCatalog: ReadonlyArray<NotionInsertableBlockOption> = [
-    { category: "basic", keywords: [ "paragraph", "text" ], label: "Text", type: "paragraph" },
+export/**
+       * The block types a host's Insert/"Turn into" panel can offer, grouped by category.  Composite
+       * types that need more than a single empty payload are intentionally excluded because they
+       * need richer flows than inserting one empty block.
+       *
+       * @category Constants
+       * @since 1.0.0
+       */
+const notionInsertableBlockCatalog: ReadonlyArray<NotionInsertableBlockOption> = [
+    { category: "basic", keywords: [ "text", "text block" ], label: "Text block", type: "paragraph" },
     { category: "basic", keywords: [ "heading", "h1", "title" ], label: "Heading 1", type: "heading_1" },
     { category: "basic", keywords: [ "heading", "h2" ], label: "Heading 2", type: "heading_2" },
     { category: "basic", keywords: [ "heading", "h3" ], label: "Heading 3", type: "heading_3" },
@@ -260,6 +322,12 @@ export function applyFieldEdit(store: NotionEditorStore, event: NotionFieldEditE
     });
 }
 
+/**
+ * Read field marks from a given block field.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function fieldMarksOf(block: NotionBlock, field: NotionFieldKind, index: number | undefined): FieldMarks
 {
     return richTextToFieldMarks(readFieldRichText(block, field, index) ?? [ ]);
@@ -268,7 +336,7 @@ function fieldMarksOf(block: NotionBlock, field: NotionFieldKind, index: number 
 /**
  * Enter splits a text block at the caret. A list item continues as a new sibling item of the
  * same type; an empty list item exits the list instead of splitting. Headings always split
- * into (heading, paragraph); every other text-bearing type continues as its own type, matching
+ * into (heading, text block); every other text-bearing type continues as its own type, matching
  * "Enter splits text" as the default with headings and lists as the stated exceptions.
  *
  * @since 1.0.0
@@ -311,7 +379,7 @@ function handleEnter(store: NotionEditorStore, event: NotionFieldBoundaryEvent):
 
 /**
  * Backspace at the very start of a field. A nested list item outdents; a top-level list item
- * loses its list styling and becomes a paragraph; any other text-bearing block merges into the
+ * loses its list styling and becomes a text block; any other text-bearing block merges into the
  * previous editable field in document order, if that field also belongs to a text-bearing
  * block, reparenting the removed block's children onto the survivor.
  *
@@ -480,11 +548,11 @@ export function handleFieldBoundary(store: NotionEditorStore, event: NotionField
  * ---------------------------------------------------------------------------------------- */
 
 /**
- * Insert a new paragraph immediately after a block and select its start.
+ * Insert a new text block immediately after a block and select its start.
  *
  * @since 1.0.0
  */
-export function insertParagraphAfter(store: NotionEditorStore, blockId: string): string
+export function insertTextBlockAfter(store: NotionEditorStore, blockId: string): string
 {
     return insertBlockOfType(store, blockId, "paragraph");
 }
@@ -561,6 +629,12 @@ export function outdent(store: NotionEditorStore, blockId: string): void
     store.transact((document: NotionDocument) => outdentNotionBlock(document, blockId), "user");
 }
 
+/**
+ * Regenerate the identifiers of a given block and all of its descendants.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function regenerateBlockIds(block: NotionBlock): NotionBlock
 {
     const id = generateNotionBlockId();
@@ -614,6 +688,12 @@ export function appendChildBlock(
  * Range formatting: bold/italic/underline/strikethrough/code, color, and links
  * ---------------------------------------------------------------------------------------- */
 
+/**
+ * Apply a range mark operation to the current selection in the editor store.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function applyRangeMarkCommand(
     store: NotionEditorStore,
     apply: (marks: ReadonlyArray<NotionInlineMark>, start: number, end: number) => Array<NotionInlineMark>
@@ -713,6 +793,12 @@ export interface NotionMentionCandidate
     readonly url?: string;
 }
 
+/**
+ * Convert a mention candidate into the corresponding rich-text item.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function mentionRichTextItem(candidate: NotionMentionCandidate): NotionRichTextItem
 {
     const mention = candidate.kind === "user"
@@ -850,7 +936,7 @@ export interface NotionCommands
 {
     applyFieldEdit(event: NotionFieldEditEvent): void;
     handleFieldBoundary(event: NotionFieldBoundaryEvent): void;
-    insertParagraphAfter(blockId: string): string;
+    insertTextBlockAfter(blockId: string): string;
     insertBlockOfType(afterBlockId: string, type: NotionMarkdownBlockType): string;
     appendChildBlock(parentBlockId: string, type: NotionMarkdownBlockType): string;
     deleteBlock(blockId: string): void;
@@ -897,7 +983,7 @@ export function createNotionCommands(store: NotionEditorStore): NotionCommands
             candidate: NotionMentionCandidate,
             selectionEnd?: number
         ) => insertMention(store, point, candidate, selectionEnd),
-        insertParagraphAfter: (blockId: string) => insertParagraphAfter(store, blockId),
+        insertTextBlockAfter: (blockId: string) => insertTextBlockAfter(store, blockId),
         moveBlock: (blockId: string, direction: "up" | "down") => moveBlock(store, blockId, direction),
         outdent: (blockId: string) => outdent(store, blockId),
         redo: () => store.redo(),

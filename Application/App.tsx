@@ -14,7 +14,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { view } from "./.rnstorybook/storybook.requires";
 
 const StorybookUIRoot = view.getStorybookUI({
-    initialSelection: "milestone-1-native-editing-proof--three-blocks",
+    initialSelection: "editor--default",
     shouldPersistSelection: true,
     storage:
     {
@@ -23,7 +23,7 @@ const StorybookUIRoot = view.getStorybookUI({
     }
 });
 
-const rootStyle = { flex: 1 };
+const rootStyle = { flex: 1 } as const;
 
 /** Mount the native gesture, safe-area, and keyboard integrations around Storybook. */
 export default function App()

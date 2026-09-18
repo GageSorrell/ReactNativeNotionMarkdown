@@ -1,0 +1,9 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+# Shows the default TypeScript sample; cycling `language` (e.g. to "mermaid" for the
+# diagram-render branch) needs the Controls addon (deferred).
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--code"
+      ASSERT_TEXT: "const answer"

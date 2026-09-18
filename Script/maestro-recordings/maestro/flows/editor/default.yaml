@@ -1,0 +1,63 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "editor--default"
+      ASSERT_TEXT: "Editor"
+- assertVisible: "Second block heading"
+
+# Type into the last of the default three-block document (CreateProofDocument in
+# prototype.ts), then format a word via the "Aa" text-formatting sub-toolbar.
+- tapOn: "Third block. Drag selection handles across the block boundaries."
+- inputText: " Recorded by Maestro."
+- doubleTapOn: "Recorded"
+- tapOn: "Aa"
+- tapOn: "Bold"
+- tapOn: "Italic"
+- tapOn: "Underline"
+- tapOn: "Strikethrough"
+- tapOn: "Inline code"
+- tapOn: "Back"
+
+# Insert a representative set of block types from the insert panel.
+- tapOn: "Insert"
+- tapOn: "Heading 1"
+- inputText: "A new heading"
+- tapOn: "Insert"
+- tapOn: "To-do"
+- inputText: "A new to-do"
+- tapOn: "Insert"
+- tapOn: "Toggle Header 1"
+- inputText: "A new toggle heading"
+- tapOn: "Insert"
+- tapOn: "Divider"
+- tapOn: "Insert"
+- tapOn: "Table of contents"
+- tapOn: "Insert"
+- tapOn: "Columns"
+
+# Reorder and restructure blocks.
+- tapOn: "A new to-do"
+- tapOn: "Move up"
+- tapOn: "Indent"
+- tapOn: "Outdent"
+
+# Undo/redo.
+- tapOn: "Undo"
+- tapOn: "Redo"
+
+# Turn the focused block into a different type.
+- tapOn: "Turn into"
+- tapOn: "Heading 2"
+
+# Copy/cut/paste.
+- tapOn: "Copy"
+- tapOn: "Cut"
+- tapOn: "Paste"
+
+# Foreground/background color.
+- tapOn: "Color"
+- tapOn: "Blue"
+- tapOn: "Color"
+- tapOn: "Yellow background"

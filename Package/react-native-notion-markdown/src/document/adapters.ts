@@ -46,11 +46,23 @@ type SdkBlockInput =
     | BlockObjectResponse
     | PartialBlockObjectResponse;
 
+/**
+ * Check whether a given value is a canonical Notion identifier.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function IsNotionId(value: unknown): value is string
 {
     return typeof value === "string" && /^(?:[0-9a-f]{8}-?){4}[0-9a-f]{4}$/i.test(value.replace(/-/g, ""));
 }
 
+/**
+ * Extract a Notion identifier from a reference URL or identifier value.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function IdFromUrl(value: unknown): string | undefined
 {
     if (typeof value !== "string")
@@ -63,6 +75,12 @@ function IdFromUrl(value: unknown): string | undefined
     return uri?.[1] ?? (IsNotionId(value) ? value : undefined);
 }
 
+/**
+ * Normalize an imported payload and convert SDK color names to Markdown color names.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function NormalizeImportedPayload(value: unknown): Record<string, unknown>
 {
     const result = { ...asRecord(value) };
@@ -83,6 +101,12 @@ function NormalizeImportedPayload(value: unknown): Record<string, unknown>
     return result;
 }
 
+/**
+ * Append a conversion diagnostic with the given severity.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function Diagnostic(
     diagnostics: Array<NotionDiagnostic>,
     code: string,
@@ -93,11 +117,23 @@ function Diagnostic(
     diagnostics.push({ code, message, severity });
 }
 
+/**
+ * Read child blocks from a value when its children property is an array.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function childrenOf(value: Record<string, unknown>): Array<SdkBlockInput>
 {
     return Array.isArray(value.children) ? value.children as Array<SdkBlockInput> : [];
 }
 
+/**
+ * Convert one SDK block and its descendants into a document block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function fromBlock(
     input: SdkBlockInput,
     path: string,
@@ -167,7 +203,7 @@ function fromBlock(
         Diagnostic(
             diagnostics,
             "unsupported-block",
-            `The Notion block type '${ type }' was imported as an empty paragraph.`
+            `The Notion block type '${ type }' was imported as an empty text block.`
         );
 
         return {
@@ -235,6 +271,12 @@ export function fromNotionBlocks(
     } as const;
 }
 
+/**
+ * Convert rich-text items into SDK request items and record unsupported features.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function ToRequestRichText(
     items: unknown,
     diagnostics: Array<NotionDiagnostic>
@@ -375,6 +417,12 @@ function ToRequestRichText(
     });
 }
 
+/**
+ * Convert one document block into an SDK request block when it is representable.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function ToBlock(block: NotionBlock, diagnostics: Array<NotionDiagnostic>): BlockObjectRequest | undefined
 {
     const data = getNotionBlockPayload(block);

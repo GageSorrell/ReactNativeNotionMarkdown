@@ -15,6 +15,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { NotionRendererTheme } from "./types.ts";
 import { SvgXml } from "react-native-svg";
 
+/**
+ * Props for rendering a given mathematical expression as SVG.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionMathViewProps
 {
     readonly expression: string;
@@ -22,6 +28,12 @@ export interface NotionMathViewProps
     readonly theme: NotionRendererTheme;
 }
 
+/**
+ * Render a given mathematical expression with the corresponding display mode and theme.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 export function NotionMathView({ expression, display = false, theme }: NotionMathViewProps)
 {
     const key = `${ expression }\u0000${ display }\u0000${ theme.fontSize }\u0000${ theme.foreground }`;

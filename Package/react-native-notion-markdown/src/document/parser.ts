@@ -47,6 +47,12 @@ interface ParseContext
     readonly rules: Array<NonNullable<ParseNotionMarkdownOptions["rules"]>[number]>;
 }
 
+/**
+ * Parse inline Markdown in the given value into renderer-neutral tokens.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function inlineTokens(value: string): Array<InlineToken>
 {
     const tokens = markdown.parseInline(value, { }) as unknown as Array<InlineToken>;
@@ -116,6 +122,12 @@ const inlineTagNames: ReadonlySet<string> = new Set([
     "database"
 ]);
 
+/**
+ * Add a parser diagnostic for the given source line and message.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function diagnostic(
     context: ParseContext,
     line: SourceLine | undefined,
@@ -137,6 +149,12 @@ function diagnostic(
     });
 }
 
+/**
+ * Parse trailing key-value attributes from the given source text.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function attributes(value: string): Record<string, string>
 {
     const result: Record<string, string> = { };
@@ -157,6 +175,12 @@ function attributes(value: string): Record<string, string>
     return result;
 }
 
+/**
+ * Build metadata for a block parsed from the given source line.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function blockMetadata(
     line: SourceLine,
     attrs: Record<string, string>,
@@ -179,6 +203,12 @@ function blockMetadata(
     };
 }
 
+/**
+ * Create a block of the given type with parser metadata and optional children.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function makeBlock<BlockType extends NotionMarkdownBlockType>(
     context: ParseContext,
     type: BlockType,
@@ -207,6 +237,12 @@ function makeBlock<BlockType extends NotionMarkdownBlockType>(
     } as NotionBlock<BlockType>;
 }
 
+/**
+ * Convert inline content into plain text while preserving supported metadata.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function plainText(
     content: string,
     state: AnnotationState = { },
@@ -232,6 +268,12 @@ function plainText(
     } as NotionRichText[number];
 }
 
+/**
+ * Extract an identifier of the given kind from a Notion reference URL.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function extractId(url: string | undefined, kind: string): string | undefined
 {
     if (url === undefined)
@@ -243,6 +285,12 @@ function extractId(url: string | undefined, kind: string): string | undefined
     return match?.[1];
 }
 
+/**
+ * Build a rich-text item for a supported custom inline tag.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function customRichText(
     tag: string,
     attrs: Record<string, string>,
@@ -395,6 +443,12 @@ function customRichText(
     return [ plainText(content) ];
 }
 
+/**
+ * Convert inline Markdown tokens into document rich-text items.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function parseMarkdownTokens(
     tokens: Array<InlineToken>,
     context: ParseContext,
@@ -478,6 +532,12 @@ function parseMarkdownTokens(
     return result;
 }
 
+/**
+ * Parse inline Markdown and return rich text with the given source location.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function parseInline(
     value: string,
     context: ParseContext,
@@ -590,12 +650,24 @@ function parseInline(
     return result;
 }
 
+/**
+ * Separate trailing attributes from the given source value.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function removeTrailingAttributes(value: string): { text: string; attrs: Record<string, string> }
 {
     const match = value.match(/^(.*?)(?:\s+\{([^{}]*)\})?$/);
     return { text: (match?.[1] ?? value).trimEnd(), attrs: attributes(match?.[2] ?? "") };
 }
 
+/**
+ * Find the minimum indentation of child lines after the given starting index.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function minChildIndent(
     lines: Array<SourceLine>,
     start: number,
@@ -611,6 +683,12 @@ function minChildIndent(
     return indents.length === 0 ? undefined : Math.min(...indents);
 }
 
+/**
+ * Find the corresponding closing line for a fenced or delimited block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function findClosing(
     lines: Array<SourceLine>,
     start: number,
@@ -619,7 +697,7 @@ function findClosing(
     indent: number
 ): number
 {
-    const close = new RegExp(`^</${tag}\\s*>$`, "i");
+    const close = new RegExp(`^</${ tag }\\s*>$`, "i");
     for (let index: number = start; index < end; index += 1)
     {
         if (lines[index]!.indent === indent && close.test(lines[index]!.text.trim()))
@@ -631,6 +709,12 @@ function findClosing(
     return end;
 }
 
+/**
+ * Parse child blocks beginning at the given source index.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function parseChildren(
     context: ParseContext,
     start: number,
@@ -656,6 +740,12 @@ function parseChildren(
     return parseSequence(context, childStart < 0 ? start : childStart, end, indent, path);
 }
 
+/**
+ * Parse child blocks that follow the given parent block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function followingChildren(
     context: ParseContext,
     start: number,
@@ -686,6 +776,12 @@ function followingChildren(
     };
 }
 
+/**
+ * Parse a table beginning at the given source index.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function parseTable(
     context: ParseContext,
     start: number,
@@ -793,6 +889,12 @@ function parseTable(
     } as const;
 }
 
+/**
+ * Parse a pipe-delimited table beginning at the given source index.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function parsePipeTable(
     context: ParseContext,
     start: number,
@@ -872,6 +974,12 @@ function parsePipeTable(
     };
 }
 
+/**
+ * Parse a sequence of block lines beginning at the given source index.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function parseSequence(
     context: ParseContext,
     start: number,
@@ -1416,7 +1524,7 @@ function parseSequence(
                 context,
                 line,
                 "unknown-block",
-                `Unknown block tag <${ unknownTag[1] }> preserved as paragraph text.`
+                `Unknown block tag <${ unknownTag[1] }> preserved as text block content.`
             );
         }
 

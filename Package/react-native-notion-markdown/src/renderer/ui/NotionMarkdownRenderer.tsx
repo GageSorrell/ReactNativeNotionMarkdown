@@ -18,17 +18,26 @@ import type {
     NotionReferenceDisplay,
     NotionRendererTheme
 } from "./types.ts";
-import { Pressable, ScrollView, Text, View, useColorScheme, useWindowDimensions } from "react-native";
+import { defaultEmptyTogglePlaceholder } from "./types.ts";
+import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from "react-native";
 import { asRecord, getNotionBlockPayload, getNotionMarkdownMetadata } from "../../internal.ts";
 import { darkRendererTheme, lightRendererTheme, notionColor } from "./theme.ts";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NotionMathView } from "./MathView.tsx";
 import { NotionMediaView } from "./Previews.tsx";
 import { NotionMermaidView } from "./MermaidView.tsx";
 import { NotionRichTextView } from "./RichText.tsx";
+import { FaviconIcon } from "./FaviconIcon.tsx";
 import type { ReactNode } from "react";
 import { parseNotionMarkdown } from "../../document/parser.ts";
+import { openPageReferenceUrl } from "../../openPageReference.ts";
 
+/**
+ * Read rich text from the given unknown block payload.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function rich(value: unknown): NotionRichText
 {
     return Array.isArray(value) ? value as NotionRichText : [ ];
@@ -40,6 +49,12 @@ const emptyDocument: NotionDocument =
         version: 1
     } as const;
 
+/**
+ * Convert the given rich-text payload to plain display text.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function plain(value: unknown): string
 {
     return rich(value).map((item: NotionRichTextItem) =>
@@ -49,6 +64,12 @@ function plain(value: unknown): string
     }).join("");
 }
 
+/**
+ * Resolve the corresponding renderer color for a given block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function blockColor(block: NotionBlock): string | undefined
 {
     const payloadColor = getNotionBlockPayload(block).color;
@@ -63,6 +84,12 @@ interface HeadingEntry
     readonly text: string;
 }
 
+/**
+ * Collect heading entries from the given block tree.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function collectHeadings(blocks: ReadonlyArray<NotionBlock>, depth = 0): Array<HeadingEntry>
 {
     return blocks.flatMap((block: NotionBlock) => [
@@ -73,6 +100,12 @@ function collectHeadings(blocks: ReadonlyArray<NotionBlock>, depth = 0): Array<H
     ]);
 }
 
+/**
+ * Collect synced-block definitions from the given block tree.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function collectSynced(
     blocks: ReadonlyArray<NotionBlock>,
     found = new Map<string, ReadonlyArray<NotionBlock>>()
@@ -112,31 +145,53 @@ function numberedOrdinal(blocks: ReadonlyArray<NotionBlock>, index: number): num
     return index - start + 1;
 }
 
+/**
+ * Check whether the given block tree contains a heading with the given identifier.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function containsHeading(blocks: ReadonlyArray<NotionBlock>, id: string): boolean
 {
     return blocks.some((block: NotionBlock) => block.id === id || containsHeading(block.children ?? [ ], id));
 }
 
-function Rich({ value, context, size, color, weight }: {
+/**
+ * Render rich text with the corresponding context, size, color, and weight.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function Rich({ value, context, size, color, weight, family, lineHeight, strikethrough }: {
     readonly value: unknown;
     readonly context: RenderContext;
     readonly size?: number;
     readonly color?: string;
     readonly weight?: "normal" | "bold" | "600" | "700";
+    readonly family?: string;
+    readonly lineHeight?: number;
+    readonly strikethrough?: boolean;
 })
 {
     return (
         <NotionRichTextView
             dark={ context.dark }
             items={ rich(value) }
+            linkFallbackIcon={ context.props.linkFallbackIcon }
             onOpenUrl={ context.props.onOpenUrl }
             resolveReference={ context.props.resolveReference }
-            textStyle={ { fontSize: size, color, fontWeight: weight } }
+            textStyle={ { color, fontFamily: family, fontSize: size, fontWeight: weight, lineHeight, strikethrough } }
             theme={ context.theme }
         />
     );
 }
 
+/**
+ * Render the given block list at the corresponding nesting depth.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function BlockList({ blocks, context, depth = 0, seen = new Set<string>() }: {
     readonly blocks: ReadonlyArray<NotionBlock>;
     readonly context: RenderContext;
@@ -165,6 +220,12 @@ function BlockList({ blocks, context, depth = 0, seen = new Set<string>() }: {
     );
 }
 
+/**
+ * Render the children of a given block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function Children({ block, context, depth, seen }: {
     readonly block: NotionBlock;
     readonly context: RenderContext;
@@ -183,6 +244,22 @@ function Children({ block, context, depth, seen }: {
         : null;
 }
 
+/**
+ * Return whether the given block is the empty child of a toggle.
+ */
+function isEmptyToggleChild(block: NotionBlock): boolean
+{
+    return block.type === "paragraph" &&
+        !block.children?.length &&
+        plain(getNotionBlockPayload(block).rich_text).length === 0;
+}
+
+/**
+ * Render the collapsible content for a given toggle block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function ToggleContent({ block, context, depth, seen, title }: {
     readonly block: NotionBlock;
     readonly context: RenderContext;
@@ -198,15 +275,24 @@ function ToggleContent({ block, context, depth, seen, title }: {
         : false;
 
     const expanded = revealed || (localExpansion?.block === block && localExpansion.value === true);
+    const children = block.children ?? [ ];
+    const empty = children.length === 0 ||
+        (children.length === 1 && children[0] !== undefined && isEmptyToggleChild(children[0]));
     return <View>
         <Pressable
             accessibilityLabel={ expanded ? "Collapse toggle" : "Expand toggle" }
             accessibilityRole="button"
             accessibilityState={ { expanded } }
             onPress={ () => setLocalExpansion({ block, value: !expanded }) }
-            style={ { flexDirection: "row", alignItems: "center", minHeight: 44 } }>
-            <Text style={ { color: context.theme.muted, fontSize: context.theme.fontSize, width: 22 } }>
-                { expanded ? "▾" : "▸" }
+            style={ { alignItems: "flex-start", flexDirection: "row", minHeight: 35 } }>
+            <Text style={ {
+                color: context.theme.muted,
+                fontFamily: context.theme.fontFamily,
+                fontSize: context.theme.fontSize * 1.25,
+                opacity: 0.65,
+                width: 24
+            } }>
+                { expanded ? "▼" : "▶" }
             </Text>
             <View style={ { flex: 1 } }>
                 { title }
@@ -214,18 +300,36 @@ function ToggleContent({ block, context, depth, seen, title }: {
         </Pressable>
         {
             expanded && (
-                <View style={ { paddingLeft: context.theme.spacing + 8 } }>
-                    <Children block={ block }
-                        context={ context }
-                        depth={ depth }
-                        seen={ seen }
-                    />
+                <View style={ { paddingLeft: 32 } }>
+                    {
+                        empty
+                            ? <Text style={ {
+                                color: context.theme.muted,
+                                fontFamily: context.theme.fontFamily,
+                                fontSize: context.theme.fontSize,
+                                opacity: 0.6,
+                                paddingVertical: 4
+                            } }>
+                                { context.props.emptyTogglePlaceholder ?? defaultEmptyTogglePlaceholder }
+                            </Text>
+                            : <Children block={ block }
+                                context={ context }
+                                depth={ depth }
+                                seen={ seen }
+                            />
+                    }
                 </View>
             )
         }
     </View>;
 }
 
+/**
+ * Render a reference card for the given block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function ReferenceCard({ block, context }: {
     readonly block: NotionBlock;
     readonly context: RenderContext
@@ -264,32 +368,78 @@ function ReferenceCard({ block, context }: {
 
     const result = resolved?.key === requestKey ? resolved.value : undefined;
     const destination = result?.url ?? url;
+    const isPageReference = block.type === "link_to_page";
+    const pageIcon = result?.icon
+        ?? metadata.icon
+        ?? (typeof payload.icon === "string" ? payload.icon : undefined);
+    const FallbackIcon = context.props.pageReferenceFallbackIcon;
 
-    const HandlePress = destination && context.props.onOpenUrl
-        ? () => context.props.onOpenUrl?.(destination)
+    const HandlePress = destination
+        ? () => context.props.onOpenUrl !== undefined
+            ? context.props.onOpenUrl(destination)
+            : void openPageReferenceUrl(destination)
         : undefined;
 
-    const RootStyle = useMemo(() => ({
-        backgroundColor: context.theme.surface,
-        borderRadius: 6,
-        marginVertical: 4,
-        padding: context.theme.spacing
-    }), [ context.theme.spacing, context.theme.surface ]);
+    const RootStyle = useMemo(() => isPageReference
+        ? {
+            alignItems: "center" as const,
+            flexDirection: "row" as const,
+            marginVertical: 4,
+            minHeight: context.theme.fontSize * 1.6,
+            paddingVertical: 2
+        }
+        : {
+            backgroundColor: context.theme.surface,
+            borderRadius: 6,
+            marginVertical: 4,
+            padding: context.theme.spacing
+        }, [ context.theme.fontSize, context.theme.spacing, context.theme.surface, isPageReference ]);
 
     const BodyStyle = useMemo(() => ({
-        color: context.theme.foreground,
+        color: isPageReference ? context.theme.accent : context.theme.foreground,
+        fontFamily: context.theme.fontFamily,
         fontSize: context.theme.fontSize
-    }), [ context.theme.fontSize, context.theme.foreground ]);
+    }), [
+        context.theme.accent,
+        context.theme.fontFamily,
+        context.theme.fontSize,
+        context.theme.foreground,
+        isPageReference
+    ]);
 
-    const MutedStyle = useMemo(() => ({ color: context.theme.muted }), [ context.theme.muted ]);
+    const MutedStyle = useMemo(
+        () => ({ color: context.theme.muted, fontFamily: context.theme.fontFamily }),
+        [ context.theme.fontFamily, context.theme.muted ]
+    );
 
     return (
         <Pressable accessibilityLabel={ `${kind}: ${result?.label ?? label}` }
-            accessibilityRole={ destination && context.props.onOpenUrl ? "link" : undefined }
+            accessibilityRole={ destination ? "link" : undefined }
             onPress={ HandlePress }
             style={ RootStyle }>
-            <Text style={ BodyStyle }>
-                { result?.icon ? `${ result.icon } ` : "↗ "}{ result?.label ?? label }
+            {
+                isPageReference && pageIcon !== undefined
+                    ? <Text style={ [ BodyStyle, { marginRight: context.theme.spacing / 2 } ] }>
+                        { pageIcon }
+                    </Text>
+                    : isPageReference && FallbackIcon !== undefined
+                        ? createElement(FallbackIcon, {
+                            color: context.theme.accent,
+                            size: context.theme.fontSize,
+                            strokeWidth: 2
+                        })
+                        : !isPageReference && destination !== undefined && <FaviconIcon
+                            color={ context.theme.foreground }
+                            fallbackIcon={ context.props.linkFallbackIcon }
+                            size={ context.theme.fontSize }
+                            textFallback={ result?.icon ?? "↗" }
+                            url={ destination }
+                        />
+            }
+            <Text style={ isPageReference
+                ? [ BodyStyle, { textDecorationLine: "underline" as const } ]
+                : BodyStyle }>
+                { result?.label ?? label }
             </Text>
             {
                 !destination && (
@@ -302,6 +452,12 @@ function ReferenceCard({ block, context }: {
     );
 }
 
+/**
+ * Render the corresponding content for a synced block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function SyncedContent({ block, context, depth, seen }: {
     readonly block: NotionBlock;
     readonly context: RenderContext;
@@ -349,9 +505,18 @@ function SyncedContent({ block, context, depth, seen }: {
 
     const remote = resolved?.key === requestKey ? resolved.value : undefined;
 
-    const ErrorStyle = useMemo(() => ({ color: context.theme.error }), [ context.theme.error ]);
-    const MutedStyle = useMemo(() => ({ color: context.theme.muted }), [ context.theme.muted ]);
-    const AccentStyle = useMemo(() => ({ color: context.theme.accent }), [ context.theme.accent ]);
+    const ErrorStyle = useMemo(
+        () => ({ color: context.theme.error, fontFamily: context.theme.fontFamily }),
+        [ context.theme.error, context.theme.fontFamily ]
+    );
+    const MutedStyle = useMemo(
+        () => ({ color: context.theme.muted, fontFamily: context.theme.fontFamily }),
+        [ context.theme.fontFamily, context.theme.muted ]
+    );
+    const AccentStyle = useMemo(
+        () => ({ color: context.theme.accent, fontFamily: context.theme.fontFamily }),
+        [ context.theme.accent, context.theme.fontFamily ]
+    );
 
     const SyncedUnavailableRootStyle = useMemo(() => ({
         backgroundColor: context.theme.surface,
@@ -417,6 +582,12 @@ function SyncedContent({ block, context, depth, seen }: {
     );
 }
 
+/**
+ * Render the table represented by the given block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function TableView({ block, context }: { readonly block: NotionBlock; readonly context: RenderContext })
 {
     const table = getNotionMarkdownMetadata(block).table;
@@ -557,22 +728,28 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                 marginVertical: 4,
                 padding: context.theme.spacing
             } }>
-                <Text style={ { color: context.theme.error } }>
+                <Text style={ { color: context.theme.error, fontFamily: context.theme.fontFamily } }>
                     Unsupported block: { String(metadata.unsupportedType) }
                 </Text>
                 { childView }
             </View>
         );
     }
-    const base = { marginVertical: 3, paddingHorizontal: backgroundColor ? 6 : 0, backgroundColor };
+    const base = { marginVertical: 0, paddingHorizontal: 6, backgroundColor };
     const text = (
         value: unknown,
         size?: number,
-        weight?: "normal" | "bold" | "600" | "700") =>
+        weight?: "normal" | "bold" | "600" | "700",
+        family?: string,
+        overrides?: { readonly color?: string; readonly strikethrough?: boolean },
+        lineHeight?: number) =>
         <Rich
-            color={ foreground }
+            color={ overrides?.color ?? foreground }
             context={ context }
+            family={ family }
+            lineHeight={ lineHeight }
             size={ size }
+            strikethrough={ overrides?.strikethrough }
             value={ value }
             weight={ weight }
         />;
@@ -582,7 +759,7 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
         case "paragraph":
             return (
                 <View
-                    style={ base }
+                    style={ { ...base, paddingVertical: 6 } }
                     testID={ `block-${ block.id }` }>
                     {
                         metadata.empty
@@ -603,17 +780,27 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
         case "heading_4":
         {
             const level = Number(block.type.slice(-1));
+            const headingFontSize = context.theme.fontSize * ([ 30 / 16, 24 / 16, 20 / 16, 16 / 16 ][ level - 1 ] ?? 1);
+            const headingLineHeight = context.theme.fontSize * ([ 39 / 16, 31.2 / 16, 26 / 16, 24 / 16 ][ level - 1 ] ?? 1.5);
+            const headingPaddingTop = 30 - (level - 1) * 4;
             const heading = text(
                 payload.rich_text,
-                context.theme.fontSize * (1.8 - (level - 1) * 0.2),
-                "bold"
+                headingFontSize,
+                "bold",
+                level === 1 ? context.theme.titleFontFamily : undefined,
+                undefined,
+                headingLineHeight
             );
 
             return (
                 <View
                     accessibilityRole="header"
                     ref={ (view: View | null) => context.registerHeading(block.id, view) }
-                    style={ { ...base, marginTop: 12 } }
+                    style={ {
+                        ...base,
+                        paddingBottom: 6,
+                        paddingTop: headingPaddingTop
+                    } }
                     testID={ `heading-${block.id}` }>
                     {
                         payload.is_toggleable === true || metadata.toggle === true
@@ -630,37 +817,82 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                 </View>
             );
         }
-        case "bulleted_list_item": case "numbered_list_item": case "to_do": {
+        case "bulleted_list_item": case "numbered_list_item": {
             const marker = block.type === "bulleted_list_item"
                 ? "•"
-                : block.type === "numbered_list_item"
-                    ? `${ ordinal }.`
-                    : payload.checked
-                        ? "☑"
-                        : "☐";
+                : `${ ordinal }.`;
 
             return (
-                <View style={ { ...base, paddingLeft: depth ? context.theme.spacing : 0 } }>
-                    <View style={ { alignItems: "flex-start", flexDirection: "row" } }>
-                        <Text
-                            accessibilityLabel={
-                                block.type === "to_do"
-                                    ? payload.checked
-                                        ? "Checked"
-                                        : "Unchecked"
-                                    : undefined }
-                            style={ {
-                                color: foreground ?? context.theme.foreground,
-                                fontSize: context.theme.fontSize,
-                                width: 28
-                            } }>
+                <View style={ { ...base, paddingBottom: 1, paddingLeft: 6 + depth * 32, paddingTop: 1 } }>
+                    <View style={ { alignItems: "flex-start", flexDirection: "row", paddingLeft: 2 } }>
+                        <Text style={ {
+                            color: foreground ?? context.theme.foreground,
+                            fontFamily: context.theme.fontFamily,
+                            fontSize: context.theme.fontSize,
+                            width: 24
+                        } }>
                             { marker }
                         </Text>
                         <View style={ { flex: 1 } }>
                             { text(payload.rich_text) }
                         </View>
                     </View>
-                    <View style={ { paddingLeft: 28 } }>
+                    <View style={ { paddingLeft: 24 } }>
+                        { childView }
+                    </View>
+                </View>
+            );
+        }
+        case "to_do": {
+            const checked = payload.checked === true;
+            const Checkbox = context.props.checkboxComponent;
+
+            return (
+                <View style={ { ...base, paddingBottom: 1, paddingLeft: 6 + depth * 32, paddingTop: 1 } }>
+                    <View style={ { alignItems: "flex-start", flexDirection: "row", paddingLeft: 2 } }>
+                        <View
+                            accessibilityLabel={ checked ? "Checked" : "Unchecked" }
+                            accessibilityRole="checkbox"
+                            accessibilityState={ { checked } }
+                            style={ {
+                                alignItems: "center",
+                                height: context.theme.fontSize * 1.5,
+                                justifyContent: "center",
+                                width: 24
+                            } }>
+                            {
+                                Checkbox === undefined
+                                    ? <View style={ {
+                                        alignItems: "center",
+                                        backgroundColor: checked ? context.theme.accent : "transparent",
+                                        borderColor: checked ? context.theme.accent : context.theme.border,
+                                        borderRadius: 4,
+                                        borderWidth: 1.5,
+                                        height: 18,
+                                        justifyContent: "center",
+                                        width: 18
+                                    } }>
+                                        {
+                                            checked && <Text style={ {
+                                                color: "#ffffff",
+                                                fontSize: 12,
+                                                fontWeight: "700",
+                                                lineHeight: 14
+                                            } }>✓</Text>
+                                        }
+                                    </View>
+                                    : createElement(Checkbox, { checked })
+                            }
+                        </View>
+                        <View style={ { flex: 1 } }>
+                            {
+                                text(payload.rich_text, undefined, undefined, undefined, checked
+                                    ? { color: context.theme.muted, strikethrough: true }
+                                    : undefined)
+                            }
+                        </View>
+                    </View>
+                    <View style={ { paddingLeft: 24 } }>
                         { childView }
                     </View>
                 </View>
@@ -672,7 +904,10 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                     ...base,
                     borderLeftColor: context.theme.border,
                     borderLeftWidth: 3,
-                    paddingLeft: context.theme.spacing
+                    paddingBottom: 6,
+                    paddingLeft: 14,
+                    paddingRight: 8,
+                    paddingTop: 6
                 } }>
                     { text(payload.rich_text) }
                     { childView }
@@ -691,19 +926,25 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                 </View>
             );
         case "callout":
-            return <View style={ {
-                ...base,
-                backgroundColor: backgroundColor ?? context.theme.surface,
-                borderRadius: 6,
-                flexDirection: "row",
-                padding: context.theme.spacing
-            } }>
-                <Text style={ { fontSize: context.theme.fontSize * 1.3, marginRight: 8 } }>
-                    { String(asRecord(payload.icon).emoji ?? metadata.icon ?? "💬") }
-                </Text>
-                <View style={ { flex: 1 } }>
-                    { text(payload.rich_text) }
-                    { childView }
+            return <View style={ { ...base, padding: 8 } }>
+                <View style={ {
+                    backgroundColor: backgroundColor ?? context.theme.surface,
+                    borderColor: context.theme.border,
+                    borderRadius: 10,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    flexDirection: "row",
+                    minHeight: context.theme.fontSize * 2,
+                    padding: 12
+                } }>
+                    <View style={ { marginTop: context.theme.fontSize * 0.47, width: 24 } }>
+                        <Text style={ { fontSize: context.theme.fontSize * 1.3 } }>
+                            { String(asRecord(payload.icon).emoji ?? metadata.icon ?? "💬") }
+                        </Text>
+                    </View>
+                    <View style={ { flex: 1, minHeight: context.theme.fontSize * 2 } }>
+                        { text(payload.rich_text) }
+                        { childView }
+                    </View>
                 </View>
             </View>;
         case "code":
@@ -723,6 +964,7 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                 } }>
                     <Text style={ {
                         color: context.theme.muted,
+                        fontFamily: context.theme.fontFamily,
                         fontSize: context.theme.fontSize * 0.75
                     } }>
                         { String(payload.language ?? "") }
@@ -746,9 +988,13 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
             return (
                 <View accessibilityLabel="Divider"
                     style={ {
+                        alignSelf: "stretch",
                         backgroundColor: context.theme.border,
-                        height: 1,
-                        marginVertical: context.theme.spacing
+                        height: StyleSheet.hairlineWidth,
+                        marginBottom: context.theme.spacing * 1.5,
+                        marginHorizontal: context.theme.spacing / 2,
+                        marginTop: context.theme.spacing,
+                        opacity: 0.55
                     } }
                 />
             );
@@ -797,6 +1043,7 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                 } }>
                     <Text style={ {
                         color: context.theme.foreground,
+                        fontFamily: context.theme.fontFamily,
                         fontSize: context.theme.fontSize,
                         fontWeight: "bold"
                     } }>
@@ -814,6 +1061,7 @@ export function NotionBlockView({ block, context, depth = 0, ordinal = 0, seen =
                                 } }>
                                 <Text style={ {
                                     color: context.theme.accent,
+                                    fontFamily: context.theme.fontFamily,
                                     fontSize: context.theme.fontSize
                                 } }>
                                     { entry.text }

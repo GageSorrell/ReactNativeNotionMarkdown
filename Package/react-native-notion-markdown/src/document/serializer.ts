@@ -18,16 +18,34 @@ import {
 } from "./types.ts";
 import { asRecord, getNotionBlockPayload, getNotionMarkdownMetadata } from "../internal.ts";
 
+/**
+ * Escape Markdown-significant characters in the given text.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function escapeText(value: string): string
 {
     return value.replace(/[\\*~`$\[\]<>\{\}\|\^]/g, "\\$&").replace(/\n/g, "<br>");
 }
 
+/**
+ * Quote and escape the given attribute value.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function quoteAttribute(value: string): string
 {
     return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
 }
 
+/**
+ * Serialize the given rich-text item to Markdown.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function richTextItem(item: NotionRichText[number]): string
 {
     const value = asRecord(item);
@@ -138,6 +156,12 @@ function richTextItem(item: NotionRichText[number]): string
         : `<span ${ spanAttributes.join(" ") }>${ content }</span>`;
 }
 
+/**
+ * Serialize the given rich-text collection to Markdown.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function richText(items: unknown): string
 {
     return Array.isArray(items)
@@ -147,6 +171,12 @@ function richText(items: unknown): string
         : "";
 }
 
+/**
+ * Serialize block attributes from the given metadata.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function blockAttributes(meta: NotionMarkdownMetadata, includeToggle = false): string
 {
     const attrs: Array<string> = [ ];
@@ -165,6 +195,12 @@ function blockAttributes(meta: NotionMarkdownMetadata, includeToggle = false): s
         : ` {${ attrs.join(" ") }}`;
 }
 
+/**
+ * Serialize inline tag attributes from the given metadata.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function tagAttributes(meta: NotionMarkdownMetadata): string
 {
     const attrs: Array<string> = [ ];
@@ -185,6 +221,12 @@ function tagAttributes(meta: NotionMarkdownMetadata): string
     return attrs.length === 0 ? "" : ` ${attrs.join(" ")}`;
 }
 
+/**
+ * Serialize the given block and its descendants to Markdown lines.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function serializeBlock(block: NotionBlock, indent: number): Array<string>
 {
     const data = getNotionBlockPayload(block);
@@ -342,6 +384,12 @@ function serializeBlock(block: NotionBlock, indent: number): Array<string>
     }
 }
 
+/**
+ * Serialize the given table row to Markdown lines.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function serializeTableRow(block: NotionBlock, indent: number): Array<string>
 {
     const data = getNotionBlockPayload(block);

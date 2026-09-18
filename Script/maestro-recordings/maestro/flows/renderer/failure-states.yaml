@@ -1,0 +1,19 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer--failure-states"
+      ASSERT_TEXT: "Failure states"
+- scrollUntilVisible:
+    element:
+      text: "Retry preview"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Invalid equation"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Mermaid preview error"
+    direction: DOWN

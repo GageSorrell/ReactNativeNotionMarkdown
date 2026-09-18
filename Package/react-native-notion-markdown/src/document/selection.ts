@@ -17,6 +17,12 @@ import {
 } from "./types.ts";
 import { asRecord, getNotionBlockPayload, getNotionMarkdownMetadata } from "../internal.ts";
 
+/**
+ * Read display text from the given rich-text value.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function itemText(value: unknown): string
 {
     const item = asRecord(value);
@@ -41,11 +47,23 @@ function itemText(value: unknown): string
     return typeof mention.label === "string" ? String(mention.label) : "";
 }
 
+/**
+ * Join the display text of the given rich-text collection.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function richTextText(value: unknown): string
 {
     return Array.isArray(value) ? value.map(itemText).join("") : "";
 }
 
+/**
+ * Return the editor identifier for a given block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function editorId(block: NotionBlock): string
 {
     const meta = getNotionMarkdownMetadata(block);
@@ -62,6 +80,12 @@ export function getNotionEditorBlockId(block: NotionBlock): string
     return editorId(block);
 }
 
+/**
+ * Return editable fields exposed by a given block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function fields(block: NotionBlock): Array<NotionEditableField>
 {
     const value = getNotionBlockPayload(block);
@@ -90,6 +114,12 @@ function fields(block: NotionBlock): Array<NotionEditableField>
     return result;
 }
 
+/**
+ * Walk the given block tree and append its editable fields to the result.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function walk(blocks: Array<NotionBlock>, result: Array<NotionEditableField>): void
 {
     for (const block of blocks)
@@ -111,6 +141,12 @@ export function getNotionEditableFields(document: NotionDocument): Array<NotionE
     return result;
 }
 
+/**
+ * Create a selection point at the given field offset.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function point(field: NotionEditableField, offset: number): NotionSelectionPoint
 {
     return {

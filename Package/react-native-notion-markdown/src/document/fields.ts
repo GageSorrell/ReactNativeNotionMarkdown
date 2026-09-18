@@ -172,6 +172,12 @@ export interface NotionAutoScrollEvent
     readonly proximity: number;
 }
 
+/**
+ * Return the atom kind stored in the given rich-text item, if it has one.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function atomKindOf(item: NotionRichTextItem): NotionInlineAtomMark[ "atomKind" ] | undefined
 {
     const asObject = asRecord(item);
@@ -200,6 +206,12 @@ function atomKindOf(item: NotionRichTextItem): NotionInlineAtomMark[ "atomKind" 
     return undefined;
 }
 
+/**
+ * Return the display label for the given rich-text atom.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function atomLabel(item: NotionRichTextItem, atomKind: NotionInlineAtomMark[ "atomKind" ]): string
 {
     const asObject = asRecord(item);
@@ -224,6 +236,12 @@ function atomLabel(item: NotionRichTextItem, atomKind: NotionInlineAtomMark[ "at
     return meta?.emojiName ?? "";
 }
 
+/**
+ * Read plain text from the given rich-text item.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function AsPlainText(item: NotionRichTextItem): string
 {
     const asObject = asRecord(item);
@@ -238,6 +256,12 @@ function AsPlainText(item: NotionRichTextItem): string
     return typeof content === "string" ? content : "";
 }
 
+/**
+ * Read the link URL from the given rich-text item, if one is present.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function AsLink(item: NotionRichTextItem): string | undefined
 {
     const link = asRecord(asRecord(item).text).link;
@@ -253,6 +277,12 @@ const annotationKinds = Object.freeze([
     "code"
 ] as const);
 
+/**
+ * Text and inline marks used to edit one document field.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface FieldMarks
 {
     readonly text: string;
@@ -427,9 +457,19 @@ export function fieldMarksToRichText(text: string, marks: ReadonlyArray<NotionIn
     return result;
 }
 
+/**
+ * Shift the range of the given mark by a character delta.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function ShiftMark(mark: NotionInlineMark, delta: number): NotionInlineMark
 {
-    return { ...mark, end: mark.end + delta, start: mark.start + delta } as NotionInlineMark;
+    return {
+        ...mark,
+        end: mark.end + delta,
+        start: mark.start + delta
+    } as NotionInlineMark;
 }
 
 /**
@@ -497,6 +537,12 @@ export type NotionFieldRangeMarkKind =
 
 type RangeInterval = readonly [ number, number ];
 
+/**
+ * Merge overlapping or adjacent intervals into corresponding continuous ranges.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function MergeIntervals(intervals: ReadonlyArray<RangeInterval>): Array<RangeInterval>
 {
     const sorted = [ ...intervals ].sort((a: RangeInterval, b: RangeInterval) => a[ 0 ] - b[ 0 ]);
@@ -518,6 +564,12 @@ function MergeIntervals(intervals: ReadonlyArray<RangeInterval>): Array<RangeInt
     return result;
 }
 
+/**
+ * Check whether the given intervals fully cover a range.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function CoversRange(intervals: ReadonlyArray<RangeInterval>, range: RangeInterval): boolean
 {
     const [ start, end ] = range;
@@ -534,6 +586,12 @@ function CoversRange(intervals: ReadonlyArray<RangeInterval>, range: RangeInterv
     return cursor >= end;
 }
 
+/**
+ * Remove the given range from a set of intervals.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function SubtractRange(intervals: ReadonlyArray<RangeInterval>, range: RangeInterval): Array<RangeInterval>
 {
     const [ start, end ] = range;

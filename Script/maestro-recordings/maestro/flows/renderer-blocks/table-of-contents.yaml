@@ -1,0 +1,13 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--table-of-contents"
+      ASSERT_TEXT: "Heading 1"
+- scrollUntilVisible:
+    element:
+      text: "Go to Heading 3"
+    direction: DOWN
+- tapOn: "Go to Heading 3"
+- assertVisible: "Heading 3"

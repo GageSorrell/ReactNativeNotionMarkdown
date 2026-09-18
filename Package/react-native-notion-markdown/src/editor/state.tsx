@@ -18,6 +18,12 @@ import {
 } from "../document/store.ts";
 import type { NotionDocumentInput, NotionEditorState } from "../document/types.ts";
 
+/**
+ * Props accepted by the editor state provider.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionEditorProviderProps
 {
     readonly children: ReactNode;

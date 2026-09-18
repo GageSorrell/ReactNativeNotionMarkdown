@@ -17,7 +17,7 @@ import {
   isNotionListBlockType
 } from 'react-native-notion-markdown/document';
 
-function paragraph(id, text) {
+function textBlock(id, text) {
   return { id, type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: text } }] }, __notion_markdown: { editorId: id } };
 }
 
@@ -27,8 +27,8 @@ function docOf(...blocks) {
 
 test('findNotionBlockPath / getNotionBlock resolve top-level and nested blocks by editor id', () => {
   const doc = docOf(
-    paragraph('a', 'A'),
-    { ...paragraph('b', 'B'), children: [paragraph('b1', 'B1')] }
+    textBlock('a', 'A'),
+    { ...textBlock('b', 'B'), children: [textBlock('b1', 'B1')] }
   );
   assert.deepEqual(findNotionBlockPath(doc, 'a'), [0]);
   assert.deepEqual(findNotionBlockPath(doc, 'b1'), [1, 0]);
@@ -37,7 +37,7 @@ test('findNotionBlockPath / getNotionBlock resolve top-level and nested blocks b
 });
 
 test('updateNotionBlock replaces one block while leaving unrelated siblings referentially unchanged', () => {
-  const doc = docOf(paragraph('a', 'A'), paragraph('b', 'B'), paragraph('c', 'C'));
+  const doc = docOf(textBlock('a', 'A'), textBlock('b', 'B'), textBlock('c', 'C'));
   const untouchedSibling = doc.blocks[2];
   const next = updateNotionBlock(doc, 'b', (block) => setNotionBlockRichText(block, [{ type: 'text', text: { content: 'Changed' } }]));
   assert.equal(next.blocks[1].paragraph.rich_text[0].text.content, 'Changed');
@@ -46,35 +46,35 @@ test('updateNotionBlock replaces one block while leaving unrelated siblings refe
 });
 
 test('updateNotionBlock returns the same document unchanged when the block id is missing', () => {
-  const doc = docOf(paragraph('a', 'A'));
+  const doc = docOf(textBlock('a', 'A'));
   assert.equal(updateNotionBlock(doc, 'missing', (b) => b), doc);
 });
 
 test('removeNotionBlock removes a nested block without disturbing its siblings', () => {
-  const doc = docOf({ ...paragraph('parent', 'P'), children: [paragraph('c1', 'C1'), paragraph('c2', 'C2')] });
+  const doc = docOf({ ...textBlock('parent', 'P'), children: [textBlock('c1', 'C1'), textBlock('c2', 'C2')] });
   const next = removeNotionBlock(doc, 'c1');
   assert.equal(next.blocks[0].children.length, 1);
   assert.equal(next.blocks[0].children[0].id, 'c2');
 });
 
 test('insertNotionBlockRelative inserts before and after an anchor at the top level', () => {
-  const doc = docOf(paragraph('a', 'A'), paragraph('c', 'C'));
-  const withB = insertNotionBlockRelative(doc, 'a', paragraph('b', 'B'), 'after');
+  const doc = docOf(textBlock('a', 'A'), textBlock('c', 'C'));
+  const withB = insertNotionBlockRelative(doc, 'a', textBlock('b', 'B'), 'after');
   assert.deepEqual(withB.blocks.map((b) => b.id), ['a', 'b', 'c']);
-  const withZ = insertNotionBlockRelative(doc, 'a', paragraph('z', 'Z'), 'before');
+  const withZ = insertNotionBlockRelative(doc, 'a', textBlock('z', 'Z'), 'before');
   assert.deepEqual(withZ.blocks.map((b) => b.id), ['z', 'a', 'c']);
 });
 
 test('appendNotionChild appends as the last child, creating the children array if absent', () => {
-  const doc = docOf(paragraph('a', 'A'));
-  const next = appendNotionChild(doc, 'a', paragraph('a1', 'A1'));
+  const doc = docOf(textBlock('a', 'A'));
+  const next = appendNotionChild(doc, 'a', textBlock('a1', 'A1'));
   assert.deepEqual(next.blocks[0].children.map((b) => b.id), ['a1']);
-  const withSecond = appendNotionChild(next, 'a', paragraph('a2', 'A2'));
+  const withSecond = appendNotionChild(next, 'a', textBlock('a2', 'A2'));
   assert.deepEqual(withSecond.blocks[0].children.map((b) => b.id), ['a1', 'a2']);
 });
 
 test('moveNotionBlock swaps with the adjacent sibling and is a no-op at the boundary', () => {
-  const doc = docOf(paragraph('a', 'A'), paragraph('b', 'B'), paragraph('c', 'C'));
+  const doc = docOf(textBlock('a', 'A'), textBlock('b', 'B'), textBlock('c', 'C'));
   const movedUp = moveNotionBlock(doc, 'b', 'up');
   assert.deepEqual(movedUp.blocks.map((b) => b.id), ['b', 'a', 'c']);
   const noop = moveNotionBlock(doc, 'a', 'up');
@@ -82,7 +82,7 @@ test('moveNotionBlock swaps with the adjacent sibling and is a no-op at the boun
 });
 
 test('indentNotionBlock nests under the previous sibling and is a no-op when first', () => {
-  const doc = docOf(paragraph('a', 'A'), paragraph('b', 'B'));
+  const doc = docOf(textBlock('a', 'A'), textBlock('b', 'B'));
   const indented = indentNotionBlock(doc, 'b');
   assert.deepEqual(indented.blocks.map((b) => b.id), ['a']);
   assert.deepEqual(indented.blocks[0].children.map((b) => b.id), ['b']);
@@ -91,7 +91,7 @@ test('indentNotionBlock nests under the previous sibling and is a no-op when fir
 });
 
 test('outdentNotionBlock un-nests to become the next sibling of its parent, and is a no-op at the top level', () => {
-  const doc = docOf({ ...paragraph('a', 'A'), children: [paragraph('a1', 'A1'), paragraph('a2', 'A2')] }, paragraph('b', 'B'));
+  const doc = docOf({ ...textBlock('a', 'A'), children: [textBlock('a1', 'A1'), textBlock('a2', 'A2')] }, textBlock('b', 'B'));
   const outdented = outdentNotionBlock(doc, 'a1');
   assert.deepEqual(outdented.blocks.map((b) => b.id), ['a', 'a1', 'b']);
   assert.deepEqual(outdented.blocks[0].children.map((b) => b.id), ['a2']);
@@ -100,14 +100,14 @@ test('outdentNotionBlock un-nests to become the next sibling of its parent, and 
 });
 
 test('indent then outdent round trips back to the original sibling order', () => {
-  const doc = docOf(paragraph('a', 'A'), paragraph('b', 'B'), paragraph('c', 'C'));
+  const doc = docOf(textBlock('a', 'A'), textBlock('b', 'B'), textBlock('c', 'C'));
   const indented = indentNotionBlock(doc, 'b');
   const restored = outdentNotionBlock(indented, 'b');
   assert.deepEqual(restored.blocks.map((b) => b.id), ['a', 'b', 'c']);
 });
 
 test('getNotionBlockRichText / setNotionBlockRichText read and write the type-keyed payload', () => {
-  const block = paragraph('a', 'A');
+  const block = textBlock('a', 'A');
   assert.equal(getNotionBlockRichText(block)[0].text.content, 'A');
   const updated = setNotionBlockRichText(block, [{ type: 'text', text: { content: 'Z' } }]);
   assert.equal(updated.paragraph.rich_text[0].text.content, 'Z');

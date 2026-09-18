@@ -1,0 +1,20 @@
+{
+  "name": "@react-native-notion-markdown/install-android-device",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactively builds, installs, and launches the Application's debug Android APK on one or more connected devices/emulators, then optionally starts Metro.",
+  "scripts": {
+    "install-android-device": "node index.mjs"
+  },
+  "dependencies": {
+    "effect": "4.0.0-rc.115",
+    "@effect/platform-node": "4.0.0-rc.115"
+  },
+  "author": {
+    "email": "gage@sorrell.sh",
+    "name": "Gage Sorrell",
+    "url": "https://sorrell.sh"
+  },
+  "license": "MIT"
+}

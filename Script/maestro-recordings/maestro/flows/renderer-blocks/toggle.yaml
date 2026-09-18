@@ -1,0 +1,15 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--toggle"
+      ASSERT_TEXT: "Tap to expand"
+- assertNotVisible: "Hidden until the toggle is opened."
+- tapOn: "Expand toggle"
+- assertVisible: "Hidden until the toggle is opened."
+- extendedWaitUntil:
+    visible: "Hidden until the toggle is opened."
+    timeout: 1000
+- tapOn: "Collapse toggle"
+- assertNotVisible: "Hidden until the toggle is opened."

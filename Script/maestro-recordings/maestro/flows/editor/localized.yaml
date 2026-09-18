@@ -1,0 +1,20 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+# frenchMessages (Editor.stories.tsx) overrides only these ids -- every other toolbar/
+# insert-panel label (Bold, Undo, Color, ...) stays the English default.
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "editor--localized"
+      ASSERT_TEXT: "Editor"
+- assertVisible: "Second block heading"
+- tapOn: "Third block. Drag selection handles across the block boundaries."
+- tapOn: "Insérer"
+- tapOn: "Titre 1"
+- inputText: "Un nouveau titre"
+- tapOn: "Insérer"
+- tapOn: "Retour au clavier"
+- tapOn: "Un nouveau titre"
+- tapOn: "Copier"
+- tapOn: "Couper"
+- tapOn: "Coller"

@@ -1,0 +1,17 @@
+{
+  "name": "@react-native-notion-markdown/maestro-recordings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Maestro flows and driver script that record a video of every major react-native-notion-markdown Storybook story on the Android emulator.",
+  "scripts": {
+    "record": "node record.mjs",
+    "record:one": "node record.mjs --flow"
+  },
+  "author": {
+    "email": "gage@sorrell.sh",
+    "name": "Gage Sorrell",
+    "url": "https://sorrell.sh"
+  },
+  "license": "MIT"
+}

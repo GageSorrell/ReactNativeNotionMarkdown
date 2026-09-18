@@ -13,30 +13,50 @@ import type { NotionMarkdownColor } from "../../document/types.ts";
 import type { NotionRendererTheme } from "./types.ts";
 import { fromSdkColor } from "../../internal.ts";
 
-export const lightRendererTheme: NotionRendererTheme = Object.freeze({
+export/**
+       * The default light theme used by the Notion renderer.
+       *
+       * @category Constants
+       * @since 1.0.0
+       */
+const lightRendererTheme: NotionRendererTheme = Object.freeze({
     accent: "#2f6eab",
     background: "#ffffff",
     border: "#dededb",
     codeBackground: "#f1f1ef",
     error: "#b42318",
-    foreground: "#242424",
+    fontFamily: "Inter",
     fontSize: 16,
+    foreground: "#2C2C2B",
+    inlineCodeBackground: "rgba(33,27,23,.05)",
+    inlineCodeForeground: "#CF5148",
     muted: "#737373",
     spacing: 12,
-    surface: "#f7f7f5"
+    surface: "#f7f7f5",
+    titleFontFamily: "Inter-Black"
 } as const);
 
-export const darkRendererTheme: NotionRendererTheme = Object.freeze({
+export/**
+       * The default dark theme used by the Notion renderer.
+       *
+       * @category Constants
+       * @since 1.0.0
+       */
+const darkRendererTheme: NotionRendererTheme = Object.freeze({
     accent: "#81b8e7",
     background: "#191919",
     border: "#414141",
     codeBackground: "#2d2d2d",
     error: "#ff938b",
+    fontFamily: "Inter",
     fontSize: 16,
     foreground: "#ededed",
+    inlineCodeBackground: "rgba(33,27,23,.05)",
+    inlineCodeForeground: "#CF5148",
     muted: "#a0a0a0",
     spacing: 12,
-    surface: "#252525"
+    surface: "#252525",
+    titleFontFamily: "Inter-Black"
 } as const);
 
 const lightColors: Record<string, string> =
@@ -85,6 +105,12 @@ const darkColors: Record<string, string> =
         yellow_bg: "#4c442b"
     };
 
+/**
+ * Resolve a given Markdown color to its corresponding theme color.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 export function notionColor(
     color: NotionMarkdownColor | string | undefined,
     dark: boolean

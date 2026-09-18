@@ -1,0 +1,11 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+# Doesn't tap "Open file" -- that hands off to a system file-viewer intent, which the
+# emulator may not have a handler for, and would leave this app's foreground for the
+# rest of the recording. Showing the affordance is enough for this story.
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--file"
+      ASSERT_TEXT: "Local preview file"
+- assertVisible: "Open file"

@@ -1,0 +1,11 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+# Default Storybook args already render bold text; cycling the remaining formatting
+# controls (italic/underline/strikethrough/code) and color happens through the
+# on-device Controls addon, whose UI structure isn't yet verified for Maestro -- this
+# flow shows the story's default, tuned example only. See the plan's verification notes.
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--text"
+      ASSERT_TEXT: "quick brown fox"

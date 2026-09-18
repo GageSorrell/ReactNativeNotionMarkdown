@@ -14,10 +14,12 @@ class NotionMarkdownModule : Module() {
     // Milestone-one proof coordinator: kept for regression. Superseded below by the
     // multi-field architecture (TextField/SelectionOverlay) for milestone four.
     View(NotionProofView::class) {
-      Events("onEdit")
+      Events("onEdit", "onPageReferencePress")
       Prop("snapshot") { view: NotionProofView, value: Map<String, Any?> -> view.setSnapshot(value) }
       Prop("command") { view: NotionProofView, value: Map<String, Any?>? -> value?.let { view.command(it) } }
       Prop("dark") { view: NotionProofView, value: Boolean -> view.setDark(value) }
+      Prop("emptyTogglePlaceholder") { view: NotionProofView, value: String? -> view.setEmptyTogglePlaceholder(value) }
+      Prop("pageReferenceFallbackIcon") { view: NotionProofView, value: String? -> view.setPageReferenceFallbackIcon(value) }
     }
 
     // One editable native field per block's rich_text/caption/cell. Many mount at once; a

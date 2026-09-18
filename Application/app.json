@@ -2,6 +2,7 @@
   "expo": {
     "name": "Notion Markdown Storybook",
     "slug": "notion-markdown",
+    "scheme": "notionmarkdownstorybook",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",

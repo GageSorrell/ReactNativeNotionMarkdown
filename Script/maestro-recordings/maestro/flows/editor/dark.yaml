@@ -1,0 +1,15 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "editor--dark"
+      ASSERT_TEXT: "Editor"
+- assertVisible: "Second block heading"
+- tapOn: "Third block. Drag selection handles across the block boundaries."
+- inputText: " Recorded by Maestro."
+- doubleTapOn: "Recorded"
+- tapOn: "Aa"
+- tapOn: "Bold"
+- tapOn: "Italic"
+- tapOn: "Back"

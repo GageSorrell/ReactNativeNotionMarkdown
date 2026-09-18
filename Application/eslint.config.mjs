@@ -10,7 +10,7 @@ import BaseConfig from "../Configuration/eslint.config.js";
 export default [
     ...BaseConfig,
     {
-        files: [ "**/*.js", "**/*.stories.tsx" ],
+        files: [ "**/*.js", "**/*.mjs", "**/*.stories.tsx" ],
         rules:
         {
             "@typescript-eslint/typedef": "off",

@@ -1,8 +1,5 @@
-/* Fixture examples retain source ordering and complete Markdown lines. */
-/* eslint-disable sort-imports, sort-keys, @stylistic/max-len */
-
 /**
- *
+ * Fixture examples retain source ordering and complete Markdown lines.
  *
  * @module notion-markdown-storybook/Stories/Renderer.stories
  *
@@ -12,95 +9,104 @@
  * @license   MIT
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-native";
-import { Asset } from "expo-asset";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { fromNotionBlocks, parseNotionMarkdown } from "react-native-notion-markdown/renderer";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Asset } from "expo-asset";
 import { NotionMarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
 import type { NotionMediaRequest } from "react-native-notion-markdown/renderer/ui";
 
-const catalog = [
-    "# Renderer catalog {color=\"blue\"}",
-    "<table_of_contents/>",
-    "Paragraph **bold** *italic* ~~strike~~ <span underline=\"true\">underlined</span> <span color=\"red\">red</span> <span color=\"yellow_bg\">highlighted</span> `code` [link](https://example.com).",
-    "Inline $x^2 + y^2$ <mention-user url=\"{{user://abc123}}\">Ada</mention-user> <mention-date start=\"2026-09-16\"/> :sparkles: [^https://example.com/source] <br>next line.",
-    "<mention-page url=\"page://demo\">Demo page</mention-page> <mention-database url=\"database://demo\">Demo database</mention-database> <mention-data-source url=\"source://demo\">Source</mention-data-source> <mention-agent url=\"agent://demo\">Agent</mention-agent>.",
-    "<empty-block/>",
-    "## Lists and containers",
-    "- Bullet",
-    "\t- Nested bullet",
-    "1. First",
-    "1. Second",
-    "- [x] Finished task",
-    "- [ ] Pending task",
-    "> Quote one<br>quote two",
-    "<details color=\"gray_bg\">",
-    "<summary>Tap to expand</summary>",
-    "\tHidden paragraph",
-    "</details>",
-    "### Toggle heading {toggle=\"true\"}",
-    "\tHeading child",
-    "#### Fourth-level heading",
-    "<callout icon=\"💡\" color=\"yellow_bg\">",
-    "\tCallout text",
-    "\t- Callout child",
-    "</callout>",
-    "---",
-    "```typescript",
-    "const answer = 42;",
-    "```",
-    "## Table and columns",
-    "<table fit-page-width=\"true\" header-row=\"true\" header-column=\"true\">",
-    "\t<colgroup>",
-    "\t\t<col color=\"blue_bg\">",
-    "\t</colgroup>",
-    "\t<tr color=\"green_bg\"><td color=\"red_bg\">Cell wins</td><td>Row wins</td></tr>",
-    "\t<tr><td>Column wins</td><td>Plain cell</td></tr>",
-    "</table>",
-    "<columns>",
-    "\t<column>",
-    "\t\tLeft column",
-    "\t</column>",
-    "\t<column>",
-    "\t\tRight column",
-    "\t</column>",
-    "</columns>",
-    "## References and previews",
-    "<page url=\"https://example.com/page\">Local page</page>",
-    "<database url=\"https://example.com/database\" inline=\"true\">Local database</database>",
-    "<bookmark src=\"https://example.com\">Example bookmark</bookmark>",
-    "<embed src=\"https://example.com/embed\">Example embed</embed>",
-    "<synced_block url=\"sync://demo\">",
-    "\tShared local content",
-    "</synced_block>",
-    "<synced_block_reference url=\"sync://demo\">",
-    "</synced_block_reference>",
-    "![Local image](fixture://image)",
-    "<audio src=\"fixture://audio\">Local audio</audio>",
-    "<video src=\"fixture://video\">Local video</video>",
-    "<file src=\"fixture://pdf\">Local file</file>",
-    "<pdf src=\"fixture://pdf\">Local PDF</pdf>",
-    "$$",
-    "\\frac{1}{2}",
-    "$$",
-    "```mermaid",
-    "flowchart LR",
-    "  A[Start] --> B[Done]",
-    "```"
-].join("\n");
+/* eslint-disable @stylistic/max-len */
+const catalog =
+    [
+        "# Renderer catalog {color=\"blue\"}",
+        "<table_of_contents/>",
+        "Text **bold** *italic* ~~strike~~ <span underline=\"true\">underlined</span> <span color=\"red\">red</span> <span color=\"yellow_bg\">highlighted</span> `code` [link](https://example.com).",
+        "Inline $x^2 + y^2$ <mention-user url=\"{{user://abc123}}\">Ada</mention-user> <mention-date start=\"2026-09-16\"/> :sparkles: [^https://example.com/source] <br>next line.",
+        "<mention-page url=\"page://demo\">Demo page</mention-page> <mention-database url=\"database://demo\">Demo database</mention-database> <mention-data-source url=\"source://demo\">Source</mention-data-source> <mention-agent url=\"agent://demo\">Agent</mention-agent>.",
+        "<empty-block/>",
+        "## Lists and containers",
+        "- Bullet",
+        "\t- Nested bullet",
+        "1. First",
+        "1. Second",
+        "- [x] Finished task",
+        "- [ ] Pending task",
+        "> Quote one<br>quote two",
+        "<details color=\"gray_bg\">",
+        "<summary>Tap to expand</summary>",
+        "\tHidden text block",
+        "</details>",
+        "### Toggle heading {toggle=\"true\"}",
+        "\tHeading child",
+        "#### Fourth-level heading",
+        "<callout icon=\"💡\" color=\"yellow_bg\">",
+        "\tCallout text",
+        "\t- Callout child",
+        "</callout>",
+        "---",
+        "```typescript",
+        "const answer = 42;",
+        "```",
+        "## Table and columns",
+        "<table fit-page-width=\"true\" header-row=\"true\" header-column=\"true\">",
+        "\t<colgroup>",
+        "\t\t<col color=\"blue_bg\">",
+        "\t</colgroup>",
+        "\t<tr color=\"green_bg\"><td color=\"red_bg\">Cell wins</td><td>Row wins</td></tr>",
+        "\t<tr><td>Column wins</td><td>Plain cell</td></tr>",
+        "</table>",
+        "<columns>",
+        "\t<column>",
+        "\t\tLeft column",
+        "\t</column>",
+        "\t<column>",
+        "\t\tRight column",
+        "\t</column>",
+        "</columns>",
+        "## References and previews",
+        "<page url=\"https://example.com/page\">Local page</page>",
+        "<database url=\"https://example.com/database\" inline=\"true\">Local database</database>",
+        "<bookmark src=\"https://example.com\">Example bookmark</bookmark>",
+        "<embed src=\"https://example.com/embed\">Example embed</embed>",
+        "<synced_block url=\"sync://demo\">",
+        "\tShared local content",
+        "</synced_block>",
+        "<synced_block_reference url=\"sync://demo\">",
+        "</synced_block_reference>",
+        "![Local image](fixture://image)",
+        "<audio src=\"fixture://audio\">Local audio</audio>",
+        "<video src=\"fixture://video\">Local video</video>",
+        "<file src=\"fixture://pdf\">Local file</file>",
+        "<pdf src=\"fixture://pdf\">Local PDF</pdf>",
+        "$$",
+        "\\frac{1}{2}",
+        "$$",
+        "```mermaid",
+        "flowchart LR",
+        "  A[Start] --> B[Done]",
+        "```"
+    ].join("\n");
+/* eslint-enable @stylistic/max-len */
 
-const fixtures: Record<string, number> = {
-    "fixture://image": require("../fixtures/preview.png"),
-    "fixture://audio": require("../fixtures/preview.wav"),
-    "fixture://video": require("../fixtures/preview.mp4"),
-    "fixture://pdf": require("../fixtures/preview.pdf")
-};
+const fixtures: Record<string, number> =
+    {
+        "fixture://audio": require("../fixtures/preview.wav"),
+        "fixture://image": require("../fixtures/preview.png"),
+        "fixture://pdf": require("../fixtures/preview.pdf"),
+        "fixture://video": require("../fixtures/preview.mp4")
+    } as const;
 
 async function resolveFixture(request: NotionMediaRequest): Promise<string | null>
 {
     const module = request.url ? fixtures[request.url] : undefined;
-    if (!module) {return null;}
+
+    if (!module)
+    {
+        return null;
+    }
+
     const asset = await Asset.fromModule(module).downloadAsync();
     return asset.localUri ?? asset.uri;
 }
@@ -157,7 +163,7 @@ function ResolverStory()
     const resolveSyncedBlock = useCallback(async () =>
     {
         await new Promise((done) => setTimeout(done, 500));
-        return parseNotionMarkdown("Resolved synced paragraph").document;
+        return parseNotionMarkdown("Resolved synced text block").document;
     }, []);
     const resolveMediaUrl = useCallback(async (request: NotionMediaRequest) =>
     {
@@ -213,7 +219,7 @@ function LayoutStory()
     </ScrollView>;
 }
 
-const meta = { parameters: { layout: "fullscreen" }, title: "Milestone 3/Renderer" } satisfies Meta;
+const meta = { parameters: { layout: "fullscreen" }, title: "Renderer" } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const Catalog: Story = { render: () => <CatalogStory /> };

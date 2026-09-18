@@ -30,7 +30,7 @@ test('epoch and revision reject stale events, preserving unaffected blocks', () 
   assert.equal(acceptProofEvent(createProofDocument(2), event).epoch, 2);
 });
 test('UTF-16 mapping includes separators and clamps endpoints', () => {
-  const blocks = [{ id: 'a', type: 'paragraph', text: '👋' }, { id: 'b', type: 'paragraph', text: 'אבג' }];
+  const blocks = [{ id: 'a', type: 'text', text: '👋' }, { id: 'b', type: 'text', text: 'אבג' }];
   assert.equal(proofPointAt(blocks, 2).offset, 2);
   assert.deepEqual(proofPointAt(blocks, 3), { blockId: 'b', field: 'rich_text', offset: 0 });
   assert.equal(proofPointAt(blocks, 99).offset, 3);
@@ -41,8 +41,78 @@ test('invalid or duplicate payloads cannot enter the store', () => {
   assert.equal(acceptProofEvent(initial, { ...initial, revision: 1, blocks: [initial.blocks[0], initial.blocks[0]] }), initial);
   assert.equal(acceptProofEvent(initial, { ...initial, revision: 1, blocks: [{ ...initial.blocks[0], text: 'bad\nseparator' }] }), initial);
 });
+test('to-do proof blocks preserve checked state and reject it on other block types', () => {
+  const initial = createProofDocument();
+  const todo = { ...initial.blocks[0], checked: true, type: 'to_do' };
+  const accepted = acceptProofEvent(initial, { ...initial, blocks: [todo, ...initial.blocks.slice(1)], revision: 1 });
+  assert.equal(accepted.blocks[0].checked, true);
+  const invalid = acceptProofEvent(initial, {
+    ...initial,
+    blocks: [{ ...initial.blocks[0], checked: true }, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  assert.equal(invalid, initial);
+});
+test('column proof blocks preserve supported column counts', () => {
+  const initial = createProofDocument();
+  for (const columnCount of [ 2, 3, 4, 5 ]) {
+    const columns = { ...initial.blocks[0], columnCount, text: '\u200B', type: 'column_list' };
+    const accepted = acceptProofEvent(initial, {
+      ...initial,
+      blocks: [columns, ...initial.blocks.slice(1)],
+      revision: columnCount
+    });
+    assert.equal(accepted.blocks[0].columnCount, columnCount);
+  }
+  const invalid = acceptProofEvent(initial, {
+    ...initial,
+    blocks: [{ ...initial.blocks[0], columnCount: 6, text: '\u200B', type: 'column_list' }, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  assert.equal(invalid, initial);
+});
+test('proof snapshots accept list block types for continued Enter items', () => {
+  const initial = createProofDocument();
+  for (const type of [ 'bulleted_list_item', 'numbered_list_item' ]) {
+    const list = { ...initial.blocks[0], text: 'Item', type };
+    const accepted = acceptProofEvent(initial, { ...initial, blocks: [list, ...initial.blocks.slice(1)], revision: 1 });
+    assert.equal(accepted.blocks[0].type, type);
+  }
+});
+test('page-reference proof blocks preserve URL and icon metadata', () => {
+  const initial = createProofDocument();
+  const page = { ...initial.blocks[0], icon: '📄', text: 'A page', type: 'link_to_page', url: 'https://example.com/page' };
+  const accepted = acceptProofEvent(initial, { ...initial, blocks: [page, ...initial.blocks.slice(1)], revision: 1 });
+  assert.equal(accepted.blocks[0].url, page.url);
+  assert.equal(accepted.blocks[0].icon, page.icon);
+  const invalid = acceptProofEvent(initial, {
+    ...initial,
+    blocks: [{ ...page, url: undefined }, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  assert.equal(invalid, initial);
+});
+test('proof link marks preserve URLs and reject malformed links', () => {
+  const initial = createProofDocument();
+  const linked = {
+    ...initial.blocks[0],
+    marks: [ { end: 5, kind: 'link', start: 0, url: 'https://example.com' } ]
+  };
+  const accepted = acceptProofEvent(initial, {
+    ...initial,
+    blocks: [linked, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  assert.equal(accepted.blocks[0].marks[0].url, 'https://example.com');
+  const invalid = acceptProofEvent(initial, {
+    ...initial,
+    blocks: [{ ...linked, marks: [ { ...linked.marks[0], url: '' } ] }, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  assert.equal(invalid, initial);
+});
 test('soft breaks stay in a block; empty blocks have selectable endpoints', () => {
-  const blocks = [{ id: 'empty', type: 'paragraph', text: '' }, { id: 'soft', type: 'paragraph', text: 'a\u2028b' }];
+  const blocks = [{ id: 'empty', type: 'text', text: '' }, { id: 'soft', type: 'text', text: 'a\u2028b' }];
   assert.deepEqual(proofPointAt(blocks, 0), { blockId: 'empty', field: 'rich_text', offset: 0 });
   assert.deepEqual(proofPointAt(blocks, 3), { blockId: 'soft', field: 'rich_text', offset: 2 });
   assert.throws(() => proofPointAt([], 0), /at least one block/);

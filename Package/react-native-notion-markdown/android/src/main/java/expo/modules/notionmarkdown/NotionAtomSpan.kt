@@ -65,7 +65,7 @@ class NotionAtomSpan(
     val rect = RectF(x, top.toFloat(), x + width, bottom.toFloat())
     canvas.drawRoundRect(rect, CORNER_RADIUS_PX, CORNER_RADIUS_PX, background)
     val textPaint = Paint(paint)
-    textPaint.color = if (dark) 0xFFEEEEEE.toInt() else 0xFF262626.toInt()
+    textPaint.color = if (dark) 0xFFEEEEEE.toInt() else 0xFF2C2C2B.toInt()
     canvas.drawText(display, x + HORIZONTAL_PADDING_PX, y.toFloat(), textPaint)
   }
 }

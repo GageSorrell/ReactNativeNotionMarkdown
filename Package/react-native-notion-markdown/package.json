@@ -32,6 +32,16 @@
       "react-native": "./src/editor/ui/index.ts",
       "default": "./Distribution/editor/ui/index.js"
     },
+    "./editor/ui/lucide-icons": {
+      "types": "./Distribution/editor/ui/lucideIcons.d.ts",
+      "react-native": "./src/editor/ui/lucideIcons.ts",
+      "default": "./Distribution/editor/ui/lucideIcons.js"
+    },
+    "./renderer/ui/inter-font": {
+      "types": "./Distribution/renderer/ui/interFont.d.ts",
+      "react-native": "./src/renderer/ui/interFont.ts",
+      "default": "./Distribution/renderer/ui/interFont.js"
+    },
     "./native": {
       "types": "./Distribution/native.d.ts",
       "react-native": "./src/native.ts",
@@ -59,8 +69,12 @@
     "lint": "eslint src"
   },
   "peerDependencies": {
+    "@expo-google-fonts/inter": ">=0.4.0",
     "expo": ">=57",
     "expo-audio": "57.0.5",
+    "expo-font": ">=57",
+    "expo-image-picker": "~57.0.18",
+    "expo-linking": ">=57",
     "expo-modules-core": ">=57",
     "expo-video": "57.0.4",
     "lucide-react-native": ">=1.41.0",
@@ -75,6 +89,18 @@
     "react-native-webview": "13.16.1"
   },
   "peerDependenciesMeta": {
+    "@expo-google-fonts/inter": {
+      "optional": true
+    },
+    "expo-font": {
+      "optional": true
+    },
+    "expo-image-picker": {
+      "optional": true
+    },
+    "expo-linking": {
+      "optional": true
+    },
     "lucide-react-native": {
       "optional": true
     }
@@ -83,6 +109,7 @@
     "@types/markdown-it": "14.2.0",
     "esbuild": "0.28.2",
     "expo": "57.0.22",
+    "expo-image-picker": "57.0.18",
     "expo-module-scripts": "56.0.3",
     "expo-modules-core": "57.0.18",
     "mermaid": "12.0.0",

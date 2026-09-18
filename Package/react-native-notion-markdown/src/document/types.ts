@@ -23,7 +23,12 @@ type SdkRichTextItemRequest =
 
 /* eslint-disable @typescript-eslint/naming-convention */
 
-export/** The key used for data that is meaningful to Markdown/editor clients only. */
+export/**
+       * The key used for data that is meaningful to Markdown and editor clients only.
+       *
+       * @category Constants
+       * @since 1.0.0
+       */
 const NOTION_MARKDOWN_METADATA = "__notion_markdown" as const;
 
 /* eslint-enable @typescript-eslint/naming-convention */
@@ -171,6 +176,12 @@ type NotionBlockPayload<Type extends NotionMarkdownBlockType> =
         readonly [ Key in Type ]: SdkBlockPayload<Key>;
     };
 
+/**
+ * A recursive document block with a given Notion block type and additive metadata.
+ *
+ * @category Types
+ * @since 1.0.0
+ */
 export type NotionBlock<Type extends NotionMarkdownBlockType = NotionMarkdownBlockType> =
     Type extends NotionMarkdownBlockType
         ? (
@@ -193,10 +204,22 @@ export interface NotionDocument
     readonly blocks: Array<NotionBlock>;
 }
 
+/**
+ * Input accepted by the document parser and editor store.
+ *
+ * @category Types
+ * @since 1.0.0
+ */
 export type NotionDocumentInput =
     | string
     | NotionDocument;
 
+/**
+ * Options for parsing Notion-enhanced Markdown.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface ParseNotionMarkdownOptions
 {
     readonly idFactory?: (path: string, type: NotionMarkdownBlockType) => string;
@@ -215,29 +238,59 @@ export interface NotionMarkdownParserRule
     }) => NotionBlock | undefined;
 }
 
+/**
+ * Document and diagnostics returned by the Markdown parser.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface ParseNotionMarkdownResult
 {
     readonly document: NotionDocument;
     readonly diagnostics: Array<NotionDiagnostic>;
 }
 
+/**
+ * Options for importing blocks from the Notion SDK shape.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface FromNotionBlocksOptions
 {
     readonly idFactory?: (path: string, notionId?: string) => string;
 }
 
+/**
+ * Document and diagnostics returned by a Notion block import.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface FromNotionBlocksResult
 {
     readonly document: NotionDocument;
     readonly diagnostics: Array<NotionDiagnostic>;
 }
 
+/**
+ * Options for exporting document blocks to the Notion SDK shape.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface ToNotionBlocksOptions
 {
     /** When true, throw NotionConversionError if any block cannot be represented. */
     readonly strict?: boolean;
 }
 
+/**
+ * SDK blocks and diagnostics returned by a Notion block export.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface ToNotionBlocksResult
 {
     readonly blocks: Array<BlockObjectRequest>;
@@ -258,6 +311,12 @@ export class NotionConversionError extends Error
     }
 }
 
+/**
+ * A field that can be edited on a given document block.
+ *
+ * @category Types
+ * @since 1.0.0
+ */
 export type NotionEditableField =
     | {
         readonly blockId: string;
@@ -278,6 +337,12 @@ export type NotionEditableField =
         readonly text: string;
     };
 
+/**
+ * A UTF-16 selection point within a given editable field.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionSelectionPoint
 {
     readonly blockId: string;
@@ -291,12 +356,24 @@ export interface NotionSelectionPoint
     readonly offset: number;
 }
 
+/**
+ * The anchor and focus points of a document selection.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionSelection
 {
     readonly anchor: NotionSelectionPoint;
     readonly focus: NotionSelectionPoint;
 }
 
+/**
+ * The source label associated with a document transaction.
+ *
+ * @category Types
+ * @since 1.0.0
+ */
 export type NotionTransactionOrigin =
     | "user"
     | "paste"
@@ -305,6 +382,12 @@ export type NotionTransactionOrigin =
     | "system"
     | string;
 
+/**
+ * A document change with its corresponding source and revision.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionTransaction
 {
     readonly before: NotionDocument;
@@ -313,6 +396,12 @@ export interface NotionTransaction
     readonly revision: number;
 }
 
+/**
+ * The current document, selection, revision, and history availability.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionEditorState
 {
     readonly document: NotionDocument;
@@ -322,4 +411,10 @@ export interface NotionEditorState
     readonly canRedo: boolean;
 }
 
+/**
+ * A listener called with the current editor state and corresponding transaction.
+ *
+ * @category Types
+ * @since 1.0.0
+ */
 export type NotionEditorListener = (state: NotionEditorState, transaction?: NotionTransaction) => void;

@@ -1,0 +1,23 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer--resolvers"
+      ASSERT_TEXT: "Resolver state"
+- assertVisible: "Loading page"
+# `resolveReference`, `resolveSyncedBlock`, and the synced-block-reference path all
+# resolve after a 500ms delay in ResolverStory (Renderer.stories.tsx) -- wait for them.
+- extendedWaitUntil:
+    visible: "Resolved page"
+    timeout: 5000
+- assertVisible: "Resolved synced text block"
+- assertVisible: "Retry preview"
+- tapOn: "Retry preview"
+- extendedWaitUntil:
+    notVisible: "Retry preview"
+    timeout: 5000
+- tapOn: "Replace document"
+- assertVisible: "Replacement document"
+- assertNotVisible: "Resolved page"
+- assertNotVisible: "Resolved synced text block"

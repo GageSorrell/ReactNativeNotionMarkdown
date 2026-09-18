@@ -1,0 +1,9 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+# Shows the default fitted 2x3 table with header row/column; growing it past the page
+# width to exercise the horizontal ScrollView needs the Controls addon (deferred).
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--table"
+      ASSERT_TEXT: "Header 1"

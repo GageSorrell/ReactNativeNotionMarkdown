@@ -32,6 +32,12 @@ export type NotionBlockPath = ReadonlyArray<number>;
  */
 export function findNotionBlockPath(document: NotionDocument, blockId: string): NotionBlockPath | undefined
 {
+    /**
+     * Search the given block tree for a block identifier.
+     *
+     * @category Functions
+     * @since 1.0.0
+     */
     function search(
         blocks: ReadonlyArray<NotionBlock>,
         prefix: ReadonlyArray<number>

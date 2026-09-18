@@ -1,0 +1,9 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer-blocks--divider"
+      ASSERT_TEXT: "Above the divider"
+- assertVisible: "Below the divider"
+- assertVisible: "Divider"

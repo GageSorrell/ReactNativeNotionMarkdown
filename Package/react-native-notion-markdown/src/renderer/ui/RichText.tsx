@@ -10,29 +10,56 @@
  */
 
 import type { NotionMarkdownMetadata, NotionRichText, NotionRichTextItem } from "../../document/types.ts";
-import type { NotionReferenceDisplay, NotionReferenceRequest, NotionRendererTheme } from "./types.ts";
+import type {
+    NotionReferenceDisplay,
+    NotionReferenceIconComponent,
+    NotionReferenceRequest,
+    NotionRendererTheme
+} from "./types.ts";
 import { Text, View, type ViewStyle } from "react-native";
 import { asRecord, getNotionMarkdownMetadata } from "../../internal.ts";
 import { useEffect, useMemo, useState } from "react";
 import { NotionMathView } from "./MathView.tsx";
 import { notionColor } from "./theme.ts";
+import { FaviconIcon } from "./FaviconIcon.tsx";
 
+/**
+ * Props for rendering a given rich-text collection.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionRichTextViewProps
 {
     readonly items?: ReadonlyArray<NotionRichText[number]>;
+    readonly linkFallbackIcon?: NotionReferenceIconComponent;
     readonly theme: NotionRendererTheme;
     readonly dark: boolean;
     readonly onOpenUrl?: (url: string) => void;
     readonly resolveReference?: (request: NotionReferenceRequest) => Promise<NotionReferenceDisplay | null>;
     readonly textStyle?:
     {
+        readonly fontFamily?: string;
         readonly fontSize?: number;
         readonly fontWeight?: "normal" | "bold" | "600" | "700";
-        readonly color?: string
+        readonly lineHeight?: number;
+        readonly color?: string;
+
+        /**
+         * Forces a strikethrough decoration regardless of the item's own mark -- used for
+         * checked to-do text.
+         */
+        readonly strikethrough?: boolean
     };
     readonly testID?: string;
 }
 
+/**
+ * Return display content for the given rich-text item.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function contentOf(item: NotionRichText[number], metadata: NotionMarkdownMetadata): string
 {
     const value = asRecord(item);
@@ -58,12 +85,19 @@ function contentOf(item: NotionRichText[number], metadata: NotionMarkdownMetadat
     return String(value.plain_text ?? "");
 }
 
+/**
+ * Render a given rich-text item with its corresponding marks and theme.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function RichItem({
     item,
     theme,
     dark,
     onOpenUrl,
     resolveReference,
+    linkFallbackIcon,
     textStyle
 }: NotionRichTextViewProps & { readonly item: NotionRichText[number]; })
 {
@@ -72,7 +106,8 @@ function RichItem({
     const annotation = asRecord(value.annotations);
     const text = contentOf(item, metadata);
     const rawUrl = asRecord(asRecord(value.text).link).url;
-    const url = typeof rawUrl === "string" ? rawUrl : metadata.citationUrl ?? metadata.mention?.url;
+    const linkUrl = typeof rawUrl === "string" ? rawUrl : undefined;
+    const url = linkUrl ?? metadata.citationUrl ?? metadata.mention?.url;
     const request = metadata.mention;
     const kind = request?.kind;
     const referenceUrl = request?.url;
@@ -140,6 +175,7 @@ function RichItem({
         : undefined;
 
     const destination = resolved?.url ?? url;
+    const baseFontSize = textStyle?.fontSize ?? theme.fontSize;
 
     const display = metadata.citationUrl
         ? `↗ ${ text || metadata.citationUrl }`
@@ -148,31 +184,49 @@ function RichItem({
             : (resolved?.label ?? text);
 
     return (
-        <Text
-            accessibilityRole={ destination && onOpenUrl ? "link" : undefined }
-            onPress={ destination && onOpenUrl ? () => onOpenUrl(destination) : undefined }
-            style={ {
-                backgroundColor,
-                color: destination ? theme.accent : (foreground ?? textStyle?.color ?? theme.foreground),
-                fontFamily: annotation.code ? "monospace" : undefined,
-                fontSize: textStyle?.fontSize ?? theme.fontSize,
-                fontStyle: annotation.italic ? "italic" : "normal",
-                fontWeight: annotation.bold ? "bold" : textStyle?.fontWeight ?? "normal",
-                paddingHorizontal: annotation.code ? 2 : 0,
-                textDecorationLine: [
-                    annotation.underline || destination ? "underline" : "",
-                    annotation.strikethrough ? "line-through" : ""
-                ].filter(Boolean)
-                    .join(" ") as "none" | "underline" | "line-through" | "underline line-through"
-            } }>
-            { display }
-        </Text>
+        <View style={ { alignItems: "center", flexDirection: "row", flexShrink: 1 } }>
+            {
+                linkUrl !== undefined && <FaviconIcon
+                    color={ theme.accent }
+                    fallbackIcon={ linkFallbackIcon }
+                    size={ baseFontSize }
+                    textFallback="↗"
+                    url={ linkUrl }
+                />
+            }
+            <Text
+                accessibilityRole={ destination && onOpenUrl ? "link" : undefined }
+                onPress={ destination && onOpenUrl ? () => onOpenUrl(destination) : undefined }
+                style={ {
+                    backgroundColor: annotation.code ? theme.inlineCodeBackground : backgroundColor,
+                    borderRadius: annotation.code ? 4 : 0,
+                    color: destination
+                        ? theme.accent
+                        : annotation.code
+                            ? theme.inlineCodeForeground
+                            : (foreground ?? textStyle?.color ?? theme.foreground),
+                    fontFamily: annotation.code ? "monospace" : textStyle?.fontFamily ?? theme.fontFamily,
+                    fontSize: annotation.code ? baseFontSize - 2 : baseFontSize,
+                    fontStyle: annotation.italic ? "italic" : "normal",
+                    fontWeight: annotation.bold ? "bold" : textStyle?.fontWeight ?? "normal",
+                    lineHeight: textStyle?.lineHeight,
+                    padding: annotation.code ? 4 : 0,
+                    textDecorationLine: [
+                        annotation.underline || destination ? "underline" : "",
+                        annotation.strikethrough || textStyle?.strikethrough ? "line-through" : ""
+                    ].filter(Boolean)
+                        .join(" ") as "none" | "underline" | "line-through" | "underline line-through"
+                } }>
+                { display }
+            </Text>
+        </View>
     );
 }
 
 /** Shared read-only rich-text presentation used by block views and future editor surfaces. */
 export function NotionRichTextView({
     items,
+    linkFallbackIcon,
     theme,
     dark,
     onOpenUrl,
@@ -182,11 +236,11 @@ export function NotionRichTextView({
 }: NotionRichTextViewProps)
 {
     const RootStyle = useMemo((): ViewStyle => ({
-        alignItems: "center",
+        alignItems: "flex-start",
         flexDirection: "row",
         flexWrap: "wrap",
-        minHeight: (textStyle?.fontSize ?? theme.fontSize) * 1.4
-    }), [ textStyle?.fontSize, theme.fontSize ]);
+        minHeight: (textStyle?.lineHeight ?? (textStyle?.fontSize ?? theme.fontSize) * 1.5) + 4
+    }), [ textStyle?.fontSize, textStyle?.lineHeight, theme.fontSize ]);
 
     return (
         <View
@@ -197,6 +251,7 @@ export function NotionRichTextView({
                     <RichItem dark={ dark }
                         item={ item }
                         key={ index }
+                        linkFallbackIcon={ linkFallbackIcon }
                         onOpenUrl={ onOpenUrl }
                         resolveReference={ resolveReference }
                         textStyle={ textStyle }

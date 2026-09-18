@@ -17,8 +17,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { NotionRichTextView } from "./RichText.tsx";
 import Pdf from "react-native-pdf";
 
+/**
+ * Media kinds supported by the renderer previews.
+ *
+ * @category Types
+ * @since 1.0.0
+ */
 export type MediaKind = NotionMediaRequest["kind"];
 
+/**
+ * Props for rendering media belonging to a given block.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
 export interface NotionMediaViewProps
 {
     readonly block: NotionBlock;
@@ -29,6 +41,12 @@ export interface NotionMediaViewProps
     readonly resolveMediaUrl?: (request: NotionMediaRequest) => Promise<string | null>;
 }
 
+/**
+ * Read the media URL and caption from a given block.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function sourceOf(block: NotionBlock): { url?: string; caption?: NotionRichText }
 {
     const data = getNotionBlockPayload(block);
@@ -39,6 +57,12 @@ function sourceOf(block: NotionBlock): { url?: string; caption?: NotionRichText 
     } as const;
 }
 
+/**
+ * Render a preview message with an optional retry action.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function Message({ text, theme, retry }: {
     readonly text: string;
     readonly theme: NotionRendererTheme;
@@ -47,16 +71,17 @@ function Message({ text, theme, retry }: {
 {
     return (
         <View style={ { backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing } }>
-            <Text style={ { color: theme.muted, fontSize: theme.fontSize } }>
+            <Text style={ { color: theme.muted, fontFamily: theme.fontFamily, fontSize: theme.fontSize } }>
                 { text }
             </Text>
             {
                 retry && (
-                    <Pressable accessibilityLabel="Retry preview"
+                    <Pressable
+                        accessibilityLabel="Retry preview"
                         accessibilityRole="button"
                         onPress={ retry }
                         style={ { paddingVertical: 8 } }>
-                        <Text style={ { color: theme.accent } }>
+                        <Text style={ { color: theme.accent, fontFamily: theme.fontFamily } }>
                             Retry
                         </Text>
                     </Pressable>
@@ -66,6 +91,12 @@ function Message({ text, theme, retry }: {
     );
 }
 
+/**
+ * Render an audio preview for the given URL.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function AudioPreview({ url, theme, onUnavailable }: {
     readonly url: string;
     readonly theme: NotionRendererTheme;
@@ -91,20 +122,34 @@ function AudioPreview({ url, theme, onUnavailable }: {
             />
         );
     }
-    return <Pressable accessibilityLabel={ status.playing ? "Pause audio" : "Play audio" }
-        accessibilityRole="button"
-        onPress={ () => status.playing ? player.pause() : player.play() }
-        style={ { padding: theme.spacing, backgroundColor: theme.surface } }>
-        <Text style={ { color: theme.foreground, fontSize: theme.fontSize } }>
-            { status.playing ? "Pause" : "Play" } audio · { Math.floor(status.currentTime) }s /{ " " }
-            { Math.floor(status.duration) }s
-        </Text>
-    </Pressable>;
+    return (
+        <Pressable
+            accessibilityLabel={ status.playing ? "Pause audio" : "Play audio" }
+            accessibilityRole="button"
+            onPress={ () => status.playing ? player.pause() : player.play() }
+            style={ { backgroundColor: theme.surface, padding: theme.spacing } }>
+            <Text style={ {
+                color: theme.foreground,
+                fontFamily: theme.fontFamily,
+                fontSize: theme.fontSize
+            } }>
+                { status.playing ? "Pause" : "Play" } audio · { Math.floor(status.currentTime) }s /{ " " }
+                { Math.floor(status.duration) }s
+            </Text>
+        </Pressable>
+    );
 }
 
+/**
+ * Render a video preview for the given URL.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
 function VideoPreview({ url, onUnavailable }: { readonly url: string; readonly onUnavailable: () => void })
 {
     const player = useVideoPlayer({ uri: url });
+
     useEffect(() =>
     {
         const listener = player.addListener(
@@ -118,6 +163,7 @@ function VideoPreview({ url, onUnavailable }: { readonly url: string; readonly o
             });
         return listener.remove;
     }, [ player, onUnavailable ]);
+
     return (
         <VideoView
             nativeControls
@@ -143,9 +189,10 @@ export function NotionMediaView({
     const [ retry, setRetry ] = useState(0);
     const active = kind === "image" || openedKey === activeKey;
     const requestKey = useMemo(
-        () => ({ block, kind, resolveMediaUrl, retry, active }),
-        [ block, kind, resolveMediaUrl, retry, active ]
+        () => ({ active, block, kind, resolveMediaUrl, retry }),
+        [ active, block, kind, resolveMediaUrl, retry ]
     );
+
     interface Result
     {
         readonly key: object;
@@ -242,7 +289,11 @@ export function NotionMediaView({
                     accessibilityRole="button"
                     onPress={ () => setOpenedKey(activeKey) }
                     style={ { backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing } }>
-                    <Text style={ { color: theme.accent, fontSize: theme.fontSize } }>
+                    <Text style={ {
+                        color: theme.accent,
+                        fontFamily: theme.fontFamily,
+                        fontSize: theme.fontSize
+                    } }>
                         Load { heading } preview
                     </Text>
                 </Pressable>
@@ -276,10 +327,16 @@ export function NotionMediaView({
                     />
                 )
             }
-            {active && !error && url && kind === "pdf" && <Pdf onError={ () => failed("PDF unavailable") }
-                onLoadComplete={ () => setResult({ key: requestKey, url, loaded: true }) }
-                source={ { uri: url, cache: true } }
-                style={ { width: "100%", height: 360, backgroundColor: theme.surface } } />}
+            {
+                active && !error && url && kind === "pdf" && (
+                    <Pdf
+                        onError={ () => failed("PDF unavailable") }
+                        onLoadComplete={ () => setResult({ key: requestKey, url, loaded: true }) }
+                        source={ { cache: true, uri: url } }
+                        style={ { backgroundColor: theme.surface, height: 360, width: "100%" } }
+                    />
+                )
+            }
             {
                 active && !error && url && kind === "audio" && (
                     <AudioPreview
@@ -297,21 +354,39 @@ export function NotionMediaView({
                     />
                 )
             }
-            {active && !error && url && kind === "file" && <Pressable accessibilityLabel="Open file"
-                accessibilityRole="link"
-                onPress={ () => onOpenUrl?.(url) }
-                style={ { padding: theme.spacing, backgroundColor: theme.surface, borderRadius: 6 } }>
-                <Text style={ { color: theme.accent, fontSize: theme.fontSize } }>Open file</Text>
-            </Pressable>}
-            {active && url && !error && (kind === "pdf" || kind === "audio" || kind === "video") && <Pressable accessibilityLabel={ `Close ${heading} preview` }
-                accessibilityRole="button"
-                onPress={ () => setOpenedKey(undefined) }
-                style={ { paddingVertical: 8 } }>
-                <Text style={ { color: theme.muted } }>Close preview</Text>
-            </Pressable>}
+            {
+                active && !error && url && kind === "file" && (
+                    <Pressable
+                        accessibilityLabel="Open file"
+                        accessibilityRole="link"
+                        onPress={ () => onOpenUrl?.(url) }
+                        style={ { backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing } }>
+                        <Text style={ {
+                            color: theme.accent,
+                            fontFamily: theme.fontFamily,
+                            fontSize: theme.fontSize
+                        } }>
+                            Open file
+                        </Text>
+                    </Pressable>
+                )
+            }
+            {
+                active && url && !error && (kind === "pdf" || kind === "audio" || kind === "video") && (
+                    <Pressable
+                        accessibilityLabel={ `Close ${ heading } preview` }
+                        accessibilityRole="button"
+                        onPress={ () => setOpenedKey(undefined) }
+                        style={ { paddingVertical: 8 } }>
+                        <Text style={ { color: theme.muted, fontFamily: theme.fontFamily } }>
+                            Close preview
+                        </Text>
+                    </Pressable>
+                )
+            }
             {
                 active && url && !loaded && !error && (kind === "image" || kind === "pdf") && (
-                    <Text style={ { color: theme.muted } }>
+                    <Text style={ { color: theme.muted, fontFamily: theme.fontFamily } }>
                         Loading…
                     </Text>
                 )

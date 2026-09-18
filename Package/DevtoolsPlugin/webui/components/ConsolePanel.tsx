@@ -19,7 +19,7 @@ const commandActions: Array<ProofCommand["action"]> = [
     "split", "backspace", "softBreak", "heading", "compose", "commit"
 ];
 
-const blockTypes: Array<ProofBlock["type"]> = [ "paragraph", "heading_1" ];
+const blockTypes: Array<ProofBlock["type"]> = [ "text", "heading_1" ];
 
 let nextRowId = 0;
 
@@ -48,7 +48,7 @@ export function ConsolePanel({ snapshot, onSendCommand, onReplaceDocument }: Con
 
     function addRow()
     {
-        const row: ProofBlock = { id: `block-${ ++nextRowId }`, text: "", type: "paragraph" };
+        const row: ProofBlock = { id: `block-${ ++nextRowId }`, text: "", type: "text" };
         setRows((current: Array<ProofBlock>) => [ ...current, row ]);
     }
 

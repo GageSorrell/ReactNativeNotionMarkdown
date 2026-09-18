@@ -23,6 +23,30 @@ export interface NativeProofEditorProps extends ViewProps
     readonly command?: ProofCommand;
     readonly dark?: boolean;
     readonly onEdit?: (Event: { nativeEvent: ProofEvent }) => void;
+    readonly onPageReferencePress?: (
+        Event: { nativeEvent: NativePageReferencePressEvent }
+    ) => void;
+    /** Optional glyph used by the native proof view when a page has no fetched icon. */
+    readonly pageReferenceFallbackIcon?: string;
+
+    /**
+     * Hint shown inside the empty child created for a toggle heading.
+     */
+    readonly emptyTogglePlaceholder?: string;
+}
+
+/**
+ * Data emitted when a page reference is pressed in the native proof editor.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
+export interface NativePageReferencePressEvent
+{
+    readonly id: string;
+    readonly text: string;
+    readonly url: string;
+    readonly icon?: string;
 }
 
 /**

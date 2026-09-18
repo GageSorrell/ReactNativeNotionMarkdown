@@ -88,12 +88,15 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
   private var applying = false
   private var emissionPending = false
   private var source = "selection"
+  private var keyboardRequestPending = false
+  private var keyboardShowAttempts = 0
+  private val showKeyboardRunnable = Runnable { showKeyboardWhenReady() }
 
   init {
     input.gravity = Gravity.TOP or Gravity.START
     input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
     input.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_ACTION_NEXT
-    input.setTextSize(17f)
+    input.setTextSize(16f)
     input.setPadding(0, 0, 0, 0)
     input.setBackgroundColor(Color.TRANSPARENT)
     addView(input, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
@@ -126,14 +129,55 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
       NotionEditorCoordinator.register(sessionId, this)
       registered = true
     }
+    if (keyboardRequestPending) input.post(showKeyboardRunnable)
   }
 
   override fun onDetachedFromWindow() {
+    keyboardRequestPending = false
+    keyboardShowAttempts = 0
+    input.removeCallbacks(showKeyboardRunnable)
     if (registered) {
       NotionEditorCoordinator.unregister(sessionId, this)
       registered = false
     }
     super.onDetachedFromWindow()
+  }
+
+  /**
+   * Focus and IME connection are both asynchronous on Android. Calling showSoftInput directly
+   * after requestFocus can race the focus dispatch and be ignored, leaving a visible caret with
+   * no keyboard. Keep the request pending until this view owns window focus, then ask the IME on
+   * a later UI turn.
+   */
+  private fun requestKeyboard() {
+    keyboardRequestPending = true
+    keyboardShowAttempts = 0
+    input.requestFocus()
+    input.removeCallbacks(showKeyboardRunnable)
+    input.post(showKeyboardRunnable)
+  }
+
+  private fun showKeyboardWhenReady() {
+    if (!keyboardRequestPending) return
+    if (!isAttachedToWindow) return
+    if (!hasWindowFocus()) return
+    if (!input.hasFocus()) input.requestFocus()
+    if (!input.hasFocus()) {
+      input.postDelayed(showKeyboardRunnable, 16)
+      return
+    }
+    val accepted = inputMethodManager().showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+    if (accepted || keyboardShowAttempts >= 10) {
+      keyboardRequestPending = false
+    } else {
+      keyboardShowAttempts += 1
+      input.postDelayed(showKeyboardRunnable, 50)
+    }
+  }
+
+  override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+    super.onWindowFocusChanged(hasWindowFocus)
+    if (hasWindowFocus && keyboardRequestPending) input.post(showKeyboardRunnable)
   }
 
   fun blockIdValue() = blockId
@@ -200,7 +244,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
 
   fun setDark(value: Boolean) {
     dark = value
-    input.setTextColor(if (dark) Color.rgb(238, 238, 238) else Color.rgb(38, 38, 38))
+    input.setTextColor(if (dark) Color.rgb(238, 238, 238) else Color.rgb(44, 44, 43))
     input.setHintTextColor(if (dark) Color.LTGRAY else Color.DKGRAY)
   }
 
@@ -211,10 +255,14 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
     lastCommandId = id
     when (value["action"]) {
       "focus" -> {
-        input.requestFocus()
-        inputMethodManager().showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+        requestKeyboard()
       }
-      "dismiss" -> inputMethodManager().hideSoftInputFromWindow(input.windowToken, 0)
+      "dismiss" -> {
+        keyboardRequestPending = false
+        keyboardShowAttempts = 0
+        input.removeCallbacks(showKeyboardRunnable)
+        inputMethodManager().hideSoftInputFromWindow(input.windowToken, 0)
+      }
       "selectAll" -> input.selectAll()
       "setSelection" -> {
         val selection = value["selection"] as? Map<*, *> ?: return
@@ -238,6 +286,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
     editable.getSpans(0, editable.length, StrikethroughSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TypefaceSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ForegroundColorSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, InlineCodeSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, NotionAtomSpan::class.java).forEach { editable.removeSpan(it) }
   }
 
@@ -254,7 +303,11 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
         "italic" -> editable.setSpan(StyleSpan(Typeface.ITALIC), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         "underline" -> editable.setSpan(UnderlineSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         "strikethrough" -> editable.setSpan(StrikethroughSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        "code" -> editable.setSpan(TypefaceSpan("monospace"), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        "code" -> {
+          editable.setSpan(TypefaceSpan("monospace"), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(ForegroundColorSpan(INLINE_CODE_FOREGROUND), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(inlineCodeSpan(context), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         "color" -> markColors[mark["color"] as? String]?.let {
           editable.setSpan(ForegroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
@@ -286,6 +339,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
       result.add(mapOf("kind" to "code", "start" to editable.getSpanStart(it), "end" to editable.getSpanEnd(it)))
     }
     editable.getSpans(0, editable.length, ForegroundColorSpan::class.java).forEach { span ->
+      if (span.foregroundColor == INLINE_CODE_FOREGROUND) return@forEach
       val name = markColors.entries.firstOrNull { it.value == span.foregroundColor }?.key
       result.add(mapOf("kind" to "color", "start" to editable.getSpanStart(span), "end" to editable.getSpanEnd(span), "color" to name))
     }
@@ -401,7 +455,11 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
             "italic" -> editable.setSpan(StyleSpan(Typeface.ITALIC), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "underline" -> editable.setSpan(UnderlineSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "strikethrough" -> editable.setSpan(StrikethroughSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            "code" -> editable.setSpan(TypefaceSpan("monospace"), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            "code" -> {
+              editable.setSpan(TypefaceSpan("monospace"), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              editable.setSpan(ForegroundColorSpan(INLINE_CODE_FOREGROUND), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              editable.setSpan(inlineCodeSpan(context), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
             "color" -> markColors[mark.optString("color")]?.let {
               editable.setSpan(ForegroundColorSpan(it), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }

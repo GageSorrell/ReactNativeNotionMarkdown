@@ -4,9 +4,8 @@
  * cast, a metadata-bag reader, a block-payload reader, and the SDK/Markdown color-suffix
  * conversion); this module gives each one a single definition instead.
  *
- * Not part of the public API -- nothing here is re-exported from `index.ts`.
- *
  * @module react-native-notion-markdown/internal
+ * @internal
  *
  * @file      internal.ts
  * @author    Gage Sorrell <gage@sorrell.sh>
@@ -43,7 +42,7 @@ export function getNotionMarkdownMetadata(value: unknown): NotionMarkdownMetadat
 }
 
 /**
- * Read a block's own type-keyed payload -- e.g. a paragraph block's `paragraph` field -- the
+ * Read a block's own type-keyed payload -- e.g. a text block's formal `paragraph` field -- the
  * object that carries that block type's `rich_text`, `caption`, `cells`, or other data.
  *
  * @since 1.0.0

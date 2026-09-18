@@ -13,6 +13,33 @@ export {
     NotionEditor,
     type NotionEditorButton,
     type NotionEditorComponents,
+    type NotionEditorCustomButton,
+    type NotionEditorCustomButtonPlacement,
+    type NotionEditorCustomPanel,
+    type NotionEditorCustomPanelContext,
     type NotionEditorIconProps,
+    type NotionEditorLinkPromptResult,
+    type NotionEditorLinkResult,
+    type NotionEditorLinkSelection,
+    type NotionEditorMediaAction,
+    type NotionEditorMediaAsset,
+    type NotionEditorMediaSelection,
+    type NotionEditorPageReference,
+    type NotionEditorPageReferenceSelection,
     type NotionEditorProps
 } from "./NotionEditor.tsx";
+
+/** Editor UI configuration -- currently localization, with room to grow to theming. */
+export {
+    NotionEditorConfigProvider,
+    useNotionEditorConfig,
+    useNotionEditorTranslate,
+    type NotionEditorConfigProviderProps,
+    type NotionEditorLocalization
+} from "./config.tsx";
+export {
+    defaultEditorMessages,
+    type EditorMessageId,
+    type NotionEditorMessageDescriptor,
+    type NotionEditorTranslate
+} from "./messages.ts";

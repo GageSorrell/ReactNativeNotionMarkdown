@@ -1,0 +1,12 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer--layout-and-imported"
+      ASSERT_TEXT: "Narrow 320 px"
+- swipe:
+    direction: LEFT
+- swipe:
+    direction: LEFT
+- assertVisible: "Wide 800 px"

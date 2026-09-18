@@ -11,6 +11,7 @@
 
 export {
     NativeProofEditor,
+    type NativePageReferencePressEvent,
     type NativeProofEditorProps
 } from "../NativeProofEditor.tsx";
 export { default as NotionMarkdown } from "../NotionMarkdownModule.ts";

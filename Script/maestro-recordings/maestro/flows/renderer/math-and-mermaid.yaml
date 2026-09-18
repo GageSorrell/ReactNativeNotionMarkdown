@@ -1,0 +1,16 @@
+appId: com.gagesorrell.notionmarkdown.storybook
+---
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "renderer--math-and-mermaid"
+      ASSERT_TEXT: "Equation and diagram previews"
+- assertVisible: "Equation"
+- scrollUntilVisible:
+    element:
+      text: "Load Mermaid preview"
+    direction: DOWN
+- tapOn: "Load Mermaid preview"
+- extendedWaitUntil:
+    visible: "Close Mermaid preview"
+    timeout: 10000
