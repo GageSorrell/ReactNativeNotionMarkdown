@@ -61,6 +61,12 @@ export type EditorMessageId =
     | "actionsSheet.insertBelow"
     | "actionsSheet.duplicate"
     | "actionsSheet.delete"
+    | "actionsSheet.color"
+    | "actionsSheet.editIcon"
+    | "actionsSheet.chooseColor"
+    | "actionsSheet.text"
+    | "actionsSheet.background"
+    | "actionsSheet.defaultColor"
     | "blockName.text"
     | "blockName.heading1"
     | "blockName.heading2"
@@ -70,6 +76,7 @@ export type EditorMessageId =
     | "blockName.numberedListItem"
     | "blockName.toDo"
     | "blockName.callout"
+    | "blockName.quote"
     | "blockName.divider"
     | "blockName.tableOfContents"
     | "blockName.columnList"
@@ -78,6 +85,7 @@ export type EditorMessageId =
     | "blockName.linkToPage"
     | "insertPanel.title"
     | "insertPanel.callout"
+    | "insertPanel.quote"
     | "insertPanel.columns"
     | "insertPanel.columns2"
     | "insertPanel.columns3"
@@ -136,6 +144,42 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Delete",
             description: "Block-actions sheet button that deletes the target block",
             id: "actionsSheet.delete"
+        },
+        "actionsSheet.color":
+        {
+            defaultMessage: "Color",
+            description: "Callout action-sheet button that opens the color chooser",
+            id: "actionsSheet.color"
+        },
+        "actionsSheet.editIcon":
+        {
+            defaultMessage: "Edit icon",
+            description: "Callout action-sheet button reserved for the future emoji picker",
+            id: "actionsSheet.editIcon"
+        },
+        "actionsSheet.chooseColor":
+        {
+            defaultMessage: "Choose a color",
+            description: "Title of the callout color chooser",
+            id: "actionsSheet.chooseColor"
+        },
+        "actionsSheet.text":
+        {
+            defaultMessage: "Text",
+            description: "Callout color chooser section for foreground colors",
+            id: "actionsSheet.text"
+        },
+        "actionsSheet.background":
+        {
+            defaultMessage: "Background",
+            description: "Callout color chooser section for background colors",
+            id: "actionsSheet.background"
+        },
+        "actionsSheet.defaultColor":
+        {
+            defaultMessage: "Default",
+            description: "Callout color chooser button that clears the block color",
+            id: "actionsSheet.defaultColor"
         },
         "actionsSheet.duplicate":
         {
@@ -226,6 +270,12 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Numbered list",
             description: "Block-actions sheet section label naming a numbered-list-item block",
             id: "blockName.numberedListItem"
+        },
+        "blockName.quote":
+        {
+            defaultMessage: "Quote",
+            description: "Block-actions sheet section label naming a quote block",
+            id: "blockName.quote"
         },
         "blockName.tableOfContents":
         {
@@ -340,6 +390,12 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Page",
             description: "Insert-panel button that requests creation of a page reference",
             id: "insertPanel.pageReference"
+        },
+        "insertPanel.quote":
+        {
+            defaultMessage: "Quote",
+            description: "Insert-panel button that inserts a quote block",
+            id: "insertPanel.quote"
         },
         "insertPanel.returnToKeyboard":
         {

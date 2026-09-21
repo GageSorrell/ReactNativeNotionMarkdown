@@ -30,6 +30,14 @@ export interface NativeProofEditorProps extends ViewProps
     readonly onBlockActionsPress?: (
         Event: { nativeEvent: NativeBlockActionsPressEvent }
     ) => void;
+
+    /**
+     * Fired whenever the native text layout's own content height changes, in dp -- lets the RN
+     * side size this view to its true content (e.g. tall images) instead of clipping it.
+     */
+    readonly onContentSize?: (
+        Event: { nativeEvent: NativeContentSizeEvent }
+    ) => void;
     /** Optional glyph used by the native proof view when a page has no fetched icon. */
     readonly pageReferenceFallbackIcon?: string;
 
@@ -67,6 +75,18 @@ export interface NativeBlockActionsPressEvent
 {
     readonly id: string;
     readonly type: ProofBlock["type"];
+}
+
+/**
+ * Data emitted when the native proof editor's own content height changes.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
+export interface NativeContentSizeEvent
+{
+    /** The text layout's true content height, in dp. */
+    readonly height: number;
 }
 
 /**

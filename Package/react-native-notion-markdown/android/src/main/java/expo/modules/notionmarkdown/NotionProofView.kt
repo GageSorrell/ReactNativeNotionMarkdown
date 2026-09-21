@@ -32,9 +32,11 @@ import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.style.UnderlineSpan
+import android.text.style.UpdateLayout
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -50,6 +52,8 @@ import expo.modules.kotlin.views.ExpoView
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 private const val FRAGMENT_MIME = "application/vnd.react-native-notion-markdown.proof+json"
@@ -87,17 +91,20 @@ private val proofBackgroundColors: Map<String, Int> = mapOf(
 
 private val proofValidBlockTypes = listOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
-  "numbered_list_item", "to_do", "callout", "divider", "table_of_contents", "column_list", "image", "video",
+  "numbered_list_item", "to_do", "callout", "quote", "divider", "table_of_contents", "column_list", "image", "video",
   "link_to_page"
 )
 private val proofValidColors = proofTextColors.keys + proofBackgroundColors.keys
 
-/** Block types with mergeable text content -- eligible on either side of a divider-skipping
- *  backspace merge (see [NotionProofView.handleDividerBackspace]). */
+/** Block types with mergeable text content -- eligible on either side of an atomic-block-skipping
+ *  backspace merge (see [NotionProofView.handleAtomicBlockBackspace]). */
 private val proofMergeableBlockTypes = setOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4",
-  "bulleted_list_item", "numbered_list_item", "to_do", "callout"
+  "bulleted_list_item", "numbered_list_item", "to_do", "callout", "quote"
 )
+
+/** Block types with no navigable text of their own -- see [NotionProofView.handleAtomicBlockBackspace]. */
+private val proofAtomicBlockTypes = setOf("divider", "image", "video")
 
 /** A checked to-do's checkbox fill and its unchecked border, matching the renderer's theme accent. */
 private fun proofAccentColor(dark: Boolean) = if (dark) Color.rgb(0x81, 0xB8, 0xE7) else Color.rgb(0x2F, 0x6E, 0xAB)
@@ -110,6 +117,9 @@ private fun proofCheckboxBorderColor(dark: Boolean) = if (dark) Color.rgb(0x41, 
 
 /** A callout's default box tint when no `_bg` color is chosen, matching the renderer theme's surface. */
 private fun proofCalloutDefaultBackground(dark: Boolean) = if (dark) Color.rgb(0x25, 0x25, 0x25) else Color.rgb(0xF7, 0xF7, 0xF5)
+
+/** A quote's default left-border bar color when no color is chosen, matching the renderer's blockquote border. */
+private fun proofQuoteBarColor(dark: Boolean) = if (dark) Color.rgb(0x41, 0x41, 0x41) else Color.rgb(0xDE, 0xDE, 0xDB)
 private const val DIVIDER_TEXT = "\u200B"
 private const val TABLE_OF_CONTENTS_TEXT = "\u200B"
 private const val COLUMNS_TEXT = "\u200B"
@@ -121,7 +131,13 @@ private const val DEFAULT_CALLOUT_ICON = "\uD83D\uDCAC"
 private const val TOGGLE_BUTTON_WIDTH_SCALE = 1.5f
 private const val TODO_CHECKBOX_WIDTH_SCALE = 1.5f
 private const val LIST_MARKER_WIDTH_SCALE = 1.5f
-private const val CALLOUT_ICON_WIDTH_SCALE = 2f
+private const val CALLOUT_OUTER_PADDING_DP = 8
+private const val CALLOUT_SURFACE_PADDING_DP = 12
+private const val CALLOUT_ICON_WIDTH_DP = 24
+private const val CALLOUT_BLOCK_PADDING_DP =
+  CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP + 6
+private const val QUOTE_BAR_WIDTH_DP = 3
+private const val QUOTE_TEXT_INDENT_DP = 12
 
 private fun proofHeadingLevel(type: String): Int? = when (type) {
   "heading_1" -> 1
@@ -201,13 +217,15 @@ private class ProofInlineMarkSpan(val kind: String, val url: String? = null) : a
  * [blockStart] and [blockEnd] are the block's own fixed offsets at span-creation time (recomputed
  * every [NotionProofView.styleBlocks] pass), compared against the line range Android passes to
  * [chooseHeight] to tell a block's boundary line from an interior wrapped line.
+ * This also implements [UpdateLayout] because [NotionProofView.styleBlocks] replaces these spans
+ * after edits; DynamicLayout only recalculates existing lines when a changed span has that marker.
  */
 private class BlockPaddingSpan(
   private val top: Int,
   private val bottom: Int,
   private val blockStart: Int,
   private val blockEnd: Int
-) : LineHeightSpan {
+) : LineHeightSpan, UpdateLayout {
   private var previousEnd = -1
   private var previousAscent = 0
   private var previousTop = 0
@@ -542,7 +560,7 @@ private class ColumnsSpan(private val columnCount: Int) : ReplacementSpan() {
 /**
  * Draws the hint for an empty child created under a toggle heading without changing its text.
  */
-private class EmptyTogglePlaceholderSpan(
+private class EmptyBlockPlaceholderSpan(
   private val placeholder: String
 ) : ReplacementSpan() {
   override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int =
@@ -760,52 +778,13 @@ private class ListMarkerSpan(
 }
 
 /**
- * Draws a callout's rounded background box behind its (possibly wrapped) text. [blockStart] and
- * [blockEnd] are the block's fixed offsets at span-creation time, used the same way as in
- * [BlockPaddingSpan] to tell the block's first/last line -- which get rounded corners -- from an
- * interior wrapped line, which stays flat so the fill reads as one continuous shape.
+ * A callout's rounded background box is drawn directly in [NotionProofView.ProofInput.onDraw],
+ * before the base [EditText] draws its text and cursor -- not as a [LineBackgroundSpan]. Android
+ * runs a `LineBackgroundSpan` in the same pass that positions the text cursor, and an opaque
+ * fill drawn there can end up layered over the cursor instead of under it, hiding it while the
+ * caret sits inside a callout. Drawing the fill first, in our own `onDraw`, guarantees the base
+ * class's text and cursor always land on top.
  */
-private class CalloutBackgroundSpan(
-  private val color: Int,
-  private val blockStart: Int,
-  private val blockEnd: Int
-) : LineBackgroundSpan {
-  override fun drawBackground(
-    canvas: Canvas,
-    paint: Paint,
-    left: Int,
-    right: Int,
-    top: Int,
-    baseline: Int,
-    bottom: Int,
-    text: CharSequence,
-    start: Int,
-    end: Int,
-    lineNumber: Int
-  ) {
-    val radius = paint.textSize * 0.35f
-    val topRadius = if (start <= blockStart) radius else 0f
-    val bottomRadius = if (end >= blockEnd) radius else 0f
-    val path = Path()
-    path.addRoundRect(
-      RectF(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat()),
-      floatArrayOf(
-        topRadius, topRadius,
-        topRadius, topRadius,
-        bottomRadius, bottomRadius,
-        bottomRadius, bottomRadius
-      ),
-      Path.Direction.CW
-    )
-    val previousColor = paint.color
-    val previousStyle = paint.style
-    paint.color = color
-    paint.style = Paint.Style.FILL
-    canvas.drawPath(path, paint)
-    paint.color = previousColor
-    paint.style = previousStyle
-  }
-}
 
 /**
  * Reserves and draws a callout's icon at the start of its first line. Tapping it is a no-op for
@@ -813,7 +792,8 @@ private class CalloutBackgroundSpan(
  */
 private class CalloutIconSpan(
   private val iconWidth: Int,
-  private val icon: String
+  private val icon: String,
+  private val iconInset: Int
 ) : LeadingMarginSpan {
   override fun getLeadingMargin(first: Boolean): Int = iconWidth
 
@@ -837,7 +817,39 @@ private class CalloutIconSpan(
     val fm = iconPaint.fontMetrics
     val centerY = (top + bottom) / 2f
     val iconBaseline = centerY - (fm.ascent + fm.descent) / 2f
-    canvas.drawText(icon, x.toFloat(), iconBaseline, iconPaint)
+    canvas.drawText(icon, (x + iconInset).toFloat(), iconBaseline, iconPaint)
+  }
+}
+
+/** Reserves a small left margin and paints a quote block's vertical accent bar into it, on every
+ *  wrapped visual line -- simpler than [CalloutIconSpan]'s box since a thin bar can safely be
+ *  drawn as a normal span without the cursor-layering concern described above. */
+private class QuoteBorderSpan(
+  private val marginWidth: Int,
+  private val barWidth: Int,
+  private val barColor: Int
+) : LeadingMarginSpan {
+  override fun getLeadingMargin(first: Boolean): Int = marginWidth
+
+  override fun drawLeadingMargin(
+    canvas: Canvas,
+    paint: Paint,
+    x: Int,
+    dir: Int,
+    top: Int,
+    baseline: Int,
+    bottom: Int,
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    first: Boolean,
+    layout: android.text.Layout
+  ) {
+    val previousColor = paint.color
+    paint.color = barColor
+    val barLeft = (if (dir >= 0) x else x - barWidth).toFloat()
+    canvas.drawRect(barLeft, top.toFloat(), barLeft + barWidth, bottom.toFloat(), paint)
+    paint.color = previousColor
   }
 }
 
@@ -882,6 +894,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   private val onEdit by EventDispatcher()
   private val onPageReferencePress by EventDispatcher()
   private val onBlockActionsPress by EventDispatcher()
+  /** Fires whenever the native text layout's own content height changes (e.g. an image finishes
+   *  sizing), so the RN side can size this view to its true content instead of clipping it. */
+  private val onContentSize by EventDispatcher()
+  private var lastReportedContentHeightPx = -1
   private var pageReferenceFallbackIcon: String? = null
   private var emptyTogglePlaceholder = DEFAULT_EMPTY_TOGGLE_PLACEHOLDER
   private var imageMaxWidth = 960
@@ -1113,6 +1129,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       "insertVideo" -> insertMedia("video", value["url"] as? String)
       "toDo" -> insertToDo()
       "callout" -> insertCallout()
+      "quote" -> insertQuote()
       "heading" -> {
         replaceSelection("\n")
         val index = input.text.take(input.selectionStart).count { it == '\n' }
@@ -1140,7 +1157,11 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         }
         scheduleEvent("insert-heading")
       }
-      "color" -> applySelectionColor((value["color"] as? String)?.takeIf { it in proofValidColors })
+      "color" -> {
+        val color = (value["color"] as? String)?.takeIf { it in proofValidColors }
+        val blockId = value["blockId"] as? String
+        if (blockId.isNullOrBlank()) applySelectionColor(color) else applyBlockColor(blockId, color)
+      }
       "format" -> toggleFormat((value["mark"] as? String)?.takeIf {
         it in listOf("bold", "italic", "strikethrough", "underline", "code")
       })
@@ -1161,6 +1182,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       "insertBelow" -> insertBlockRelativeToId(value["blockId"] as? String, before = false)
       "duplicateBlock" -> duplicateBlockById(value["blockId"] as? String)
       "deleteBlock" -> deleteBlockById(value["blockId"] as? String)
+      "replaceImage" -> replaceImageById(value["blockId"] as? String, value["url"] as? String)
       "softBreak" -> replaceSelection("\u2028")
       // Acceptance probe uses the actual EditText connection, not fabricated composing events.
       "compose" -> {
@@ -1177,7 +1199,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         val start = minOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
         val end = maxOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
         if (start != end) replaceSelection("")
-        else if (start > 0 && !handleDividerBackspace()) {
+        else if (start > 0 && !handleAtomicBlockBackspace()) {
           val previous = Character.offsetByCodePoints(input.text, start, -1)
           input.text.delete(previous, start)
           input.setSelection(previous)
@@ -1441,6 +1463,23 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     scheduleEvent("insert-callout")
   }
 
+  /** Convert the block at the cursor/selection into a quote. */
+  private fun insertQuote() {
+    replaceSelection("\n")
+    val index = input.text.take(input.selectionStart).count { it == '\n' }
+    if (index !in 0..blocks.size) return
+    blocks.getOrNull(index)?.let {
+      it.type = "quote"
+      it.checked = false
+      it.color = null
+      it.toggle = false
+      it.collapsed = false
+      it.marks.clear()
+    } ?: return
+    replaceNativeTextAndSelect(index)
+    scheduleEvent("insert-quote")
+  }
+
   /** Convert an exact text-block `---` shortcut into a divider and a following empty text block. */
   private fun createDividerFromShortcut(): Boolean {
     if (input.selectionStart != input.selectionEnd) return false
@@ -1530,18 +1569,22 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   }
 
   /**
-   * Handle Backspace at the start of a block immediately preceded by a divider: the divider is
-   * skipped over -- as though it weren't there -- merging this block into the block before the
-   * divider instead, and the divider is left in place immediately after the merged result.
+   * Handle Backspace at the start of a block immediately preceded by an atomic block -- a
+   * divider, image, or video, none of which carry navigable text of their own. The atomic block
+   * is skipped over -- as though it weren't there -- merging this block into the block before it
+   * instead, and the atomic block is left in place immediately after the merged result. Without
+   * this, the default merge would otherwise remove the atomic block from the document and, for
+   * an image or video, stuff the removed block's text into its own `text` field -- a field that
+   * type of block doesn't use (its content lives in `url`), corrupting it for no visible reason.
    */
-  private fun handleDividerBackspace(): Boolean {
+  private fun handleAtomicBlockBackspace(): Boolean {
     if (input.selectionStart != input.selectionEnd || blocks.isEmpty()) return false
     val (index, offset) = logicalSelectionPoint(input.selectionStart)
     if (offset != 0) return false
-    val dividerIndex = index - 1
-    val divider = blocks.getOrNull(dividerIndex) ?: return false
-    if (divider.type != "divider") return false
-    val beforeIndex = dividerIndex - 1
+    val atomicIndex = index - 1
+    val atomic = blocks.getOrNull(atomicIndex) ?: return false
+    if (atomic.type !in proofAtomicBlockTypes) return false
+    val beforeIndex = atomicIndex - 1
     val before = blocks.getOrNull(beforeIndex) ?: return false
     val current = blocks[index]
     if (before.type !in proofMergeableBlockTypes || current.type !in proofMergeableBlockTypes) return false
@@ -1550,10 +1593,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     before.marks.addAll(current.marks.map { ProofMark(it.kind, it.start + joinOffset, it.end + joinOffset, it.url) })
     before.text += current.text
     blocks.removeAt(index)
-    blocks.removeAt(dividerIndex)
-    blocks.add(dividerIndex, divider)
+    blocks.removeAt(atomicIndex)
+    blocks.add(atomicIndex, atomic)
     replaceNativeTextAndSelect(beforeIndex, joinOffset)
-    scheduleEvent("divider-backspace")
+    scheduleEvent("atomic-block-backspace")
     return true
   }
 
@@ -1591,6 +1634,17 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     if (blocks.isEmpty()) blocks.add(ProofBlock(newId(), "text", ""))
     replaceNativeTextAndSelect(index.coerceAtMost(blocks.lastIndex))
     scheduleEvent("delete-block")
+  }
+
+  /** Swap an image block's source in place -- the block keeps its id and document position. */
+  private fun replaceImageById(id: String?, rawUrl: String?) {
+    val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    val index = blockIndexById(id) ?: return
+    if (blocks[index].type != "image") return
+    blocks[index].url = url
+    styleBlocks()
+    invalidate()
+    scheduleEvent("replace-image")
   }
 
   private fun logicalSelectionPoint(position: Int): Pair<Int, Int> {
@@ -1864,6 +1918,17 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     scheduleEvent("color")
   }
 
+  /** Apply a color to one block, used by block-level action sheets whose opening gesture may not
+   * leave a reliable text selection behind. */
+  private fun applyBlockColor(id: String, color: String?) {
+    val block = blocks.firstOrNull { it.id == id } ?: return
+    if (block.type == "divider" || block.type == "table_of_contents" || block.type == "column_list"
+      || block.type == "link_to_page" || block.type !in proofValidBlockTypes || block.color == color) return
+    block.color = color
+    styleBlocks()
+    scheduleEvent("color")
+  }
+
   private fun offsetOf(index: Int): Int {
     var offset = 0
     for (i in 0 until index) offset += blocks[i].nativeText().length + 1
@@ -1882,6 +1947,20 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     return mapOf("blockId" to last.id, "field" to "rich_text", "offset" to last.text.length)
   }
 
+  /**
+   * Report the text layout's true content height to RN, in dp, when it changes. `shouldUseAndroidLayout`
+   * keeps this view's own Yoga-assigned box fixed regardless of content (see [ExpoView]'s docs),
+   * so without this, content taller than that box (e.g. a tall image) is simply clipped -- nothing
+   * ever tells the RN side, or a wrapping ScrollView, how tall the document actually wants to be.
+   */
+  private fun reportContentSize() {
+    val heightPx = input.layout?.height ?: return
+    if (heightPx == lastReportedContentHeightPx) return
+    lastReportedContentHeightPx = heightPx
+    val heightDp = ceil(heightPx / resources.displayMetrics.density).toInt()
+    onContentSize(mapOf("height" to heightDp))
+  }
+
   private fun styleBlocks() {
     val editable = input.text
     editable.getSpans(0, editable.length, RelativeSizeSpan::class.java).forEach { editable.removeSpan(it) }
@@ -1889,12 +1968,11 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     editable.getSpans(0, editable.length, LeadingMarginSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, BlockPaddingSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, DividerSpan::class.java).forEach { editable.removeSpan(it) }
-    editable.getSpans(0, editable.length, CalloutBackgroundSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ProofImageSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ProofVideoSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TableOfContentsSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ColumnsSpan::class.java).forEach { editable.removeSpan(it) }
-    editable.getSpans(0, editable.length, EmptyTogglePlaceholderSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, EmptyBlockPlaceholderSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, PageReferenceSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TodoCheckboxSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ListMarkerSpan::class.java).forEach { editable.removeSpan(it) }
@@ -1931,7 +2009,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         previous?.toggle == true && proofHeadingLevel(previous.type) != null &&
         block.depth == previous.depth + 1 && emptyTogglePlaceholder.isNotEmpty()) {
         editable.setSpan(
-          EmptyTogglePlaceholderSpan(emptyTogglePlaceholder),
+          EmptyBlockPlaceholderSpan(emptyTogglePlaceholder),
           start,
           end,
           Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -1943,6 +2021,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         val isListItem = block.type == "bulleted_list_item" || block.type == "numbered_list_item"
         val next = blocks.getOrNull(index + 1)
         val blockPaddingTop = when {
+          block.type == "callout" -> CALLOUT_BLOCK_PADDING_DP
           proofHeadingLevel(block.type) == 1 -> 32
           proofHeadingLevel(block.type) == 2 -> 28
           proofHeadingLevel(block.type) == 3 -> 24
@@ -1950,7 +2029,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           isListItem && previous?.type == block.type -> 4
           else -> 8
         }
-        val blockPaddingBottom = if (isListItem && next?.type == block.type) 4 else 8
+        val blockPaddingBottom = if (block.type == "callout") CALLOUT_BLOCK_PADDING_DP
+        else if (isListItem && next?.type == block.type) 4 else 8
         editable.setSpan(
           BlockPaddingSpan(
             (blockPaddingTop * resources.displayMetrics.density).toInt(),
@@ -1986,17 +2066,28 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           )
         }
         if (block.type == "callout") {
-          val backgroundColor = block.color?.let { proofBackgroundColors[it] } ?: proofCalloutDefaultBackground(dark)
+          // The callout's background box is painted in ProofInput.onDraw, not as a span here --
+          // see the comment above CalloutIconSpan's declaration for why.
           editable.setSpan(
-            CalloutBackgroundSpan(backgroundColor, start, end),
+            CalloutIconSpan(
+              ((CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP + CALLOUT_ICON_WIDTH_DP)
+                * resources.displayMetrics.density).toInt().coerceAtLeast(1),
+              block.icon ?: DEFAULT_CALLOUT_ICON,
+              ((CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP)
+                * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            ),
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
           )
+        }
+        if (block.type == "quote") {
+          val barColor = block.color?.let { proofTextColors[it] } ?: proofQuoteBarColor(dark)
           editable.setSpan(
-            CalloutIconSpan(
-              (input.textSize * CALLOUT_ICON_WIDTH_SCALE).toInt().coerceAtLeast(1),
-              block.icon ?: DEFAULT_CALLOUT_ICON
+            QuoteBorderSpan(
+              (QUOTE_TEXT_INDENT_DP * resources.displayMetrics.density).toInt().coerceAtLeast(1),
+              (QUOTE_BAR_WIDTH_DP * resources.displayMetrics.density).toInt().coerceAtLeast(1),
+              barColor
             ),
             start,
             end,
@@ -2066,7 +2157,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           editable.setSpan(StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         block.color?.let { color ->
-          // A callout's `_bg` color instead tints its CalloutBackgroundSpan box above.
+          // A callout's `_bg` color instead tints the box ProofInput.onDraw paints for it.
           if (block.type != "callout") {
             proofBackgroundColors[color]?.let { editable.setSpan(BackgroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
           }
@@ -2101,6 +2192,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       if (block.toggle && block.collapsed) collapsedDepth = block.depth
       start = end + 1
     }
+    input.post { reportContentSize() }
   }
 
   /** Copies Android-adjusted inline marker ranges back into the block transport model. */
@@ -2151,6 +2243,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     private var pressedTodoBlock = -1
     private var pressedPageReferenceBlock = -1
     private var pressedDividerBlock = -1
+    private var pressedImageBlock = -1
+    private var pressStartX = 0f
+    private var pressStartY = 0f
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     /** BlockPaddingSpan enlarges a line's metrics, including Android's default cursor bounds. */
     fun useGlyphHeightCursor() {
@@ -2175,6 +2271,51 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           canvas.restoreToCount(saved)
         }
       })
+    }
+
+    /** Paints every callout's rounded background box before the base class draws text and cursor. */
+    override fun onDraw(canvas: Canvas) {
+      drawCalloutBackgrounds(canvas)
+      super.onDraw(canvas)
+    }
+
+    private fun drawCalloutBackgrounds(canvas: Canvas) {
+      val textLayout = layout ?: return
+      val outerPadding = CALLOUT_OUTER_PADDING_DP * resources.displayMetrics.density
+      val left = totalPaddingLeft + outerPadding
+      val right = width - totalPaddingRight - outerPadding
+      val topOffset = totalPaddingTop
+      val density = resources.displayMetrics.density
+      val radius = 12f * density
+      val fillPaint = Paint(paint).apply { style = Paint.Style.FILL }
+      val borderPaint = Paint(paint).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = density
+      }
+      var start = 0
+      blocks.forEach { block ->
+        val end = start + block.nativeText().length
+        if (block.type == "callout") {
+          val firstLine = textLayout.getLineForOffset(start)
+          val lastLine = textLayout.getLineForOffset(end)
+          val top = textLayout.getLineTop(firstLine) + topOffset + outerPadding
+          val bottom = textLayout.getLineBottom(lastLine) + topOffset - outerPadding
+          val rect = RectF(left, top, right, bottom)
+          val isForegroundColor = block.color?.let { it in proofTextColors } == true
+          fillPaint.color = when {
+            block.color?.let { proofBackgroundColors[it] } != null ->
+              proofBackgroundColors.getValue(block.color!!)
+            isForegroundColor -> if (dark) Color.rgb(0x19, 0x19, 0x19) else Color.WHITE
+            else -> proofCalloutDefaultBackground(dark)
+          }
+          canvas.drawRoundRect(rect, radius, radius, fillPaint)
+          if (isForegroundColor) {
+            borderPaint.color = if (dark) Color.rgb(0x48, 0x48, 0x46) else Color.rgb(0xE6, 0xE5, 0xE2)
+            canvas.drawRoundRect(rect, radius, radius, borderPaint)
+          }
+        }
+        start = end + 1
+      }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -2247,31 +2388,74 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       return if (block.type == "divider") blockIndex else null
     }
 
+    /** An image fills its whole line, so any tap along that line opens the actions sheet for it. */
+    private fun imageBlockAt(event: MotionEvent): Int? {
+      val textLayout = layout ?: return null
+      if (textLayout.height == 0) return null
+      val lineY = (event.y - totalPaddingTop).toInt().coerceIn(0, textLayout.height - 1)
+      val line = textLayout.getLineForVertical(lineY)
+      val lineStart = textLayout.getLineStart(line)
+      val blockIndex = text.take(lineStart).count { it == '\n' }
+      val block = blocks.getOrNull(blockIndex) ?: return null
+      return if (block.type == "image") blockIndex else null
+    }
+
+    /** True once any tap-region has been armed by a preceding [MotionEvent.ACTION_DOWN]. */
+    private fun hasPressedBlock() = pressedToggleBlock >= 0 || pressedTodoBlock >= 0 ||
+      pressedPageReferenceBlock >= 0 || pressedDividerBlock >= 0 || pressedImageBlock >= 0
+
+    /** Disarms every tap-region, e.g. once a gesture turns out to be a scroll, not a tap. */
+    private fun clearPressedBlocks() {
+      pressedToggleBlock = -1
+      pressedTodoBlock = -1
+      pressedPageReferenceBlock = -1
+      pressedDividerBlock = -1
+      pressedImageBlock = -1
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
       val toggleBlock = toggleBlockAt(event)
       val todoBlock = todoBlockAt(event)
       val pageReferenceBlock = pageReferenceBlockAt(event)
       val dividerBlock = dividerBlockAt(event)
+      val imageBlock = imageBlockAt(event)
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
+          pressStartX = event.x
+          pressStartY = event.y
           pressedToggleBlock = toggleBlock ?: -1
           pressedTodoBlock = todoBlock ?: -1
           pressedPageReferenceBlock = pageReferenceBlock ?: -1
           pressedDividerBlock = dividerBlock ?: -1
+          pressedImageBlock = imageBlock ?: -1
           if (pressedToggleBlock >= 0) return true
           if (pressedTodoBlock >= 0) return true
           if (pressedPageReferenceBlock >= 0) return true
           if (pressedDividerBlock >= 0) return true
+          if (pressedImageBlock >= 0) return true
+        }
+        // A tap-region stays armed through ACTION_DOWN's early return above, so a swipe that
+        // starts on one (a divider or image commonly fills most of the visible width/height)
+        // would otherwise still fire as a tap on ACTION_UP, regardless of how far it dragged in
+        // between -- this is what actually opens the actions sheet mid-scroll and, since nothing
+        // else was ever asked to handle the gesture, is also why the swipe fails to scroll at all.
+        MotionEvent.ACTION_MOVE -> {
+          if (hasPressedBlock() &&
+            (abs(event.x - pressStartX) > touchSlop || abs(event.y - pressStartY) > touchSlop)) {
+            clearPressedBlocks()
+          }
         }
         MotionEvent.ACTION_UP -> {
           val pressed = pressedToggleBlock
           val pressedTodo = pressedTodoBlock
           val pressedPageReference = pressedPageReferenceBlock
           val pressedDivider = pressedDividerBlock
+          val pressedImage = pressedImageBlock
           pressedToggleBlock = -1
           pressedTodoBlock = -1
           pressedPageReferenceBlock = -1
           pressedDividerBlock = -1
+          pressedImageBlock = -1
           if (pressed >= 0 && toggleBlock == pressed) {
             blocks[pressed].collapsed = !blocks[pressed].collapsed
             styleBlocks()
@@ -2306,19 +2490,54 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             performClick()
             return true
           }
+          if (pressedImage >= 0 && imageBlock == pressedImage) {
+            val block = blocks[pressedImage]
+            onBlockActionsPress(mapOf("id" to block.id, "type" to block.type))
+            performClick()
+            return true
+          }
         }
         MotionEvent.ACTION_CANCEL -> {
-          pressedToggleBlock = -1
-          pressedTodoBlock = -1
-          pressedPageReferenceBlock = -1
-          pressedDividerBlock = -1
+          clearPressedBlocks()
         }
       }
       return super.onTouchEvent(event)
     }
 
+    /**
+     * Image and video blocks are atomic -- they carry no navigable text of their own, just a
+     * single placeholder character standing in for the media. Letting the cursor come to rest on
+     * either raw edge of that character is what makes it render at a nonsensical spot over the
+     * media itself (flush with its bottom edge, or hidden just before its right edge). Returns
+     * where the cursor should land instead, skipping straight over the block in whichever
+     * direction it was already headed, or `null` if [offset] isn't on such a block at all.
+     */
+    private fun mediaBlockSkipTarget(offset: Int): Int? {
+      if (blocks.isEmpty()) return null
+      val safeOffset = offset.coerceIn(0, text.length)
+      val index = text.take(safeOffset).count { it == '\n' }.coerceIn(0, blocks.lastIndex)
+      val block = blocks[index]
+      if (block.type != "image" && block.type != "video") return null
+      val blockStart = offsetOf(index)
+      val forward = safeOffset <= blockStart
+      return when {
+        forward && index < blocks.lastIndex -> offsetOf(index + 1)
+        !forward && index > 0 -> offsetOf(index) - 1
+        index < blocks.lastIndex -> offsetOf(index + 1)
+        index > 0 -> offsetOf(index) - 1
+        else -> null
+      }
+    }
+
     override fun onSelectionChanged(start: Int, end: Int) {
       super.onSelectionChanged(start, end)
+      if (start == end) {
+        val target = mediaBlockSkipTarget(start)
+        if (target != null) {
+          setSelection(target)
+          return
+        }
+      }
       scheduleEvent("selection")
     }
 
@@ -2349,7 +2568,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         replaceSelection("\u2028")
         return true
       }
-      if (keyCode == KeyEvent.KEYCODE_DEL && handleDividerBackspace()) {
+      if (keyCode == KeyEvent.KEYCODE_DEL && handleAtomicBlockBackspace()) {
         return true
       }
       return super.onKeyDown(keyCode, event)
@@ -2422,13 +2641,13 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
           if (epoch != connectionEpoch) return false
           if (pageReferenceIsSelected()) return true
-          if (beforeLength > 0 && afterLength == 0 && handleDividerBackspace()) return true
+          if (beforeLength > 0 && afterLength == 0 && handleAtomicBlockBackspace()) return true
           return super.deleteSurroundingText(beforeLength, afterLength)
         }
         override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean {
           if (epoch != connectionEpoch) return false
           if (pageReferenceIsSelected()) return true
-          if (beforeLength > 0 && afterLength == 0 && handleDividerBackspace()) return true
+          if (beforeLength > 0 && afterLength == 0 && handleAtomicBlockBackspace()) return true
           return super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
         }
         override fun setSelection(start: Int, end: Int): Boolean =

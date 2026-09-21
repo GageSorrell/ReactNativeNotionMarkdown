@@ -13,7 +13,8 @@ import type { StorybookConfig } from "@storybook/react-native";
 
 const config: StorybookConfig = {
     deviceAddons: [
-        "@storybook/addon-ondevice-controls"
+        "@storybook/addon-ondevice-controls",
+        "storybook-dark-mode"
     ],
     stories: [ "../**/*.stories.?(ts|tsx)" ]
 };

@@ -10,11 +10,14 @@
  * @license   MIT
  */
 
+import * as ImagePicker from "expo-image-picker";
+import { CameraIcon, GalleryIcon } from "./mediaIcons.tsx";
 import { CopyActionIcon, TrashActionIcon } from "./actionIcons.tsx";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import type { NotionEditorComponents, NotionEditorIconProps } from "./NotionEditor.tsx";
-import type { ComponentType } from "react";
-import { useCallback } from "react";
+import { createElement, type ComponentType } from "react";
+import type { NotionMarkdownColor } from "../../document/types.ts";
+import { useCallback, useMemo, useState } from "react";
 
 /** An action selected in the built-in block-actions sheet. */
 export type NotionEditorBlockAction = "delete" | "duplicate" | "insertAbove" | "insertBelow";
@@ -29,14 +32,30 @@ export interface ActionsBottomSheetProps
     readonly labels: {
         readonly delete: string;
         readonly duplicate: string;
+        readonly color: string;
+        readonly editIcon: string;
+        readonly chooseColor: string;
+        readonly text: string;
+        readonly background: string;
+        readonly defaultColor: string;
         readonly insertAbove: string;
         readonly insertBelow: string;
+        readonly openGallery: string;
+        readonly takePicture: string;
         readonly title: string;
     };
     readonly onAction: (action: NotionEditorBlockAction) => void;
     readonly onDismiss: () => void;
+    /** Called when a color is selected for a callout. */
+    readonly onColor?: (color: NotionMarkdownColor | undefined) => void;
+    /** Called with the picked asset's local URI once a replacement image is chosen. */
+    readonly onReplaceImage?: (url: string) => void | Promise<void>;
     /** Hidden for block types (the divider) that can't take content above themselves. */
     readonly showInsertAbove: boolean;
+    /** Callout actions use the Notion-specific color/icon layout. */
+    readonly showCalloutActions?: boolean;
+    /** Shown only for the image block -- offers to replace its source via gallery or camera. */
+    readonly showReplaceImage: boolean;
 }
 
 interface ActionOptionProps
@@ -52,9 +71,16 @@ type LucideModule = Record<string, ComponentType<NotionEditorIconProps>> &
     readonly default?: Record<string, ComponentType<NotionEditorIconProps>>;
 };
 
-const lucideNames: Readonly<Record<"copy" | "remove", string>> =
+const lucideNames: Readonly<Record<
+    "copy" | "remove" | "gallery" | "picture" | "color" | "edit" | "back", string
+>> =
     {
+        back: "ChevronLeft",
+        color: "Palette",
         copy: "Copy",
+        edit: "Pencil",
+        gallery: "Image",
+        picture: "Camera",
         remove: "Trash2"
     } as const;
 
@@ -83,9 +109,22 @@ function getLucideIcons(): LucideModule | undefined
     return optionalLucide ?? undefined;
 }
 
+const actionIconFallbacks: Readonly<Record<
+    "copy" | "remove" | "gallery" | "picture" | "color" | "edit" | "back",
+    ComponentType<NotionEditorIconProps>>> =
+    {
+        back: CopyActionIcon,
+        color: CopyActionIcon,
+        copy: CopyActionIcon,
+        edit: CopyActionIcon,
+        gallery: GalleryIcon,
+        picture: CameraIcon,
+        remove: TrashActionIcon
+    };
+
 /** Resolve an override, an installed Lucide icon, or the dependency-free SVG fallback. */
 function getActionIcon(
-    button: "copy" | "remove",
+    button: "copy" | "remove" | "gallery" | "picture" | "color" | "edit" | "back",
     components: ActionsBottomSheetProps["components"]
 ): ComponentType<NotionEditorIconProps>
 {
@@ -103,7 +142,7 @@ function getActionIcon(
         return lucideIcon;
     }
 
-    return button === "copy" ? CopyActionIcon : TrashActionIcon;
+    return actionIconFallbacks[button];
 }
 
 /** Render one labeled action row. */
@@ -131,6 +170,78 @@ function ActionOption({ color, icon: Icon, label, onPress }: ActionOptionProps)
     </Pressable>;
 }
 
+interface CalloutColorOption
+{
+    readonly color: NotionMarkdownColor | undefined;
+    readonly hex?: string;
+    readonly label: string;
+}
+
+const calloutTextColors: ReadonlyArray<CalloutColorOption> =
+    [
+        { color: undefined, label: "default" },
+        { color: "gray", hex: "#787774", label: "gray" },
+        { color: "brown", hex: "#9F6B53", label: "brown" },
+        { color: "orange", hex: "#D9730D", label: "orange" },
+        { color: "yellow", hex: "#CB912F", label: "yellow" },
+        { color: "green", hex: "#448361", label: "green" },
+        { color: "blue", hex: "#337EA9", label: "blue" },
+        { color: "purple", hex: "#9065B0", label: "purple" },
+        { color: "pink", hex: "#C14C8A", label: "pink" },
+        { color: "red", hex: "#D44C47", label: "red" }
+    ];
+
+const calloutBackgroundColors: ReadonlyArray<CalloutColorOption> =
+    [
+        { color: undefined, label: "default" },
+        { color: "gray_bg", hex: "#787774", label: "gray" },
+        { color: "brown_bg", hex: "#9F6B53", label: "brown" },
+        { color: "orange_bg", hex: "#D9730D", label: "orange" },
+        { color: "yellow_bg", hex: "#CB912F", label: "yellow" },
+        { color: "green_bg", hex: "#448361", label: "green" },
+        { color: "blue_bg", hex: "#337EA9", label: "blue" },
+        { color: "purple_bg", hex: "#9065B0", label: "purple" },
+        { color: "pink_bg", hex: "#C14C8A", label: "pink" },
+        { color: "red_bg", hex: "#D44C47", label: "red" }
+    ];
+
+function ColorOption({
+    dark,
+    option,
+    onPress,
+    defaultLabel
+}: {
+    readonly dark: boolean;
+    readonly defaultLabel: string;
+    readonly onPress: () => void;
+    readonly option: CalloutColorOption;
+})
+{
+    const foreground = dark ? "#F5F5F5" : "#2C2C2B";
+    const muted = dark ? "#D0CDC7" : "#45433F";
+    const swatch = option.hex ?? (dark ? "#30302F" : "#FFFFFF");
+    const swatchBackground = option.color?.endsWith("_bg") === true
+        ? `${ swatch }38`
+        : swatch;
+
+    return <Pressable accessibilityLabel={ option.color === undefined ? defaultLabel : option.label }
+        accessibilityRole="button"
+        onPress={ onPress }
+        style={ styles.colorOption }>
+        <View style={ [
+            styles.colorSwatch,
+            { backgroundColor: swatchBackground, borderColor: option.hex ?? muted }
+        ] }>
+            <Text style={ [ styles.colorSwatchText, { color: option.hex ?? foreground } ] }>
+                { option.color === undefined ? "A" : "A" }
+            </Text>
+        </View>
+        <Text style={ [ styles.colorOptionLabel, { color: foreground } ] }>
+            { option.color === undefined ? defaultLabel : option.label }
+        </Text>
+    </Pressable>;
+}
+
 /** Render the built-in block-actions sheet. */
 export function ActionsBottomSheet({
     blockName,
@@ -139,9 +250,14 @@ export function ActionsBottomSheet({
     labels,
     onAction,
     onDismiss,
-    showInsertAbove
+    onColor,
+    onReplaceImage,
+    showInsertAbove,
+    showCalloutActions = false,
+    showReplaceImage
 }: ActionsBottomSheetProps)
 {
+    const [ choosingColor, setChoosingColor ] = useState(false);
     const foreground = dark ? "#F5F5F5" : "#2C2C2B";
     const muted = dark ? "#D0CDC7" : "#45433F";
     const surface = dark ? "#202020" : "#F9F8F6";
@@ -151,6 +267,33 @@ export function ActionsBottomSheet({
     /* The package's "danger" color -- see NotionRendererTheme.danger -- deliberately the same
        hex in both themes, unlike the other colors on this sheet. */
     const danger = "#E56458";
+
+    const handleReplace = useCallback(async (action: "gallery" | "picture") =>
+    {
+        const result = action === "gallery"
+            ? await ImagePicker.launchImageLibraryAsync({ mediaTypes: [ "images" ] })
+            : await ImagePicker.launchCameraAsync({ mediaTypes: [ "images" ] });
+
+        if (result.canceled) { return; }
+        const uri = result.assets?.[ 0 ]?.uri;
+        if (uri === undefined) { return; }
+
+        /* Close first, matching MediaBottomSheet: NotionEditor sends a focus command on
+           dismissal, so the replace command lands as the final command in the batch. */
+        onDismiss();
+        await onReplaceImage?.(uri);
+    }, [ onDismiss, onReplaceImage ]);
+
+    const handleColor = useCallback((color: NotionMarkdownColor | undefined) =>
+    {
+        setChoosingColor(false);
+        onColor?.(color);
+    }, [ onColor ]);
+
+    const colorOptions = useMemo(() => ({
+        background: calloutBackgroundColors,
+        text: calloutTextColors
+    }), [ ]);
 
     return <Modal
         animationType="slide"
@@ -168,47 +311,138 @@ export function ActionsBottomSheet({
             <View accessibilityViewIsModal
                 style={ [ styles.sheet, { backgroundColor: surface } ] }>
                 <View style={ styles.content }>
-                    <Text accessibilityRole="header"
-                        style={ [ styles.title, { color: foreground } ] }>
-                        { labels.title }
-                    </Text>
-                    <Text style={ [ styles.blockNameLabel, { color: muted } ] }>{ blockName }</Text>
-                    <View style={ [
-                        styles.options,
-                        { backgroundColor: optionSurface, borderColor: divider }
-                    ] }>
+                    <View style={ styles.header }>
                         {
-                            showInsertAbove && <ActionOption
-                                color={ muted }
-                                label={ labels.insertAbove }
-                                onPress={ () => onAction("insertAbove") } />
+                            choosingColor && <Pressable
+                                accessibilityLabel={ labels.title }
+                                accessibilityRole="button"
+                                onPress={ () => setChoosingColor(false) }
+                                style={ styles.backButton }>
+                                {
+                                    createElement(getActionIcon("back", components), {
+                                        color: muted,
+                                        size: 22,
+                                        strokeWidth: 2
+                                    })
+                                }
+                            </Pressable>
                         }
-                        {
-                            showInsertAbove
-                                && <View style={ [ styles.divider, { backgroundColor: divider } ] } />
-                        }
-                        <ActionOption
-                            color={ muted }
-                            label={ labels.insertBelow }
-                            onPress={ () => onAction("insertBelow") } />
+                        <Text accessibilityRole="header"
+                            style={ [ styles.title, { color: foreground } ] }>
+                            { choosingColor ? labels.chooseColor : labels.title }
+                        </Text>
                     </View>
-                    <View style={ styles.groupGap } />
-                    <View style={ [
-                        styles.options,
-                        { backgroundColor: optionSurface, borderColor: divider }
-                    ] }>
-                        <ActionOption
-                            color={ muted }
-                            icon={ getActionIcon("copy", components) }
-                            label={ labels.duplicate }
-                            onPress={ () => onAction("duplicate") } />
-                        <View style={ [ styles.divider, { backgroundColor: divider } ] } />
-                        <ActionOption
-                            color={ danger }
-                            icon={ getActionIcon("remove", components) }
-                            label={ labels.delete }
-                            onPress={ () => onAction("delete") } />
-                    </View>
+                    {
+                        choosingColor
+                            ? <View style={ styles.colorContent }>
+                                <Text style={ [ styles.sectionTitle, { color: muted } ] }>
+                                    { labels.text }
+                                </Text>
+                                <View style={ styles.colorGrid }>
+                                    { colorOptions.text.map((option: CalloutColorOption) =>
+                                        <ColorOption
+                                            dark={ dark }
+                                            defaultLabel={ labels.defaultColor }
+                                            key={ option.color ?? "text-default" }
+                                            onPress={ () => handleColor(option.color) }
+                                            option={ option } />) }
+                                </View>
+                                <Text style={ [ styles.sectionTitle, { color: muted } ] }>
+                                    { labels.background }
+                                </Text>
+                                <View style={ styles.colorGrid }>
+                                    { colorOptions.background.map((option: CalloutColorOption) =>
+                                        <ColorOption
+                                            dark={ dark }
+                                            defaultLabel={ labels.defaultColor }
+                                            key={ option.color ?? "background-default" }
+                                            onPress={ () => handleColor(option.color) }
+                                            option={ option } />) }
+                                </View>
+                            </View>
+                            : <>
+                                <Text style={ [ styles.blockNameLabel, { color: muted } ] }>{ blockName }</Text>
+                                {
+                                    showCalloutActions && <View style={ [
+                                        styles.options,
+                                        { backgroundColor: optionSurface, borderColor: divider }
+                                    ] }>
+                                        <ActionOption
+                                            color={ muted }
+                                            icon={ getActionIcon("color", components) }
+                                            label={ labels.color }
+                                            onPress={ () => setChoosingColor(true) } />
+                                        <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                                        <ActionOption
+                                            color={ muted }
+                                            icon={ getActionIcon("edit", components) }
+                                            label={ labels.editIcon }
+                                            onPress={ () => { } } />
+                                    </View> }
+                                { showCalloutActions && <View style={ styles.groupGap } /> }
+                                <View style={ [
+                                    styles.options,
+                                    { backgroundColor: optionSurface, borderColor: divider }
+                                ] }>
+                                    {
+                                        showInsertAbove && <ActionOption
+                                            color={ muted }
+                                            label={ labels.insertAbove }
+                                            onPress={ () => onAction("insertAbove") } />
+                                    }
+                                    {
+                                        showInsertAbove
+                                            && <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                                    }
+                                    <ActionOption
+                                        color={ muted }
+                                        label={ labels.insertBelow }
+                                        onPress={ () => onAction("insertBelow") } />
+                                </View>
+                                {
+                                    showReplaceImage && <>
+                                        <View style={ styles.groupGap } />
+                                        <View style={ [
+                                            styles.options,
+                                            { backgroundColor: optionSurface, borderColor: divider }
+                                        ] }>
+                                            <ActionOption
+                                                color={ muted }
+                                                icon={ getActionIcon("gallery", components) }
+                                                label={ labels.openGallery }
+                                                onPress={ () => void handleReplace("gallery") } />
+                                            <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                                            <ActionOption
+                                                color={ muted }
+                                                icon={ getActionIcon("picture", components) }
+                                                label={ labels.takePicture }
+                                                onPress={ () => void handleReplace("picture") } />
+                                        </View>
+                                    </>
+                                }
+                                <View style={ styles.groupGap } />
+                                <View style={ [
+                                    styles.options,
+                                    { backgroundColor: optionSurface, borderColor: divider }
+                                ] }>
+                                    {
+                                        !showCalloutActions && <>
+                                            <ActionOption
+                                                color={ muted }
+                                                icon={ getActionIcon("copy", components) }
+                                                label={ labels.duplicate }
+                                                onPress={ () => onAction("duplicate") } />
+                                            <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                                        </>
+                                    }
+                                    <ActionOption
+                                        color={ danger }
+                                        icon={ getActionIcon("remove", components) }
+                                        label={ labels.delete }
+                                        onPress={ () => onAction("delete") } />
+                                </View>
+                            </>
+                    }
                 </View>
             </View>
         </View>
@@ -216,6 +450,17 @@ export function ActionsBottomSheet({
 }
 
 const styles = StyleSheet.create({
+    backButton:
+    {
+        alignItems: "center",
+        height: 40,
+        justifyContent: "center",
+        left: 0,
+        position: "absolute",
+        top: -6,
+        width: 40,
+        zIndex: 1
+    },
     blockNameLabel:
     {
         fontSize: 11,
@@ -232,6 +477,43 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingTop: 14
     },
+    colorContent:
+    {
+        paddingTop: 4
+    },
+    colorGrid:
+    {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+        marginBottom: 18
+    },
+    colorOption:
+    {
+        alignItems: "center",
+        gap: 4,
+        minWidth: 48,
+        paddingVertical: 4
+    },
+    colorOptionLabel:
+    {
+        fontSize: 10,
+        textTransform: "capitalize"
+    },
+    colorSwatch:
+    {
+        alignItems: "center",
+        borderRadius: 6,
+        borderWidth: StyleSheet.hairlineWidth,
+        height: 32,
+        justifyContent: "center",
+        width: 32
+    },
+    colorSwatchText:
+    {
+        fontSize: 18,
+        fontWeight: "600"
+    },
     divider:
     {
         height: StyleSheet.hairlineWidth
@@ -239,6 +521,12 @@ const styles = StyleSheet.create({
     groupGap:
     {
         height: 12
+    },
+    header:
+    {
+        alignItems: "center",
+        minHeight: 34,
+        justifyContent: "center"
     },
     modalRoot:
     {
@@ -271,6 +559,13 @@ const styles = StyleSheet.create({
         position: "absolute",
         right: 0,
         top: 0
+    },
+    sectionTitle:
+    {
+        fontSize: 12,
+        fontWeight: "700",
+        marginBottom: 8,
+        textTransform: "uppercase"
     },
     sheet:
     {

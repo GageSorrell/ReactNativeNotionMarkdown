@@ -15,14 +15,15 @@ import { TimelineRows, filterEntries } from "./TimelinePanel";
 import type { ProofSnapshot } from "react-native-notion-markdown";
 import { theme } from "../theme";
 
-export type DiagnosticsPanelProps = {
-    snapshot: ProofSnapshot | undefined;
-    dark: boolean;
-    timeline: Array<TimelineEntry>;
-    onClearTimeline: () => void;
-    errors: Array<ErrorEntry>;
-    onClearErrors: () => void;
-};
+export type DiagnosticsPanelProps =
+    {
+        snapshot: ProofSnapshot | undefined;
+        dark: boolean;
+        timeline: Array<TimelineEntry>;
+        onClearTimeline: () => void;
+        errors: Array<ErrorEntry>;
+        onClearErrors: () => void;
+    };
 
 /**
  * Surfaces uncaught errors and rejected events. Also the seed location for a real config/theme

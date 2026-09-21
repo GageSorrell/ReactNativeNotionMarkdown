@@ -14,7 +14,7 @@ class NotionMarkdownModule : Module() {
     // Milestone-one proof coordinator: kept for regression. Superseded below by the
     // multi-field architecture (TextField/SelectionOverlay) for milestone four.
     View(NotionProofView::class) {
-      Events("onEdit", "onPageReferencePress", "onBlockActionsPress")
+      Events("onEdit", "onPageReferencePress", "onBlockActionsPress", "onContentSize")
       Prop("snapshot") { view: NotionProofView, value: Map<String, Any?> -> view.setSnapshot(value) }
       Prop("command") { view: NotionProofView, value: Map<String, Any?>? -> value?.let { view.command(it) } }
       Prop("dark") { view: NotionProofView, value: Boolean -> view.setDark(value) }

@@ -13,18 +13,21 @@
  * @license   MIT
  */
 
+/* eslint-disable sort-keys */
+
 import type { Decorator, Meta, StoryObj } from "@storybook/react-native";
-import { Text as StoryHeaderText, StyleSheet, View } from "react-native";
+import { Text as StoryHeaderText, StyleSheet, View, type ViewStyle } from "react-native";
+import { ThemeOverrideProvider, ThemeToggleButton, useEffectiveColorScheme } from "./themeToggle";
+import { useCallback, useMemo } from "react";
 import type { NotionDocument } from "react-native-notion-markdown/document";
 import { NotionMarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
 import type { ReactNode } from "react";
 import { notionMarkdownInterFonts } from "react-native-notion-markdown/renderer/ui/inter-font";
 import { parseNotionMarkdown } from "react-native-notion-markdown/renderer";
 import { resolveFixture } from "./fixtures";
-import { useCallback, useMemo } from "react";
 import { useFonts } from "expo-font";
 
-const colorOptions =
+const Color =
     [
         "default",
         "gray",
@@ -47,11 +50,41 @@ const colorOptions =
         "red_bg"
     ] as const;
 
-type ColorArg = typeof colorOptions[number];
+/* eslint-disable-next-line @typescript-eslint/no-redeclare */
+type Color = typeof Color[number];
 
-const booleanArgType = { control: { type: "boolean" } } as const;
-const textArgType = { control: { type: "text" } } as const;
-const colorArgType = { control: { type: "select" }, options: colorOptions } as const;
+const BooleanArg = { control: { type: "boolean" } } as const;
+const TextArg = { control: { type: "text" } } as const;
+const ColorArg =
+    {
+        control:
+        {
+            type: "select",
+            labels:
+            {
+                default: "Default",
+                gray: "Gray Text",
+                brown: "Brown Text",
+                orange: "Orange Text",
+                yellow: "Yellow Text",
+                green: "Green Text",
+                blue: "Blue Text",
+                purple: "Purple Text",
+                pink: "Pink Text",
+                red: "Red Text",
+                gray_bg: "Gray Background",
+                brown_bg: "Brown Background",
+                orange_bg: "Orange Background",
+                yellow_bg: "Yellow Background",
+                green_bg: "Green Background",
+                blue_bg: "Blue Background",
+                purple_bg: "Purple Background",
+                pink_bg: "Pink Background",
+                red_bg: "Red Background"
+            }
+        },
+        options: Color
+    } as const;
 
 function numberArgType(min: number, max: number)
 {
@@ -59,22 +92,26 @@ function numberArgType(min: number, max: number)
 }
 
 /** A trailing `{color="..."}` block attribute, as accepted after text/list/quote/heading lines. */
-function lineColorAttr(color: ColorArg): string
+function lineColorAttr(color: Color): string
 {
     return color === "default" ? "" : ` {color="${ color }"}`;
 }
 
 /** A `color="..."` tag attribute, as accepted by container/media tags like `<callout>`. */
-function tagColorAttr(color: ColorArg): string
+function tagColorAttr(color: Color): string
 {
     return color === "default" ? "" : ` color="${ color }"`;
 }
 
-interface BlockCanvasProps
+interface BlockCanvasProps extends ExampleLabelProps
 {
-    readonly dark: boolean;
     readonly markdown: string;
     readonly resolveSyncedBlock?: (url: string) => Promise<NotionDocument | null>;
+}
+
+interface ExampleLabelProps
+{
+    readonly Label?: string;
 }
 
 /**
@@ -83,23 +120,78 @@ interface BlockCanvasProps
  * so there's no built-in way to label multiple examples within one story; this is a plain shared
  * component instead, reusable once per example if a story ever grows to show more than one.
  */
-function ExampleLabel({ dark }: { readonly dark: boolean })
+function ExampleLabel({ Label = "Example" }: ExampleLabelProps)
 {
-    return <StoryHeaderText style={ [ exampleStyles.label, dark && exampleStyles.labelDark ] }>
-        Example
+    const colorScheme = useEffectiveColorScheme();
+    const dark = colorScheme === "dark";
+
+    const Style = useMemo(
+        () => [ exampleStyles.label, dark && exampleStyles.labelDark ],
+        [ dark ]
+    );
+    return <StoryHeaderText style={ Style }>
+        { Label }
     </StoryHeaderText>;
 }
 
-/** Renders one block's Markdown through the real renderer, matching the story's dark-mode control. */
-function BlockCanvas({ dark, markdown, resolveSyncedBlock }: BlockCanvasProps)
+interface BlockCanvasContainerProps
 {
-    return <View style={ { backgroundColor: dark ? "#191919" : "#fff", flex: 1 } }>
-        <ExampleLabel dark={ dark } />
-        <NotionMarkdownRenderer colorScheme={ dark ? "dark" : "light" }
-            markdown={ markdown }
-            resolveMediaUrl={ resolveFixture }
-            resolveSyncedBlock={ resolveSyncedBlock } />
-    </View>;
+    readonly Blocks: ReadonlyArray<BlockCanvasProps>;
+}
+
+function BlockCanvasContainer({ Blocks }: BlockCanvasContainerProps)
+{
+    const RootStyle = useMemo(
+        (): ViewStyle => ({ flex: 1, alignItems: "stretch", justifyContent: "flex-start" }),
+        [ ]
+    );
+
+    return (
+        <View style={ RootStyle }>
+            {
+                Blocks.map(({
+                    Label = "Example",
+                    markdown,
+                    resolveSyncedBlock
+                }: BlockCanvasProps,
+                Index: number
+                ) => (
+                    <BlockCanvas
+                        Label={ Label }
+                        key={ `${markdown.slice(0, 48)}-${ Index }` }
+                        markdown={ markdown }
+                        resolveSyncedBlock={ resolveSyncedBlock }
+                    />
+                ))
+            }
+        </View>
+    );
+}
+
+/** Renders one block's Markdown through the real renderer, matching the story's dark-mode control. */
+function BlockCanvas({ Label = "Example", markdown, resolveSyncedBlock }: BlockCanvasProps)
+{
+    const ColorScheme = useEffectiveColorScheme();
+    const dark = ColorScheme === "dark";
+
+    const RootStyle = useMemo(
+        () => ({ backgroundColor: dark ? "#191919" : "#fff", flex: 1 }),
+        [ dark ]
+    );
+
+    return (
+        <View style={ RootStyle }>
+            <ExampleLabel Label={ Label } />
+            <View style={ { height: "100%" } }>
+                <NotionMarkdownRenderer
+                    colorScheme={ dark ? "dark" : "light" }
+                    markdown={ markdown }
+                    resolveMediaUrl={ resolveFixture }
+                    resolveSyncedBlock={ resolveSyncedBlock }
+                />
+            </View>
+        </View>
+    );
 }
 
 const exampleStyles = StyleSheet.create({
@@ -131,11 +223,13 @@ interface StoryHeaderFrameProps
  * title, with the story's own render output filling the rest of the screen below it. Loads the
  * optional Inter Black face for that title via {@link notionMarkdownInterFonts} -- while it's
  * loading (or if the optional peers aren't installed at all), the title still reads as bold via
- * `fontWeight`, just in the platform's system font instead of true Inter Black.
+ * `fontWeight`, just in the platform's system font instead of true Inter Black. The upper-right
+ * `ThemeToggleButton`, opposite the title, overrides `useColorScheme` for every story canvas.
  */
 function StoryHeaderFrame({ children, name }: StoryHeaderFrameProps)
 {
     const [ interLoaded ] = useFonts(notionMarkdownInterFonts);
+    const dark = useEffectiveColorScheme() === "dark";
     const titleStyle = useMemo(
         () => [ headerStyles.headerText, interLoaded && headerStyles.headerTextInter ],
         [ interLoaded ]
@@ -144,6 +238,7 @@ function StoryHeaderFrame({ children, name }: StoryHeaderFrameProps)
     return <View style={ headerStyles.page }>
         <View style={ headerStyles.header }>
             <StoryHeaderText style={ titleStyle }>{ name }</StoryHeaderText>
+            <ThemeToggleButton dark={ dark } />
         </View>
         <View style={ headerStyles.body }>
             { children }
@@ -156,25 +251,31 @@ function StoryHeaderFrame({ children, name }: StoryHeaderFrameProps)
  * `name` comes from--there is no per-story JSX change needed to get this.
  */
 const withStoryHeader: Decorator = (StoryComponent: any, context: any) => (
-    <StoryHeaderFrame name={ context.name }>
-        <StoryComponent />
-    </StoryHeaderFrame>
+    <ThemeOverrideProvider>
+        <StoryHeaderFrame name={ context.name }>
+            <StoryComponent />
+        </StoryHeaderFrame>
+    </ThemeOverrideProvider>
 );
 
 const headerStyles = StyleSheet.create({
     body: { flex: 1 },
     header:
     {
-        backgroundColor: "#ff00ff",
+        alignItems: "flex-start",
+        flexDirection: "row",
+        justifyContent: "space-between",
         paddingHorizontal: 24,
         paddingTop: 28
     },
     headerText:
     {
         color: "#2C2C2B",
+        flexShrink: 1,
         fontSize: 40,
         fontWeight: "900",
-        marginBottom: 24
+        marginBottom: 24,
+        marginRight: 12
     },
     headerTextInter:
     {
@@ -201,51 +302,95 @@ type BlockStory<Args> = StoryObj<Meta<Args>>;
 
 interface TextArgs
 {
-    readonly bold: boolean;
-    readonly code: boolean;
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly italic: boolean;
-    readonly strikethrough: boolean;
-    readonly text: string;
-    readonly underline: boolean;
+    readonly Text: string;
+    readonly Bold: boolean;
+    readonly Color: Color;
+    readonly InlineCode: boolean;
+    readonly Italic: boolean;
+    readonly Strikethrough: boolean;
+    readonly Underline: boolean;
 }
 
-function TextStory({ bold, code, color, dark, italic, strikethrough, text, underline }: TextArgs)
+/* eslint-disable-next-line */
+const LoremIpsum = "Lorem ipsum dolor sit amet consectetur adipiscing elit. Temporibus est anim magna dignissimos amet. Mollitia laboris corrupti sint possimus est dolore aliquip accusamus. Sint officia cillum autem assumenda irure duis libero praesentium ut dolore sint. Fuga autem aut dolores temporibus culpa praesentium nisi dolorum autem. Deserunt minim optio id adipiscing qui. Voluptate facilis exercitation provident dolor eiusmod nam. Dolores dolorum eiusmod ad quibusdam qui repellendus quod temporibus cupiditate. Autem possimus occaecat sit labore repellendus nihil aliquip voluptatum. Reprehenderit voluptas et deleniti similique libero dolorem veniam cupidatat consectetur assumenda culpa. Officia quas et omnis vel similique sint cupidatat nulla possimus. Quis mollit omnis id cumque placeat facere enim soluta dolorem.";
+
+function TextStory({ Bold, Color, InlineCode, Italic, Strikethrough, Text: InText, Underline }: TextArgs)
 {
-    let content = text;
-    if (code) {content = `\`${ content }\``;}
-    if (bold) {content = `**${ content }**`;}
-    if (italic) {content = `*${ content }*`;}
-    if (strikethrough) {content = `~~${ content }~~`;}
-    if (underline) {content = `<span underline="true">${ content }</span>`;}
-    return <BlockCanvas dark={ dark }
-        markdown={ `${ content }${ lineColorAttr(color) }` } />;
+    let content = InText;
+    let loremIpsumContent = LoremIpsum;
+    if (InlineCode)
+    {
+        content = `\`${ content }\``;
+        loremIpsumContent = `\`${ loremIpsumContent }\``;
+    }
+
+    if (Bold)
+    {
+        content = `**${ content }**`;
+        loremIpsumContent = `**${ loremIpsumContent }**`;
+    }
+
+    if (Italic)
+    {
+        content = `*${ content }*`;
+        loremIpsumContent = `*${ loremIpsumContent }*`;
+    }
+
+    if (Strikethrough)
+    {
+        content = `~~${ content }~~`;
+        loremIpsumContent = `~~${ loremIpsumContent }~~`;
+    }
+
+    if (Underline)
+    {
+        content = `<span underline="true">${ content }</span>`;
+        loremIpsumContent = `<span underline="true">${ loremIpsumContent }</span>`;
+    }
+
+    const CustomTextExample = `${ content }${ lineColorAttr(Color) }`;
+    const LoremIpsumExample = `${ loremIpsumContent }${ lineColorAttr(Color) }`;
+
+    const Blocks: ReadonlyArray<BlockCanvasProps> =
+        [
+            {
+                Label: "Custom Text",
+                markdown: CustomTextExample
+            },
+            {
+                Label: "Lorem Ipsum Sample",
+                markdown: LoremIpsumExample
+            }
+        ] as const;
+
+    return <BlockCanvasContainer Blocks={ Blocks } />;
 }
 
 export const Text: BlockStory<TextArgs> =
     {
         argTypes:
         {
-            bold: booleanArgType,
-            code: booleanArgType,
-            color: colorArgType,
-            dark: booleanArgType,
-            italic: booleanArgType,
-            strikethrough: booleanArgType,
-            text: textArgType,
-            underline: booleanArgType
+            Text: TextArg,
+            Color: ColorArg,
+            Bold: BooleanArg,
+            InlineCode:
+            {
+                ...BooleanArg,
+                name: "Inline Code"
+            },
+            Italic: BooleanArg,
+            Strikethrough: BooleanArg,
+            Underline: BooleanArg
         },
         args:
         {
-            bold: true,
-            code: false,
-            color: "default",
-            dark: false,
-            italic: false,
-            strikethrough: false,
-            text: "The quick brown fox jumps over the lazy dog.",
-            underline: false
+            Text: "The quick brown fox jumps over the lazy dog.",
+            Color: "default",
+            Bold: false,
+            InlineCode: false,
+            Italic: false,
+            Strikethrough: false,
+            Underline: false
         },
         render: (args: TextArgs) => <TextStory { ...args } />
     };
@@ -257,38 +402,34 @@ const headingLevels = [ 1, 2, 3, 4 ] as const;
 
 type HeadingLevel = typeof headingLevels[number];
 
-const headingLevelArgType = { control: { type: "inline-radio" }, options: headingLevels } as const;
+const HeadingLevelArgType = { control: { type: "inline-radio" }, options: headingLevels } as const;
 
 interface HeadingArgs
 {
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly level: HeadingLevel;
-    readonly text: string;
+    readonly Text: string;
+    readonly Color: Color;
+    readonly Level: HeadingLevel;
 }
 
-function HeadingStory({ color, dark, level, text }: HeadingArgs)
+function HeadingStory({ Color, Level, Text: InText }: HeadingArgs)
 {
-    const markdown = `${ "#".repeat(level) } ${ text }${ lineColorAttr(color) }`;
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown } />;
+    const markdown = `${ "#".repeat(Level) } ${ InText }${ lineColorAttr(Color) }`;
+    return <BlockCanvas markdown={ markdown } />;
 }
 
 export const Heading: BlockStory<HeadingArgs> =
     {
         argTypes:
         {
-            color: colorArgType,
-            dark: booleanArgType,
-            level: headingLevelArgType,
-            text: textArgType
+            Text: TextArg,
+            Color: ColorArg,
+            Level: HeadingLevelArgType
         },
         args:
         {
-            color: "default",
-            dark: false,
-            level: 1,
-            text: "Heading text"
+            Text: "Heading text",
+            Color: "default",
+            Level: 1
         },
         render: (args: HeadingArgs) => <HeadingStory { ...args } />
     };
@@ -298,53 +439,48 @@ export const Heading: BlockStory<HeadingArgs> =
 
 interface ToggleHeadingArgs
 {
-    readonly childBulletText: string;
-    readonly closingText: string;
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly level: HeadingLevel;
-    readonly openingText: string;
-    readonly text: string;
+    readonly Text: string;
+    readonly ChildBulletText: string;
+    readonly ClosingText: string;
+    readonly Color: Color;
+    readonly Level: HeadingLevel;
+    readonly OpeningText: string;
 }
 
 function ToggleHeadingStory({
-    childBulletText,
-    closingText,
-    color,
-    dark,
-    level,
-    openingText,
-    text
+    ChildBulletText,
+    ClosingText,
+    Color,
+    Level,
+    OpeningText,
+    Text: InText
 }: ToggleHeadingArgs)
 {
-    const attrs = color === "default" ? "toggle=\"true\"" : `toggle="true" color="${ color }"`;
-    const headingLine = `${ "#".repeat(level) } ${ text } {${ attrs }}`;
-    const children = [ `\t${ openingText }`, `\t- ${ childBulletText }`, `\t${ closingText }` ].join("\n");
-    return <BlockCanvas dark={ dark }
-        markdown={ `${ headingLine }\n${ children }` } />;
+    const attrs = Color === "default" ? "toggle=\"true\"" : `toggle="true" color="${ Color }"`;
+    const headingLine = `${ "#".repeat(Level) } ${ InText } {${ attrs }}`;
+    const children = [ `\t${ OpeningText }`, `\t- ${ ChildBulletText }`, `\t${ ClosingText }` ].join("\n");
+    return <BlockCanvas markdown={ `${ headingLine }\n${ children }` } />;
 }
 
 export const ToggleHeading: BlockStory<ToggleHeadingArgs> =
     {
         argTypes:
         {
-            childBulletText: textArgType,
-            closingText: textArgType,
-            color: colorArgType,
-            dark: booleanArgType,
-            level: headingLevelArgType,
-            openingText: textArgType,
-            text: textArgType
+            Text: TextArg,
+            ChildBulletText: TextArg,
+            ClosingText: TextArg,
+            Color: ColorArg,
+            Level: HeadingLevelArgType,
+            OpeningText: TextArg
         },
         args:
         {
-            childBulletText: "Documented the toggle heading variant",
-            closingText: "Thanks for reading!",
-            color: "default",
-            dark: false,
-            level: 1,
-            openingText: "Shipped the block gallery story.",
-            text: "Release notes"
+            Text: "Release notes",
+            ChildBulletText: "Documented the toggle heading variant",
+            ClosingText: "Thanks for reading!",
+            Color: "default",
+            Level: 1,
+            OpeningText: "Shipped the block gallery story."
         },
         render: (args: ToggleHeadingArgs) => <ToggleHeadingStory { ...args } />
     };
@@ -354,35 +490,31 @@ export const ToggleHeading: BlockStory<ToggleHeadingArgs> =
 
 interface BulletedListItemArgs
 {
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly nestedText: string;
-    readonly text: string;
+    readonly Text: string;
+    readonly NestedText: string;
+    readonly Color: Color;
 }
 
-function BulletedListItemStory({ color, dark, nestedText, text }: BulletedListItemArgs)
+function BulletedListItemStory({ Color, NestedText, Text: InText }: BulletedListItemArgs)
 {
-    const line = `- ${ text }${ lineColorAttr(color) }`;
-    const markdown = nestedText === "" ? line : `${ line }\n\t- ${ nestedText }`;
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown } />;
+    const line = `- ${ InText }${ lineColorAttr(Color) }`;
+    const markdown = NestedText === "" ? line : `${ line }\n\t- ${ NestedText }\n\t\t- ${ NestedText }`;
+    return <BlockCanvas markdown={ markdown } />;
 }
 
 export const BulletedListItem: BlockStory<BulletedListItemArgs> =
     {
         argTypes:
         {
-            color: colorArgType,
-            dark: booleanArgType,
-            nestedText: textArgType,
-            text: textArgType
+            Text: TextArg,
+            NestedText: TextArg,
+            Color: ColorArg
         },
         args:
         {
-            color: "default",
-            dark: false,
-            nestedText: "Nested bullet",
-            text: "Bulleted item"
+            Text: "Bulleted item",
+            NestedText: "Nested bullet",
+            Color: "default"
         },
         render: (args: BulletedListItemArgs) => <BulletedListItemStory { ...args } />
     };
@@ -392,36 +524,32 @@ export const BulletedListItem: BlockStory<BulletedListItemArgs> =
 
 interface NumberedListItemArgs
 {
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly firstText: string;
-    readonly secondText: string;
+    readonly FirstText: string;
+    readonly SecondText: string;
+    readonly Color: Color;
 }
 
-function NumberedListItemStory({ color, dark, firstText, secondText }: NumberedListItemArgs)
+function NumberedListItemStory({ Color, FirstText, SecondText }: NumberedListItemArgs)
 {
-    const first = `1. ${ firstText }${ lineColorAttr(color) }`;
-    const second = `1. ${ secondText }${ lineColorAttr(color) }`;
+    const first = `1. ${ FirstText }${ lineColorAttr(Color) }`;
+    const second = `1. ${ SecondText }${ lineColorAttr(Color) }`;
     const markdown = `${ first }\n${ second }`;
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown } />;
+    return <BlockCanvas markdown={ markdown } />;
 }
 
 export const NumberedListItem: BlockStory<NumberedListItemArgs> =
     {
         argTypes:
         {
-            color: colorArgType,
-            dark: booleanArgType,
-            firstText: textArgType,
-            secondText: textArgType
+            Color: ColorArg,
+            FirstText: TextArg,
+            SecondText: TextArg
         },
         args:
         {
-            color: "default",
-            dark: false,
-            firstText: "First item",
-            secondText: "Second item"
+            Color: "default",
+            FirstText: "First item",
+            SecondText: "Second item"
         },
         render: (args: NumberedListItemArgs) => <NumberedListItemStory { ...args } />
     };
@@ -431,34 +559,30 @@ export const NumberedListItem: BlockStory<NumberedListItemArgs> =
 
 interface ToDoArgs
 {
-    readonly checked: boolean;
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly text: string;
+    readonly Text: string;
+    readonly Checked: boolean;
+    readonly Color: Color;
 }
 
-function ToDoStory({ checked, color, dark, text }: ToDoArgs)
+function ToDoStory({ Checked, Color, Text: InText }: ToDoArgs)
 {
-    const markdown = `- [${ checked ? "x" : " " }] ${ text }${ lineColorAttr(color) }`;
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown } />;
+    const markdown = `- [${ Checked ? "x" : " " }] ${ InText }${ lineColorAttr(Color) }`;
+    return <BlockCanvas markdown={ markdown } />;
 }
 
 export const ToDo: BlockStory<ToDoArgs> =
     {
         argTypes:
         {
-            checked: booleanArgType,
-            color: colorArgType,
-            dark: booleanArgType,
-            text: textArgType
+            Text: TextArg,
+            Checked: BooleanArg,
+            Color: ColorArg
         },
         args:
         {
-            checked: false,
-            color: "default",
-            dark: false,
-            text: "Finish the block gallery"
+            Text: "Finish the block gallery",
+            Checked: false,
+            Color: "default"
         },
         render: (args: ToDoArgs) => <ToDoStory { ...args } />
     };
@@ -468,30 +592,26 @@ export const ToDo: BlockStory<ToDoArgs> =
 
 interface QuoteArgs
 {
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly text: string;
+    readonly Text: string;
+    readonly Color: Color;
 }
 
-function QuoteStory({ color, dark, text }: QuoteArgs)
+function QuoteStory({ Color, Text: text }: QuoteArgs)
 {
-    return <BlockCanvas dark={ dark }
-        markdown={ `> ${ text }${ lineColorAttr(color) }` } />;
+    return <BlockCanvas markdown={ `> ${ text }${ lineColorAttr(Color) }` } />;
 }
 
 export const Quote: BlockStory<QuoteArgs> =
     {
         argTypes:
         {
-            color: colorArgType,
-            dark: booleanArgType,
-            text: textArgType
+            Text: TextArg,
+            Color: ColorArg
         },
         args:
         {
-            color: "default",
-            dark: false,
-            text: "Simplicity is the ultimate sophistication."
+            Text: "Simplicity is the ultimate sophistication.",
+            Color: "default"
         },
         render: (args: QuoteArgs) => <QuoteStory { ...args } />
     };
@@ -501,35 +621,31 @@ export const Quote: BlockStory<QuoteArgs> =
 
 interface ToggleArgs
 {
-    readonly body: string;
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly summary: string;
+    readonly Body: string;
+    readonly Color: Color;
+    readonly Summary: string;
 }
 
-function ToggleStory({ body, color, dark, summary }: ToggleArgs)
+function ToggleStory({ Body: body, Color: color, Summary: summary }: ToggleArgs)
 {
     const markdown = `<details${ tagColorAttr(color) }>\n`
         + `<summary>${ summary }</summary>\n\t${ body }\n</details>`;
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown } />;
+    return <BlockCanvas markdown={ markdown } />;
 }
 
 export const Toggle: BlockStory<ToggleArgs> =
     {
         argTypes:
         {
-            body: textArgType,
-            color: colorArgType,
-            dark: booleanArgType,
-            summary: textArgType
+            Body: TextArg,
+            Color: ColorArg,
+            Summary: TextArg
         },
         args:
         {
-            body: "Hidden until the toggle is opened.",
-            color: "default",
-            dark: false,
-            summary: "Tap to expand"
+            Body: "Hidden until the toggle is opened.",
+            Color: "default",
+            Summary: "Tap to expand"
         },
         render: (args: ToggleArgs) => <ToggleStory { ...args } />
     };
@@ -539,34 +655,30 @@ export const Toggle: BlockStory<ToggleArgs> =
 
 interface CalloutArgs
 {
-    readonly color: ColorArg;
-    readonly dark: boolean;
-    readonly icon: string;
-    readonly text: string;
+    readonly Text: string;
+    readonly Color: Color;
+    readonly Icon: string;
 }
 
-function CalloutStory({ color, dark, icon, text }: CalloutArgs)
+function CalloutStory({ Color: color, Icon: icon, Text: text }: CalloutArgs)
 {
     const markdown = `<callout icon="${ icon }"${ tagColorAttr(color) }>\n\t${ text }\n</callout>`;
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown } />;
+    return <BlockCanvas markdown={ markdown } />;
 }
 
 export const Callout: BlockStory<CalloutArgs> =
     {
         argTypes:
         {
-            color: colorArgType,
-            dark: booleanArgType,
-            icon: textArgType,
-            text: textArgType
+            Text: TextArg,
+            Color: ColorArg,
+            Icon: TextArg
         },
         args:
         {
-            color: "yellow_bg",
-            dark: false,
-            icon: "💡",
-            text: "Callouts draw attention to important context."
+            Text: "Callouts draw attention to important context.",
+            Color: "purple_bg",
+            Icon: "💡"
         },
         render: (args: CalloutArgs) => <CalloutStory { ...args } />
     };
@@ -591,28 +703,24 @@ const codeLanguages =
 interface CodeArgs
 {
     readonly code: string;
-    readonly dark: boolean;
     readonly language: typeof codeLanguages[number];
 }
 
-function CodeStory({ code, dark, language }: CodeArgs)
+function CodeStory({ code, language }: CodeArgs)
 {
-    return <BlockCanvas dark={ dark }
-        markdown={ `\`\`\`${ language }\n${ code }\n\`\`\`` } />;
+    return <BlockCanvas markdown={ `\`\`\`${ language }\n${ code }\n\`\`\`` } />;
 }
 
 export const Code: BlockStory<CodeArgs> =
     {
         argTypes:
         {
-            code: textArgType,
-            dark: booleanArgType,
+            code: TextArg,
             language: { control: { type: "select" }, options: codeLanguages }
         },
         args:
         {
             code: "const answer = 42;\nconsole.log(answer);",
-            dark: false,
             language: "typescript"
         },
         render: (args: CodeArgs) => <CodeStory { ...args } />
@@ -623,26 +731,22 @@ export const Code: BlockStory<CodeArgs> =
 
 interface EquationArgs
 {
-    readonly dark: boolean;
     readonly expression: string;
 }
 
-function EquationStory({ dark, expression }: EquationArgs)
+function EquationStory({ expression }: EquationArgs)
 {
-    return <BlockCanvas dark={ dark }
-        markdown={ `$$\n${ expression }\n$$` } />;
+    return <BlockCanvas markdown={ `$$\n${ expression }\n$$` } />;
 }
 
 export const Equation: BlockStory<EquationArgs> =
     {
         argTypes:
         {
-            dark: booleanArgType,
-            expression: textArgType
+            expression: TextArg
         },
         args:
         {
-            dark: false,
             expression: "\\frac{1}{2}"
         },
         render: (args: EquationArgs) => <EquationStory { ...args } />
@@ -655,28 +759,24 @@ interface DividerArgs
 {
     readonly aboveText: string;
     readonly belowText: string;
-    readonly dark: boolean;
 }
 
-function DividerStory({ aboveText, belowText, dark }: DividerArgs)
+function DividerStory({ aboveText, belowText }: DividerArgs)
 {
-    return <BlockCanvas dark={ dark }
-        markdown={ `${ aboveText }\n---\n${ belowText }` } />;
+    return <BlockCanvas markdown={ `${ aboveText }\n---\n${ belowText }` } />;
 }
 
 export const Divider: BlockStory<DividerArgs> =
     {
         argTypes:
         {
-            aboveText: textArgType,
-            belowText: textArgType,
-            dark: booleanArgType
+            aboveText: TextArg,
+            belowText: TextArg
         },
         args:
         {
             aboveText: "Above the divider",
-            belowText: "Below the divider",
-            dark: false
+            belowText: "Below the divider"
         },
         render: (args: DividerArgs) => <DividerStory { ...args } />
     };
@@ -687,9 +787,8 @@ export const Divider: BlockStory<DividerArgs> =
 interface TableArgs
 {
     readonly columnCount: number;
-    readonly dark: boolean;
     readonly fitPageWidth: boolean;
-    readonly headerColor: ColorArg;
+    readonly headerColor: Color;
     readonly headerColumn: boolean;
     readonly headerRow: boolean;
     readonly rowCount: number;
@@ -697,7 +796,6 @@ interface TableArgs
 
 function TableStory({
     columnCount,
-    dark,
     fitPageWidth,
     headerColor,
     headerColumn,
@@ -719,8 +817,7 @@ function TableStory({
     }
     const markdown = `<table fit-page-width="${ fitPageWidth }" header-row="${ headerRow }" `
         + `header-column="${ headerColumn }">\n${ rows.join("\n") }\n</table>`;
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown } />;
+    return <BlockCanvas markdown={ markdown } />;
 }
 
 export const Table: BlockStory<TableArgs> =
@@ -728,17 +825,15 @@ export const Table: BlockStory<TableArgs> =
         argTypes:
         {
             columnCount: numberArgType(1, 4),
-            dark: booleanArgType,
-            fitPageWidth: booleanArgType,
-            headerColor: colorArgType,
-            headerColumn: booleanArgType,
-            headerRow: booleanArgType,
+            fitPageWidth: BooleanArg,
+            headerColor: ColorArg,
+            headerColumn: BooleanArg,
+            headerRow: BooleanArg,
             rowCount: numberArgType(1, 5)
         },
         args:
         {
             columnCount: 2,
-            dark: false,
             fitPageWidth: true,
             headerColor: "default",
             headerColumn: true,
@@ -754,18 +849,16 @@ export const Table: BlockStory<TableArgs> =
 interface ColumnsArgs
 {
     readonly columnCount: number;
-    readonly dark: boolean;
     readonly firstText: string;
     readonly secondText: string;
     readonly thirdText: string;
 }
 
-function ColumnsStory({ columnCount, dark, firstText, secondText, thirdText }: ColumnsArgs)
+function ColumnsStory({ columnCount, firstText, secondText, thirdText }: ColumnsArgs)
 {
     const texts = [ firstText, secondText, thirdText ].slice(0, columnCount);
     const body = texts.flatMap((text: string) => [ "\t<column>", `\t\t${ text }`, "\t</column>" ]);
-    return <BlockCanvas dark={ dark }
-        markdown={ [ "<columns>", ...body, "</columns>" ].join("\n") } />;
+    return <BlockCanvas markdown={ [ "<columns>", ...body, "</columns>" ].join("\n") } />;
 }
 
 export const Columns: BlockStory<ColumnsArgs> =
@@ -773,15 +866,13 @@ export const Columns: BlockStory<ColumnsArgs> =
         argTypes:
         {
             columnCount: numberArgType(2, 3),
-            dark: booleanArgType,
-            firstText: textArgType,
-            secondText: textArgType,
-            thirdText: textArgType
+            firstText: TextArg,
+            secondText: TextArg,
+            thirdText: TextArg
         },
         args:
         {
             columnCount: 2,
-            dark: false,
             firstText: "Left column",
             secondText: "Right column",
             thirdText: "Third column"
@@ -795,28 +886,24 @@ export const Columns: BlockStory<ColumnsArgs> =
 interface ImageArgs
 {
     readonly caption: string;
-    readonly dark: boolean;
     readonly url: string;
 }
 
-function ImageStory({ caption, dark, url }: ImageArgs)
+function ImageStory({ caption, url }: ImageArgs)
 {
-    return <BlockCanvas dark={ dark }
-        markdown={ `![${ caption }](${ url })` } />;
+    return <BlockCanvas markdown={ `![${ caption }](${ url })` } />;
 }
 
 export const Image: BlockStory<ImageArgs> =
     {
         argTypes:
         {
-            caption: textArgType,
-            dark: booleanArgType,
-            url: textArgType
+            caption: TextArg,
+            url: TextArg
         },
         args:
         {
             caption: "Local preview image",
-            dark: false,
             url: "fixture://image"
         },
         render: (args: ImageArgs) => <ImageStory { ...args } />
@@ -828,47 +915,45 @@ export const Image: BlockStory<ImageArgs> =
 interface MediaTagArgs
 {
     readonly caption: string;
-    readonly dark: boolean;
     readonly url: string;
 }
 
 function mediaTagStory(tag: "audio" | "video" | "file" | "pdf" | "embed" | "bookmark")
 {
-    return function MediaTagStory({ caption, dark, url }: MediaTagArgs)
+    return function MediaTagStory({ caption, url }: MediaTagArgs)
     {
         const markdown = `<${ tag } src="${ url }">${ caption }</${ tag }>`;
-        return <BlockCanvas dark={ dark }
-            markdown={ markdown } />;
+        return <BlockCanvas markdown={ markdown } />;
     };
 }
 
-const mediaTagArgTypes = { caption: textArgType, dark: booleanArgType, url: textArgType };
+const mediaTagArgTypes = { caption: TextArg, url: TextArg };
 
 export const Audio: BlockStory<MediaTagArgs> =
     {
         argTypes: mediaTagArgTypes,
-        args: { caption: "Local preview audio", dark: false, url: "fixture://audio" },
+        args: { caption: "Local preview audio", url: "fixture://audio" },
         render: (args: MediaTagArgs) => mediaTagStory("audio")(args)
     };
 
 export const Video: BlockStory<MediaTagArgs> =
     {
         argTypes: mediaTagArgTypes,
-        args: { caption: "Local preview video", dark: false, url: "fixture://video" },
+        args: { caption: "Local preview video", url: "fixture://video" },
         render: (args: MediaTagArgs) => mediaTagStory("video")(args)
     };
 
 export const File: BlockStory<MediaTagArgs> =
     {
         argTypes: mediaTagArgTypes,
-        args: { caption: "Local preview file", dark: false, url: "fixture://pdf" },
+        args: { caption: "Local preview file", url: "fixture://pdf" },
         render: (args: MediaTagArgs) => mediaTagStory("file")(args)
     };
 
 export const Pdf: BlockStory<MediaTagArgs> =
     {
         argTypes: mediaTagArgTypes,
-        args: { caption: "Local preview PDF", dark: false, url: "fixture://pdf" },
+        args: { caption: "Local preview PDF", url: "fixture://pdf" },
         render: (args: MediaTagArgs) => mediaTagStory("pdf")(args)
     };
 
@@ -878,14 +963,14 @@ export const Pdf: BlockStory<MediaTagArgs> =
 export const Embed: BlockStory<MediaTagArgs> =
     {
         argTypes: mediaTagArgTypes,
-        args: { caption: "Example embed", dark: false, url: "https://example.com/embed" },
+        args: { caption: "Example embed", url: "https://example.com/embed" },
         render: (args: MediaTagArgs) => mediaTagStory("embed")(args)
     };
 
 export const Bookmark: BlockStory<MediaTagArgs> =
     {
         argTypes: mediaTagArgTypes,
-        args: { caption: "Example bookmark", dark: false, url: "https://example.com" },
+        args: { caption: "Example bookmark", url: "https://example.com" },
         render: (args: MediaTagArgs) => mediaTagStory("bookmark")(args)
     };
 
@@ -894,30 +979,26 @@ export const Bookmark: BlockStory<MediaTagArgs> =
 
 interface LinkToPageArgs
 {
-    readonly dark: boolean;
     readonly kind: "page" | "database";
     readonly label: string;
     readonly url: string;
 }
 
-function LinkToPageStory({ dark, kind, label, url }: LinkToPageArgs)
+function LinkToPageStory({ kind, label, url }: LinkToPageArgs)
 {
-    return <BlockCanvas dark={ dark }
-        markdown={ `<${ kind } url="${ url }">${ label }</${ kind }>` } />;
+    return <BlockCanvas markdown={ `<${ kind } url="${ url }">${ label }</${ kind }>` } />;
 }
 
 export const LinkToPage: BlockStory<LinkToPageArgs> =
     {
         argTypes:
         {
-            dark: booleanArgType,
             kind: { control: { type: "radio" }, options: [ "page", "database" ] },
-            label: textArgType,
-            url: textArgType
+            label: TextArg,
+            url: TextArg
         },
         args:
         {
-            dark: false,
             kind: "page",
             label: "Roadmap",
             url: "https://example.com/roadmap"
@@ -930,12 +1011,11 @@ export const LinkToPage: BlockStory<LinkToPageArgs> =
 
 interface TableOfContentsArgs
 {
-    readonly color: ColorArg;
-    readonly dark: boolean;
+    readonly Color: Color;
     readonly headingCount: number;
 }
 
-function TableOfContentsStory({ color, dark, headingCount }: TableOfContentsArgs)
+function TableOfContentsStory({ Color: color, headingCount }: TableOfContentsArgs)
 {
     const headings = Array.from(
         { length: headingCount },
@@ -944,10 +1024,7 @@ function TableOfContentsStory({ color, dark, headingCount }: TableOfContentsArgs
     const prefix = headings === "" ? "" : `${ headings }\n`;
     const markdown = `${ prefix }<table_of_contents${ tagColorAttr(color) }/>`;
     return (
-        <BlockCanvas
-            dark={ dark }
-            markdown={ markdown }
-        />
+        <BlockCanvas markdown={ markdown } />
     );
 }
 
@@ -955,14 +1032,12 @@ export const TableOfContents: BlockStory<TableOfContentsArgs> =
     {
         argTypes:
         {
-            color: colorArgType,
-            dark: booleanArgType,
+            Color: ColorArg,
             headingCount: numberArgType(0, 6)
         },
         args:
         {
-            color: "default",
-            dark: false,
+            Color: "default",
             headingCount: 3
         },
         render: (args: TableOfContentsArgs) => <TableOfContentsStory { ...args } />
@@ -974,27 +1049,23 @@ export const TableOfContents: BlockStory<TableOfContentsArgs> =
 interface SyncedBlockArgs
 {
     readonly content: string;
-    readonly dark: boolean;
 }
 
-function SyncedBlockStory({ content, dark }: SyncedBlockArgs)
+function SyncedBlockStory({ content }: SyncedBlockArgs)
 {
     const markdown = `<synced_block url="sync://demo">\n\t${ content }\n</synced_block>`;
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown } />;
+    return <BlockCanvas markdown={ markdown } />;
 }
 
 export const SyncedBlock: BlockStory<SyncedBlockArgs> =
     {
         argTypes:
         {
-            content: textArgType,
-            dark: booleanArgType
+            content: TextArg
         },
         args:
         {
-            content: "Shared local content",
-            dark: false
+            content: "Shared local content"
         },
         render: (args: SyncedBlockArgs) => <SyncedBlockStory { ...args } />
     };
@@ -1004,13 +1075,12 @@ export const SyncedBlock: BlockStory<SyncedBlockArgs> =
 
 interface SyncedBlockReferenceArgs
 {
-    readonly dark: boolean;
     readonly resolved: boolean;
     readonly resolvedText: string;
     readonly url: string;
 }
 
-function SyncedBlockReferenceStory({ dark, resolved, resolvedText, url }: SyncedBlockReferenceArgs)
+function SyncedBlockReferenceStory({ resolved, resolvedText, url }: SyncedBlockReferenceArgs)
 {
     const resolveSyncedBlock = useCallback(async () =>
     {
@@ -1020,8 +1090,7 @@ function SyncedBlockReferenceStory({ dark, resolved, resolvedText, url }: Synced
 
     const markdown = `<synced_block_reference url="${ url }">\n</synced_block_reference>`;
 
-    return <BlockCanvas dark={ dark }
-        markdown={ markdown }
+    return <BlockCanvas markdown={ markdown }
         resolveSyncedBlock={ resolveSyncedBlock } />;
 }
 
@@ -1029,14 +1098,12 @@ export const SyncedBlockReference: BlockStory<SyncedBlockReferenceArgs> =
     {
         argTypes:
         {
-            dark: booleanArgType,
-            resolved: booleanArgType,
-            resolvedText: textArgType,
-            url: textArgType
+            resolved: BooleanArg,
+            resolvedText: TextArg,
+            url: TextArg
         },
         args:
         {
-            dark: false,
             resolved: true,
             resolvedText: "Resolved synced text block",
             url: "sync://demo"

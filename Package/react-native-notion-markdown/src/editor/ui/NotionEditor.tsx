@@ -27,6 +27,7 @@ import {
 } from "react-native-keyboard-controller";
 import {
     type NativeBlockActionsPressEvent,
+    type NativeContentSizeEvent,
     type NativePageReferencePressEvent,
     NativeProofEditor,
     type NativeProofEditorProps
@@ -43,13 +44,13 @@ import {
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
 import type { ComponentType } from "react";
+import type { EditorMessageId } from "./messages.ts";
 import type { LayoutChangeEvent } from "react-native";
 import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
 import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
 import type { NotionEditorBlockAction } from "./ActionsBottomSheet.tsx";
 import type { NotionMarkdownColor } from "../../document/types.ts";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
-import type { EditorMessageId } from "./messages.ts";
 import { useNotionEditorTranslate } from "./config.tsx";
 
 /**
@@ -95,6 +96,8 @@ export type NotionEditorButton =
     | "columns"
     | "toDo"
     | "callout"
+    | "quote"
+    | "more"
     | "heading1"
     | "heading2"
     | "heading3"
@@ -586,6 +589,7 @@ const proofBlockNameMessageIds: Readonly<Record<ProofBlock["type"], EditorMessag
         image: "blockName.image",
         link_to_page: "blockName.linkToPage",
         numbered_list_item: "blockName.numberedListItem",
+        quote: "blockName.quote",
         table_of_contents: "blockName.tableOfContents",
         text: "blockName.text",
         to_do: "blockName.toDo",
@@ -841,6 +845,13 @@ export function NotionEditor({
     const [ linkSheetVisible, setLinkSheetVisible ] = useState(false);
     const [ linkRequest, setLinkRequest ] = useState<NotionEditorLinkSelection>();
     const [ blockActionsRequest, setBlockActionsRequest ] = useState<NotionEditorBlockActionsSelection>();
+    /* The native text layout's own content height, in dp -- reported by the native view since
+       `shouldUseAndroidLayout` keeps its Yoga-assigned box fixed regardless of content (see
+       NativeProofEditor's onContentSize doc). Sizing the page to this explicitly, rather than
+       `flex: 1`, is what lets content taller than the viewport (e.g. a tall image) become
+       reachable by scrolling instead of being silently clipped. `undefined` until the first
+       report arrives, during which the page falls back to filling the available viewport. */
+    const [ contentHeight, setContentHeight ] = useState<number>();
     const sequence = useRef(0);
     const currentSnapshot = useRef(suppliedSnapshot ?? internalSnapshot ?? defaultSnapshot);
     /* A JS-side history of past/undone snapshots for the internally-managed document. This needs
@@ -971,6 +982,9 @@ export function NotionEditor({
     }, [ selectionBlockRange, snapshot.blocks ]);
     const canEditPageReference = selectedPageReference !== undefined
         && onEditPageReference !== undefined;
+    const selectedCallout = selectionBlockRange !== undefined
+        && selectionBlockRange.low === selectionBlockRange.high
+        && snapshot.blocks[ selectionBlockRange.low ]?.type === "callout";
     const allowedTurnIntoTypes = useMemo(() =>
     {
         if (selectionBlockRange === undefined)
@@ -1167,6 +1181,12 @@ export function NotionEditor({
         onEdit?.({ nativeEvent });
     }, [ onEdit, suppliedSnapshot ]);
 
+    const handleContentSize = useCallback(({
+        nativeEvent
+    }: { nativeEvent: NativeContentSizeEvent }) =>
+    {
+        setContentHeight(nativeEvent.height);
+    }, [ ]);
     const handlePageReferencePress = useCallback(({
         nativeEvent
     }: { nativeEvent: NativePageReferencePressEvent }) =>
@@ -1194,6 +1214,27 @@ export function NotionEditor({
         }
         setBlockActionsRequest(selection);
     }, [ onBlockActions, send ]);
+    const handleCalloutActions = useCallback(() =>
+    {
+        if (!selectedCallout || selectionBlockRange === undefined)
+        {
+            return;
+        }
+        const block = snapshot.blocks[ selectionBlockRange.low ];
+        if (block === undefined)
+        {
+            return;
+        }
+        const selection: NotionEditorBlockActionsSelection =
+            { blockId: block.id, blockType: "callout" };
+        send("dismiss");
+        if (onBlockActions !== undefined)
+        {
+            void onBlockActions(selection);
+            return;
+        }
+        setBlockActionsRequest(selection);
+    }, [ onBlockActions, selectedCallout, selectionBlockRange, send, snapshot.blocks ]);
     const handleBlockActionsDismiss = useCallback(() =>
     {
         setBlockActionsRequest(undefined);
@@ -1211,6 +1252,19 @@ export function NotionEditor({
             case "duplicate": send("duplicateBlock", { blockId }); break;
             case "delete": send("deleteBlock", { blockId }); break;
         }
+    }, [ blockActionsRequest, send ]);
+    const handleReplaceImage = useCallback((blockId: string, url: string) =>
+        send("replaceImage", { blockId, url }), [ send ]);
+    const handleCalloutColor = useCallback((color: NotionMarkdownColor | undefined) =>
+    {
+        const blockId = blockActionsRequest?.blockId;
+        setBlockActionsRequest(undefined);
+        if (blockId === undefined)
+        {
+            send("focus");
+            return;
+        }
+        send("color", { blockId, color });
     }, [ blockActionsRequest, send ]);
 
     const handleMode = useCallback((nextRow: ToolbarRow) => () =>
@@ -1424,6 +1478,7 @@ export function NotionEditor({
         send("columns", { columnCount }), [ send ]);
     const handleToDo = useCallback(() => send("toDo"), [ send ]);
     const handleCallout = useCallback(() => send("callout"), [ send ]);
+    const handleQuote = useCallback(() => send("quote"), [ send ]);
     const handleCreatePageReference = useCallback(() =>
     {
         if (onCreatePageReference === undefined
@@ -1540,6 +1595,15 @@ export function NotionEditor({
         () => [ styles.page, { maxWidth: pageMaxWidth, paddingHorizontal: pagePaddingHorizontal } ],
         [ pageMaxWidth, pagePaddingHorizontal ]
     );
+    /* `flex: 1` alone (styles.editor) still fills the viewport for a short document -- tapping
+       the empty space below the last block should still focus it, as before. `minHeight` adds a
+       floor `flex: 1` alone can't express: once content (e.g. a tall image) truly exceeds the
+       viewport, this floor forces the page past it instead of being clipped to it, which is what
+       gives the wrapping ScrollView something taller than the viewport to actually scroll. */
+    const editorStyle = useMemo(
+        () => contentHeight === undefined ? styles.editor : [ styles.editor, { minHeight: contentHeight } ],
+        [ contentHeight ]
+    );
     const scrollFadeLayerStyles = useMemo(
         () => Array.from({ length: ScrollFadeSteps }, (_unused: unknown, index: number) =>
         {
@@ -1562,10 +1626,20 @@ export function NotionEditor({
         url: t("linkSheet.url")
     }), [ t ]);
     const actionsLabels = useMemo(() => ({
+        background: t("actionsSheet.background"),
+        chooseColor: t("actionsSheet.chooseColor"),
+        color: t("actionsSheet.color"),
+        defaultColor: t("actionsSheet.defaultColor"),
         delete: t("actionsSheet.delete"),
         duplicate: t("actionsSheet.duplicate"),
+        editIcon: t("actionsSheet.editIcon"),
         insertAbove: t("actionsSheet.insertAbove"),
         insertBelow: t("actionsSheet.insertBelow"),
+        /* Reuses the insert-media sheet's own labels -- replacing an image performs the exact
+           same gallery/camera pick as inserting one. */
+        openGallery: t("mediaSheet.openGallery"),
+        takePicture: t("mediaSheet.takePicture"),
+        text: t("actionsSheet.text"),
         title: t("actionsSheet.title")
     }), [ t ]);
     const blockActionsName = blockActionsRequest === undefined
@@ -1578,23 +1652,29 @@ export function NotionEditor({
             ref={ root }
             style={ handleLayout }>
             <Animated.View style={ surfaceStyle }>
-                <View style={ pageStyle }>
-                    <NativeProofEditor
-                        { ...nativeViewProps }
-                        command={ command }
-                        dark={ dark }
-                        emptyTogglePlaceholder={ suppliedEmptyTogglePlaceholder }
-                        imageMaxWidth={ imageMaxWidth }
-                        onBlockActionsPress={ handleBlockActionsPress }
-                        onEdit={ receiveEdit }
-                        onPageReferencePress={ handlePageReferencePress }
-                        pageReferenceFallbackIcon={ suppliedPageReferenceFallbackIcon
-                            ?? (components?.linkToPage !== undefined ? "↗" : undefined) }
-                        snapshot={ snapshot }
-                        style={ styles.editor }
-                        testID={ testID }
-                    />
-                </View>
+                <ScrollView
+                    contentContainerStyle={ styles.pageScrollContent }
+                    keyboardShouldPersistTaps="handled"
+                    style={ styles.pageScroll }>
+                    <View style={ pageStyle }>
+                        <NativeProofEditor
+                            { ...nativeViewProps }
+                            command={ command }
+                            dark={ dark }
+                            emptyTogglePlaceholder={ suppliedEmptyTogglePlaceholder }
+                            imageMaxWidth={ imageMaxWidth }
+                            onBlockActionsPress={ handleBlockActionsPress }
+                            onContentSize={ handleContentSize }
+                            onEdit={ receiveEdit }
+                            onPageReferencePress={ handlePageReferencePress }
+                            pageReferenceFallbackIcon={ suppliedPageReferenceFallbackIcon
+                                ?? (components?.linkToPage !== undefined ? "↗" : undefined) }
+                            snapshot={ snapshot }
+                            style={ editorStyle }
+                            testID={ testID }
+                        />
+                    </View>
+                </ScrollView>
             </Animated.View>
             <KeyboardStickyView
                 enabled={ !keyboardIsOutsideApp }
@@ -1840,6 +1920,14 @@ export function NotionEditor({
                                     label={ t("toolbar.hideKeyboard") }
                                     onPress={ handleDismiss } />
                         }
+                        {
+                            selectedCallout && <ActionButton
+                                button="more"
+                                color={ iconColor }
+                                components={ components }
+                                label={ t("actionsSheet.title") }
+                                onPress={ handleCalloutActions } />
+                        }
                     </View>
                 </View>
                 {
@@ -1915,6 +2003,14 @@ export function NotionEditor({
                                     label={ t("insertPanel.callout") }
                                     labelColor={ iconColor }
                                     onPress={ handleCallout } />
+                                <BlockOption background={ cardBackground }
+                                    button="quote"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.quote") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleQuote } />
                                 <BlockOption background={ cardBackground }
                                     button="heading1"
                                     color={ iconColor }
@@ -2115,8 +2211,13 @@ export function NotionEditor({
                         dark={ dark }
                         labels={ actionsLabels }
                         onAction={ handleBlockAction }
+                        onColor={ handleCalloutColor }
                         onDismiss={ handleBlockActionsDismiss }
-                        showInsertAbove={ blockActionsRequest.blockType !== "divider" } />
+                        onReplaceImage={ (url: string) =>
+                            handleReplaceImage(blockActionsRequest.blockId, url) }
+                        showInsertAbove={ blockActionsRequest.blockType !== "divider" }
+                        showCalloutActions={ blockActionsRequest.blockType === "callout" }
+                        showReplaceImage={ blockActionsRequest.blockType === "image" } />
             }
         </View>
     );
@@ -2252,6 +2353,14 @@ const styles = StyleSheet.create({
         flex: 1,
         width: "100%"
     },
+    pageScroll:
+    {
+        flex: 1
+    },
+    pageScrollContent:
+    {
+        flexGrow: 1
+    },
     panel:
     {
         height: BasicBlocksPanelHeight,
@@ -2315,9 +2424,11 @@ const styles = StyleSheet.create({
     },
     trailingButton:
     {
+        alignItems: "center",
         /* Explicit on both sides (rather than relying on the toolbar's own padding for the
            right edge) so the button sits evenly centered between the divider and the edge. */
         borderLeftWidth: StyleSheet.hairlineWidth,
+        flexDirection: "row",
         paddingHorizontal: 6
     }
 });

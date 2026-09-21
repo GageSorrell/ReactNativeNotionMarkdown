@@ -33,6 +33,7 @@ export interface ProofBlock
         | "numbered_list_item"
         | "to_do"
         | "callout"
+        | "quote"
         | "divider"
         | "table_of_contents"
         | "column_list"
@@ -144,12 +145,14 @@ export type Action =
     | "insertImage"
     | "insertVideo"
     | "callout"
+    | "quote"
     | "compose"
     | "commit"
     | "insertAbove"
     | "insertBelow"
     | "duplicateBlock"
-    | "deleteBlock";
+    | "deleteBlock"
+    | "replaceImage";
 
 /**
  * A uniquely identified command sent to the native editor coordinator.
@@ -187,10 +190,10 @@ export interface ProofCommand
     readonly label?: string;
 
     /**
-     * Target block id for a `"insertAbove"`, `"insertBelow"`, `"duplicateBlock"`, or
-     * `"deleteBlock"` action -- these act on the identified block directly rather than on the
-     * current selection, since the block-actions sheet can be opened for a block (e.g. a divider)
-     * that never receives the text cursor.
+     * Target block id for a `"insertAbove"`, `"insertBelow"`, `"duplicateBlock"`,
+     * `"deleteBlock"`, or `"replaceImage"` action -- these act on the identified block directly
+     * rather than on the current selection, since the block-actions sheet can be opened for a
+     * block (e.g. a divider or an image) that never receives the text cursor.
      */
     readonly blockId?: string;
 };
@@ -239,7 +242,8 @@ const validProofBlockTypes: ReadonlyArray<ProofBlock[ "type" ]> =
     [
         "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
         "numbered_list_item", "divider",
-        "to_do", "callout", "table_of_contents", "column_list", "image", "video", "link_to_page"
+        "to_do", "callout", "quote", "table_of_contents", "column_list", "image", "video",
+        "link_to_page"
     ];
 
 /* Valid ProofBlock colors, matching `NotionMarkdownColor` exactly. */

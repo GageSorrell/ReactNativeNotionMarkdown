@@ -7,6 +7,7 @@
  * @license   MIT
  */
 
+import type { ComponentProps, ComponentType } from "react";
 import {
     type EditorMessageId,
     NotionEditor,
@@ -19,8 +20,74 @@ import {
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Sparkles, Star } from "lucide-react-native";
-import type { ComponentProps, ComponentType } from "react";
+import { ThemeOverrideProvider, ThemeToggleButton, useThemeOverride } from "./themeToggle";
+import { useEffect, useState } from "react";
+import { Asset } from "expo-asset";
+import type { ProofSnapshot } from "react-native-notion-markdown";
 import { notionEditorLucideIcons } from "react-native-notion-markdown/editor/ui/lucide-icons";
+
+/* Bundled Pexels stock photos used to seed the "With Images" story's starter document. */
+const stockImageModules =
+    {
+        coffee: require("../fixtures/stock/editor-coffee.jpg"),
+        laptop: require("../fixtures/stock/editor-laptop.jpg"),
+        mountains: require("../fixtures/stock/editor-mountains.jpg")
+    } as const;
+
+type StockImageKey = keyof typeof stockImageModules;
+
+/* Download the bundled stock photos and resolve each to a local file URI the native editor can
+   decode -- it only reads `content`/`file` schemes, never a remote URL. */
+async function resolveStockImageUris(): Promise<Record<StockImageKey, string>>
+{
+    const keys = Object.keys(stockImageModules) as Array<StockImageKey>;
+    const entries = await Promise.all(keys.map(async (key: StockImageKey) =>
+    {
+        const asset = await Asset.fromModule(stockImageModules[key]).downloadAsync();
+        return [ key, asset.localUri ?? asset.uri ] as const;
+    }));
+    return Object.fromEntries(entries) as Record<StockImageKey, string>;
+}
+
+/* Seed document for the "With Images" story: the three stock photos above, interleaved with a
+   handful of other block types to show the editor starting from a populated page. */
+function buildRichSnapshot(images: Record<StockImageKey, string>): ProofSnapshot
+{
+    const caption = "The ridge line just past the tree line.";
+    const intro = "A few photos and a running list from Saturday's hike, dropped into the editor.";
+
+    return {
+        blocks:
+        [
+            { id: "rich:title", text: "Weekend trail notes", type: "heading_1" },
+            { id: "rich:intro", text: intro, type: "text" },
+            { id: "rich:mountains", text: "", type: "image", url: images.mountains },
+            {
+                id: "rich:caption",
+                marks: [ { end: caption.length, kind: "italic", start: 0 } ],
+                text: caption,
+                type: "text"
+            },
+            { id: "rich:list-1", text: "Left the trailhead at sunrise", type: "bulleted_list_item" },
+            { id: "rich:list-2", text: "Stopped for coffee at basecamp", type: "bulleted_list_item" },
+            { id: "rich:coffee", text: "", type: "image", url: images.coffee },
+            { id: "rich:divider", text: "", type: "divider" },
+            { id: "rich:todo-heading", text: "Still to do", type: "heading_2" },
+            { checked: true, id: "rich:todo-1", text: "Back up today's photos", type: "to_do" },
+            { checked: false, id: "rich:todo-2", text: "Write up the trail notes", type: "to_do" },
+            { id: "rich:laptop", text: "", type: "image", url: images.laptop },
+            {
+                icon: "🔋",
+                id: "rich:callout",
+                text: "Remember to charge the drone battery before next weekend.",
+                type: "callout"
+            },
+            { id: "rich:callout-empty", text: "", type: "callout" }
+        ],
+        epoch: 1,
+        revision: 0
+    };
+}
 
 /** Content for the "AI Tools" custom panel -- demonstrates the render-context contract. */
 function AiToolsPanel({ close, foreground, panelBackground }: NotionEditorCustomPanelContext)
@@ -62,8 +129,8 @@ const frenchMessages: Partial<Record<EditorMessageId, string>> =
         "insertPanel.heading2": "Titre 2",
         "insertPanel.heading3": "Titre 3",
         "insertPanel.heading4": "Titre 4",
-        "insertPanel.text": "Bloc de texte",
         "insertPanel.returnToKeyboard": "Retour au clavier",
+        "insertPanel.text": "Bloc de texte",
         "insertPanel.title": "Blocs de base",
         "toolbar.back": "Retour",
         "toolbar.copy": "Copier",
@@ -78,16 +145,73 @@ const translateFrench: NotionEditorTranslate = (Message: NotionEditorMessageDesc
     frenchMessages[Message.id] ?? Message.defaultMessage;
 const frenchLocalization = { translate: translateFrench };
 
-const editorStoryRender = (args: ComponentProps<typeof NotionEditor>) => (
-    <View style={ [ styles.page, args.dark && styles.darkPage ] }>
+/**
+ * Renders the "With Images" story: same page chrome as {@link EditorStoryRender}, but the editor
+ * doesn't mount until the bundled stock photos have downloaded to local file URIs, and it's seeded
+ * with {@link buildRichSnapshot} instead of the package's plain three-block starter document.
+ */
+function RichDocumentEditorStory(args: ComponentProps<typeof NotionEditor>)
+{
+    const { override } = useThemeOverride();
+    const dark = override === "system" ? args.dark === true : override === "dark";
+    const [ snapshot, setSnapshot ] = useState<ProofSnapshot>();
+
+    useEffect(() =>
+    {
+        let cancelled = false;
+        resolveStockImageUris().then((images: Record<StockImageKey, string>) =>
+        {
+            if (!cancelled) { setSnapshot(buildRichSnapshot(images)); }
+        });
+        return () => { cancelled = true; };
+    }, [ ]);
+
+    return <View style={ [ styles.page, dark && styles.darkPage ] }>
         <View style={ styles.titleContainer }>
-            <Text style={ [ styles.pageTitle, args.dark && styles.darkPageTitle ] }>Editor</Text>
+            <Text style={ [ styles.pageTitle, dark && styles.darkPageTitle ] }>Editor</Text>
+            <ThemeToggleButton dark={ dark } />
+        </View>
+        {
+            snapshot === undefined
+                ? null
+                : <NotionEditor
+                    { ...args }
+                    dark={ dark }
+                    snapshot={ snapshot }
+                    style={ [ styles.editor, args.style ] }
+                />
+        }
+    </View>;
+}
+
+/**
+ * Renders the editor story page. The story's own `dark` arg is the default appearance; the
+ * upper-right `ThemeToggleButton`, opposite the "Editor" title, overrides it unless left on
+ * "system".
+ */
+function EditorStoryRender(args: ComponentProps<typeof NotionEditor>)
+{
+    const { override } = useThemeOverride();
+    const dark = override === "system" ? args.dark === true : override === "dark";
+
+    return <View style={ [ styles.page, dark && styles.darkPage ] }>
+        <View style={ styles.titleContainer }>
+            <Text style={ [ styles.pageTitle, dark && styles.darkPageTitle ] }>Editor</Text>
+            <ThemeToggleButton dark={ dark } />
         </View>
         <NotionEditor
             { ...args }
+            dark={ dark }
             style={ [ styles.editor, args.style ] }
         />
-    </View>
+    </View>;
+}
+
+/** Gives every Editor story its own light/dark/system override, independent of other story files. */
+const withThemeOverride = (StoryComponent: ComponentType) => (
+    <ThemeOverrideProvider>
+        <StoryComponent />
+    </ThemeOverrideProvider>
 );
 
 const styles = StyleSheet.create({
@@ -117,6 +241,9 @@ const styles = StyleSheet.create({
     },
     titleContainer:
     {
+        alignItems: "flex-start",
+        flexDirection: "row",
+        justifyContent: "space-between",
         paddingHorizontal: 28,
         paddingTop: 24
     }
@@ -134,12 +261,13 @@ const meta =
             components: notionEditorLucideIcons
         },
         component: NotionEditor,
+        decorators: [ withThemeOverride ],
         parameters:
         {
             controls: { exclude: [ "components", "style" ] },
             layout: "fullscreen"
         },
-        render: editorStoryRender,
+        render: EditorStoryRender,
         title: "Editor"
     } satisfies Meta<typeof NotionEditor>;
 
@@ -185,4 +313,64 @@ export const Localized: Story =
                 <StoryComponent />
             </NotionEditorConfigProvider>
         ]
+    };
+
+export const WithImages: Story =
+    {
+        args:
+        {
+            style: { flex: 1 }
+        },
+        render: (args: ComponentProps<typeof NotionEditor>) => <RichDocumentEditorStory { ...args } />
+    };
+
+export const Callout: Story =
+    {
+        args:
+        {
+            snapshot:
+            {
+                blocks:
+                [
+                    { id: "callout:intro", text: "Paragraph block for layout measurements.", type: "text" },
+                    {
+                        color: "green_bg",
+                        icon: "☝️",
+                        id: "callout:tinted",
+                        text: "Foo. Bar",
+                        type: "callout"
+                    },
+                    { id: "callout:foreground", text: "Foreground color", type: "callout", color: "blue" },
+                    { id: "callout:after", text: "Heading 1 block", type: "heading_1" }
+                ],
+                epoch: 1,
+                revision: 0
+            },
+            style: { flex: 1 }
+        }
+    };
+
+export const Quote: Story =
+    {
+        args:
+        {
+            snapshot:
+            {
+                blocks:
+                [
+                    { id: "quote:intro", text: "Paragraph block for layout measurements.", type: "text" },
+                    { id: "quote:default", text: "Wisdom often comes in a plain quote.", type: "quote" },
+                    { color: "purple", id: "quote:foreground", text: "A quote in purple.", type: "quote" },
+                    {
+                        id: "quote:long",
+                        text: "A longer quote that wraps, to verify the border bar keeps its full height.",
+                        type: "quote"
+                    },
+                    { id: "quote:after", text: "Heading 1 block", type: "heading_1" }
+                ],
+                epoch: 1,
+                revision: 0
+            },
+            style: { flex: 1 }
+        }
     };

@@ -18,19 +18,27 @@ import type {
     NotionReferenceDisplay,
     NotionRendererTheme
 } from "./types.ts";
-import { defaultEmptyTogglePlaceholder } from "./types.ts";
-import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from "react-native";
+import {
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
+    useColorScheme,
+    useWindowDimensions
+} from "react-native";
 import { asRecord, getNotionBlockPayload, getNotionMarkdownMetadata } from "../../internal.ts";
-import { darkRendererTheme, lightRendererTheme, notionColor } from "./theme.ts";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { darkRendererTheme, lightRendererTheme, notionColor } from "./theme.ts";
+import { FaviconIcon } from "./FaviconIcon.tsx";
 import { NotionMathView } from "./MathView.tsx";
 import { NotionMediaView } from "./Previews.tsx";
 import { NotionMermaidView } from "./MermaidView.tsx";
 import { NotionRichTextView } from "./RichText.tsx";
-import { FaviconIcon } from "./FaviconIcon.tsx";
 import type { ReactNode } from "react";
-import { parseNotionMarkdown } from "../../document/parser.ts";
+import { defaultEmptyTogglePlaceholder } from "./types.ts";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
+import { parseNotionMarkdown } from "../../document/parser.ts";
 
 /**
  * Read rich text from the given unknown block payload.
@@ -90,7 +98,7 @@ interface HeadingEntry
  * @category Functions
  * @since 1.0.0
  */
-function collectHeadings(blocks: ReadonlyArray<NotionBlock>, depth = 0): Array<HeadingEntry>
+function collectHeadings(blocks: ReadonlyArray<NotionBlock>, depth: number = 0): Array<HeadingEntry>
 {
     return blocks.flatMap((block: NotionBlock) => [
         ...(block.type.startsWith("heading_")
@@ -108,7 +116,7 @@ function collectHeadings(blocks: ReadonlyArray<NotionBlock>, depth = 0): Array<H
  */
 function collectSynced(
     blocks: ReadonlyArray<NotionBlock>,
-    found = new Map<string, ReadonlyArray<NotionBlock>>()
+    found: Map<string, ReadonlyArray<NotionBlock>> = new Map<string, ReadonlyArray<NotionBlock>>()
 ): Map<string, ReadonlyArray<NotionBlock>>
 {
     for (const block of blocks)
@@ -195,7 +203,14 @@ function Rich({ value, context, size, color, weight, family, lineHeight, striket
             linkFallbackIcon={ context.props.linkFallbackIcon }
             onOpenUrl={ context.props.onOpenUrl }
             resolveReference={ context.props.resolveReference }
-            textStyle={ { color, fontFamily: family, fontSize: size, fontWeight: weight, lineHeight, strikethrough } }
+            textStyle={ {
+                color,
+                fontFamily: family,
+                fontSize: size,
+                fontWeight: weight,
+                lineHeight,
+                strikethrough
+            } }
             theme={ context.theme }
         />
     );
@@ -305,9 +320,9 @@ function ToggleContent({ block, context, depth, seen, title }: {
             <Text style={ {
                 color: context.theme.muted,
                 fontFamily: context.theme.fontFamily,
-                fontSize: context.theme.fontSize * 1.25,
+                fontSize: context.theme.fontSize * 1.25 - 4,
                 opacity: 0.65,
-                width: 24
+                width: 20
             } }>
                 { expanded ? "▼" : "▶" }
             </Text>
@@ -760,7 +775,7 @@ export function NotionBlockView({
             </View>
         );
     }
-    const base = { marginVertical: 0, paddingHorizontal: 6, backgroundColor };
+    const base = { backgroundColor, marginVertical: 0, paddingHorizontal: 6 };
     const text = (
         value: unknown,
         size?: number,
@@ -805,8 +820,13 @@ export function NotionBlockView({
         case "heading_4":
         {
             const level = Number(block.type.slice(-1));
-            const headingFontSize = context.theme.fontSize * ([ 30 / 16, 24 / 16, 20 / 16, 18 / 16 ][ level - 1 ] ?? 1);
-            const headingLineHeight = context.theme.fontSize * ([ 39 / 16, 31.2 / 16, 26 / 16, 24 / 16 ][ level - 1 ] ?? 1.5);
+            const headingFontSize =
+                context.theme.fontSize *
+                ([ 30 / 16, 24 / 16, 20 / 16, 18 / 16 ][ level - 1 ] ?? 1);
+
+            const headingLineHeight =
+                context.theme.fontSize *
+                ([ 39 / 16, 31.2 / 16, 26 / 16, 24 / 16 ][ level - 1 ] ?? 1.5);
             const headingPaddingTop = [ 32, 28, 24, 20 ][ level - 1 ] ?? 8;
             const heading = text(
                 payload.rich_text,
@@ -828,7 +848,7 @@ export function NotionBlockView({
                         paddingRight: 8,
                         paddingTop: headingPaddingTop
                     } }
-                    testID={ `heading-${block.id}` }>
+                    testID={ `heading-${ block.id }` }>
                     {
                         payload.is_toggleable === true || metadata.toggle === true
                             ? (
@@ -853,20 +873,20 @@ export function NotionBlockView({
                 <View style={ {
                     ...base,
                     paddingBottom: listItemPosition.last ? 8 : 4,
-                    paddingLeft: 8 + depth * 32,
+                    paddingLeft: depth === 0 ? 8 : 0,
                     paddingRight: 8,
                     paddingTop: listItemPosition.first ? 8 : 4
                 } }>
-                    <View style={ { alignItems: "flex-start", flexDirection: "row", paddingLeft: 2 } }>
+                    <View style={ { alignItems: "flex-start", flexDirection: "row", paddingLeft: 0 } }>
                         <Text style={ {
                             color: foreground ?? context.theme.foreground,
                             fontFamily: context.theme.fontFamily,
-                            fontSize: context.theme.fontSize,
-                            width: 24
+                            fontSize: context.theme.fontSize
+                            // width: 24
                         } }>
                             { marker }
                         </Text>
-                        <View style={ { flex: 1 } }>
+                        <View style={ { flex: 1, marginLeft: 16 } }>
                             { text(payload.rich_text) }
                         </View>
                     </View>
@@ -884,7 +904,7 @@ export function NotionBlockView({
                 <View style={ {
                     ...base,
                     paddingBottom: 8,
-                    paddingLeft: 8 + depth * 32,
+                    paddingLeft: 8 + depth * 24,
                     paddingRight: 8,
                     paddingTop: 8
                 } }>
