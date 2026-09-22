@@ -9,33 +9,33 @@
  * @license   MIT
  */
 
-import type { ProofBlock, ProofCommand, ProofEvent, ProofSnapshot } from "react-native-notion-markdown";
+import type { EditorBlock, EditorCommand, EditorEvent, EditorSnapshot } from "react-native-notion-markdown";
 
 /** Identifies this plugin to `useDevToolsPluginClient` / the dev menu. Must match the package name. */
 export const pluginName = "@react-native-notion-markdown/devtools-plugin";
 
-/** Sent whenever the app's ProofSnapshot revision or epoch changes. */
-export type SnapshotUpdateMessage = { snapshot: ProofSnapshot; dark: boolean };
+/** Sent whenever the app's EditorSnapshot revision or epoch changes. */
+export type SnapshotUpdateMessage = { snapshot: EditorSnapshot; dark: boolean };
 
 /**
  * Sent after every edit the app receives from the native editor, whether it was accepted into
  * the snapshot or rejected. `reason` is a best-effort explanation computed by `diagnoseRejection`
- * below — the library's own `acceptProofEvent` reducer does not expose why it rejected an event,
+ * below — the library's own `acceptEditorEvent` reducer does not expose why it rejected an event,
  * so this mirrors its guard clauses for display purposes only and is never authoritative.
  */
-export type EventReportMessage = { event: ProofEvent; accepted: boolean; reason?: string };
+export type EventReportMessage = { event: EditorEvent; accepted: boolean; reason?: string };
 
-/** Echoed whenever a ProofCommand is dispatched, from either an on-device button or the devtools webUI. */
-export type CommandReportMessage = { command: ProofCommand };
+/** Echoed whenever an EditorCommand is dispatched, from either an on-device button or the devtools webUI. */
+export type CommandReportMessage = { command: EditorCommand };
 
 /** Forwarded from a dev-only error boundary / global handler around the harness. */
 export type ErrorReportMessage = { message: string; stack?: string };
 
 /** WebUI asks the app to dispatch a command as if a toolbar button had been pressed. */
-export type CommandRequestMessage = { action: ProofCommand["action"] };
+export type CommandRequestMessage = { action: EditorCommand["action"] };
 
 /** WebUI asks the app to replace the document. Omitting `blocks` restores the default 3-block seed. */
-export type DocumentReplaceMessage = { blocks?: Array<ProofBlock> };
+export type DocumentReplaceMessage = { blocks?: Array<EditorBlock> };
 
 /** Trivial connectivity check, useful while bringing up a fresh app/webUI pairing. */
 export type PingMessage = { from: "app" | "web" };
@@ -53,11 +53,11 @@ export type NotionMarkdownDevToolsMessages = {
 
 /**
  * Re-derives a likely rejection reason by mirroring the guard clauses in the library's
- * `acceptProofEvent` (see `Package/react-native-notion-markdown/src/prototype.ts`). This is a
+ * `acceptEditorEvent` (see `Package/react-native-notion-markdown/src/prototype.ts`). This is a
  * diagnostic aid for the devtools webUI only — it never changes acceptance behavior and can
  * drift from the real reducer if that function's guards change without this being updated too.
  */
-export function diagnoseRejection(current: ProofSnapshot, event: ProofEvent): string {
+export function diagnoseRejection(current: EditorSnapshot, event: EditorEvent): string {
   if (event.epoch !== current.epoch) {
     return `Stale epoch: event epoch ${event.epoch} !== current epoch ${current.epoch}`;
   }
@@ -67,7 +67,7 @@ export function diagnoseRejection(current: ProofSnapshot, event: ProofEvent): st
       `current revision ${current.revision}`;
   }
 
-  const ids = new Set(event.blocks.map((block: ProofBlock) => block.id));
+  const ids = new Set(event.blocks.map((block: EditorBlock) => block.id));
 
   if (!event.blocks.length) {
     return "Event has no blocks";
@@ -77,7 +77,7 @@ export function diagnoseRejection(current: ProofSnapshot, event: ProofEvent): st
     return "Event contains duplicate block ids";
   }
 
-  const invalid = event.blocks.find((block: ProofBlock) => !block.id || block.text.includes("\n") ||
+  const invalid = event.blocks.find((block: EditorBlock) => !block.id || block.text.includes("\n") ||
     ![ "text", "heading_1" ].includes(block.type));
 
   if (invalid) {
@@ -85,5 +85,5 @@ export function diagnoseRejection(current: ProofSnapshot, event: ProofEvent): st
       "or unsupported type";
   }
 
-  return "Rejected for an unknown reason (acceptProofEvent's guards did not match a known case)";
+  return "Rejected for an unknown reason (acceptEditorEvent's guards did not match a known case)";
 }

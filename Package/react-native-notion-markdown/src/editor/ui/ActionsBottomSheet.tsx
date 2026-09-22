@@ -48,6 +48,8 @@ export interface ActionsBottomSheetProps
     };
     readonly onAction: (action: NotionEditorBlockAction) => void;
     readonly onDismiss: () => void;
+    /** Opens the callout emoji picker from the callout action sheet. */
+    readonly onEditIcon?: () => void;
     /** Called when a color is selected for a callout. */
     readonly onColor?: (color: NotionMarkdownColor | undefined) => void;
     /** Called with the picked asset's local URI once a replacement image is chosen. */
@@ -267,6 +269,7 @@ export function ActionsBottomSheet({
     labels,
     onAction,
     onDismiss,
+    onEditIcon,
     onColor,
     onReplaceImage,
     onReplaceAudio,
@@ -308,6 +311,7 @@ export function ActionsBottomSheet({
         setChoosingColor(false);
         onColor?.(color);
     }, [ onColor ]);
+    const handleEditIcon = useCallback(() => onEditIcon?.(), [ onEditIcon ]);
 
     const colorOptions = useMemo(() => ({
         background: calloutBackgroundColors,
@@ -406,7 +410,7 @@ export function ActionsBottomSheet({
                                             color={ muted }
                                             icon={ getActionIcon("edit", components) }
                                             label={ labels.editIcon }
-                                            onPress={ () => { } } />
+                                            onPress={ handleEditIcon } />
                                     </View> }
                                 { showCalloutActions && <View style={ styles.groupGap } /> }
                                 <View style={ optionsStyle }>

@@ -1,0 +1,138 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/landing/LandingInstallCommand */
+import { Check, ChevronDown, Copy } from "@lucide/astro"
+import npmIcon from "@/assets/package-managers/npm.svg"
+import bunIcon from "@/assets/package-managers/bun.svg"
+import denoIcon from "@/assets/package-managers/deno.svg"
+import pnpmIcon from "@/assets/package-managers/pnpm.svg"
+import yarnIcon from "@/assets/package-managers/yarn.svg"
+import type { LandingInstallOption } from "@/lib/landing"
+
+interface Props {
+  readonly options: readonly LandingInstallOption[]
+}
+
+const { options } = Astro.props
+const icons = { npm: npmIcon, bun: bunIcon, deno: denoIcon, pnpm: pnpmIcon, yarn: yarnIcon }
+---
+
+<landing-install-command class="landing-command-panel">
+  <div data-role="copy" role="button" tabindex="0" aria-label="Copy install command">
+    <div data-role="pm-dropdown">
+      <button type="button" data-role="pm-chip" aria-haspopup="listbox" aria-expanded="false">
+        <img data-role="pm-icon" src={icons[options[0]?.id as keyof typeof icons]?.src} alt="" aria-hidden="true" />
+        <span data-role="pm-label">{options[0]?.label}</span>
+        <ChevronDown data-role="pm-chevron" size={16} aria-hidden="true" />
+      </button>
+      <ul data-role="pm-popover" role="listbox" hidden>
+        {options.map((option, index) => (
+          <li>
+            <button type="button" role="option" data-pm={option.id} data-command={option.command} data-icon={icons[option.id as keyof typeof icons]?.src} aria-selected={index === 0 ? "true" : "false"}>
+              <img src={icons[option.id as keyof typeof icons]?.src} alt="" aria-hidden="true" />
+              <span>{option.label}</span>
+              <Check data-role="pm-check" size={16} class:list={{ hidden: index !== 0 }} aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+    <span data-role="command-text">{options[0]?.command}</span>
+    <Copy data-role="copy-icon-idle" size={16} aria-hidden="true" />
+    <Check data-role="copy-icon-copied" class="hidden" size={16} aria-hidden="true" />
+  </div>
+  <p data-role="status" role="status" aria-live="polite" class="sr-only"></p>
+</landing-install-command>
+
+<script>
+  const installCommands = document.querySelectorAll<HTMLElement>("landing-install-command")
+
+  installCommands.forEach((element) => {
+    if (element.dataset.ready === "true") return
+    element.dataset.ready = "true"
+
+    const chip = element.querySelector<HTMLButtonElement>("[data-role='pm-chip']")
+    const popover = element.querySelector<HTMLElement>("[data-role='pm-popover']")
+    const dropdown = element.querySelector<HTMLElement>("[data-role='pm-dropdown']")
+    const label = element.querySelector<HTMLElement>("[data-role='pm-label']")
+    const icon = element.querySelector<HTMLImageElement>("[data-role='pm-icon']")
+    const command = element.querySelector<HTMLElement>("[data-role='command-text']")
+    const status = element.querySelector<HTMLElement>("[data-role='status']")
+    const idleIcon = element.querySelector<SVGElement>("[data-role='copy-icon-idle']")
+    const copiedIcon = element.querySelector<SVGElement>("[data-role='copy-icon-copied']")
+    let active = element.querySelector<HTMLButtonElement>("[role='option'][aria-selected='true']")
+    let reset: ReturnType<typeof setTimeout> | undefined
+
+    const close = () => {
+      if (!popover || !chip) return
+      popover.hidden = true
+      chip.setAttribute("aria-expanded", "false")
+      element.querySelector("[data-role='pm-chevron']")?.classList.remove("rotate-180")
+    }
+
+    const setActive = (next: HTMLButtonElement) => {
+      active?.setAttribute("aria-selected", "false")
+      active?.querySelector("[data-role='pm-check']")?.classList.add("hidden")
+      active = next
+      next.setAttribute("aria-selected", "true")
+      next.querySelector("[data-role='pm-check']")?.classList.remove("hidden")
+      if (label) label.textContent = next.textContent?.trim().replace(/\s+/g, " ") ?? ""
+      if (command) command.textContent = next.dataset.command ?? ""
+      if (icon && next.dataset.icon) icon.src = next.dataset.icon
+      if (chip) chip.setAttribute("aria-label", `Package manager: ${next.textContent?.trim() ?? ""}`)
+    }
+
+    const setFeedback = (message: string, copied: boolean) => {
+      if (status) status.textContent = message
+      idleIcon?.classList.toggle("hidden", copied)
+      copiedIcon?.classList.toggle("hidden", !copied)
+      if (reset) clearTimeout(reset)
+      reset = setTimeout(() => {
+        if (status) status.textContent = ""
+        idleIcon?.classList.remove("hidden")
+        copiedIcon?.classList.add("hidden")
+      }, 1500)
+    }
+
+    chip?.addEventListener("click", (event) => {
+      event.stopPropagation()
+      if (!popover || !chip) return
+      const open = popover.hidden === true
+      popover.hidden = !open
+      chip.setAttribute("aria-expanded", String(open))
+      element.querySelector("[data-role='pm-chevron']")?.classList.toggle("rotate-180", open)
+    })
+
+    element.querySelectorAll<HTMLButtonElement>("[role='option']").forEach((option) => {
+      option.addEventListener("click", (event) => {
+        event.stopPropagation()
+        setActive(option)
+        close()
+      })
+    })
+
+    const copy = async () => {
+      const value = active?.dataset.command
+      if (!value || !navigator.clipboard) {
+        setFeedback("Could not copy", false)
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(value)
+        setFeedback("Copied", true)
+      } catch {
+        setFeedback("Could not copy", false)
+      }
+    }
+
+    element.querySelector<HTMLElement>("[data-role='copy']")?.addEventListener("click", copy)
+    element.querySelector<HTMLElement>("[data-role='copy']")?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault()
+        void copy()
+      }
+    })
+    document.addEventListener("click", (event) => {
+      if (dropdown && !dropdown.contains(event.target as Node)) close()
+    })
+  })
+</script>

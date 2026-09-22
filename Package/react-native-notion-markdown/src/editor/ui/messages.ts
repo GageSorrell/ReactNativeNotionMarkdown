@@ -47,6 +47,9 @@ export type EditorMessageId =
     | "colorPanel.foreground"
     | "colorPanel.background"
     | "colorPanel.default"
+    | "emojiSheet.title"
+    | "emojiSheet.common"
+    | "emojiSheet.filter"
     | "mediaSheet.title"
     | "mediaSheet.openGallery"
     | "mediaSheet.takePicture"
@@ -94,6 +97,7 @@ export type EditorMessageId =
     | "blockName.callout"
     | "blockName.quote"
     | "blockName.divider"
+    | "blockName.file"
     | "blockName.tableOfContents"
     | "blockName.columnList"
     | "blockName.image"
@@ -101,6 +105,12 @@ export type EditorMessageId =
     | "blockName.audio"
     | "blockName.linkToPage"
     | "insertPanel.title"
+    | "insertPanel.bulletedList"
+    | "insertPanel.numberedList"
+    | "insertPanel.image"
+    | "insertPanel.audio"
+    | "insertPanel.video"
+    | "insertPanel.file"
     | "insertPanel.callout"
     | "insertPanel.quote"
     | "insertPanel.columns"
@@ -171,7 +181,7 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
         "actionsSheet.editIcon":
         {
             defaultMessage: "Edit icon",
-            description: "Callout action-sheet button reserved for the future emoji picker",
+            description: "Callout action-sheet button that opens the emoji picker",
             id: "actionsSheet.editIcon"
         },
         "actionsSheet.chooseColor":
@@ -221,6 +231,24 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Actions",
             description: "Header title of the block-actions bottom sheet",
             id: "actionsSheet.title"
+        },
+        "emojiSheet.common":
+        {
+            defaultMessage: "Common",
+            description: "Section title for the common callout emoji choices",
+            id: "emojiSheet.common"
+        },
+        "emojiSheet.filter":
+        {
+            defaultMessage: "Filter...",
+            description: "Placeholder for filtering callout emoji choices",
+            id: "emojiSheet.filter"
+        },
+        "emojiSheet.title":
+        {
+            defaultMessage: "Choose callout icon",
+            description: "Title of the emoji picker; coupled to callout blocks for now",
+            id: "emojiSheet.title"
         },
         "blockName.bulletedListItem":
         {
@@ -312,17 +340,23 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Block-actions sheet section label naming a to-do block",
             id: "blockName.toDo"
         },
-        "blockName.video":
-        {
-            defaultMessage: "Video",
-            description: "Block-actions sheet section label naming a video block",
-            id: "blockName.video"
-        },
         "blockName.audio":
         {
             defaultMessage: "Audio",
             description: "Block-actions sheet section label naming an audio block",
             id: "blockName.audio"
+        },
+        "blockName.file":
+        {
+            defaultMessage: "File",
+            description: "Block-actions sheet section label naming a file block",
+            id: "blockName.file"
+        },
+        "blockName.video":
+        {
+            defaultMessage: "Video",
+            description: "Block-actions sheet section label naming a video block",
+            id: "blockName.video"
         },
         "colorPanel.background":
         {
@@ -341,6 +375,18 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Foreground color",
             description: "Section heading for foreground colors in the color panel",
             id: "colorPanel.foreground"
+        },
+        "insertPanel.audio":
+        {
+            defaultMessage: "Audio",
+            description: "Insert-panel button that opens the audio picker",
+            id: "insertPanel.audio"
+        },
+        "insertPanel.bulletedList":
+        {
+            defaultMessage: "Bulleted list",
+            description: "Insert-panel button that inserts a bulleted-list block",
+            id: "insertPanel.bulletedList"
         },
         "insertPanel.callout":
         {
@@ -408,6 +454,18 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Insert-panel button that inserts a heading 4 block",
             id: "insertPanel.heading4"
         },
+        "insertPanel.image":
+        {
+            defaultMessage: "Image",
+            description: "Insert-panel button that opens the shared image and video picker",
+            id: "insertPanel.image"
+        },
+        "insertPanel.numberedList":
+        {
+            defaultMessage: "Numbered list",
+            description: "Insert-panel button that inserts a numbered-list block",
+            id: "insertPanel.numberedList"
+        },
         "insertPanel.pageReference":
         {
             defaultMessage: "Page",
@@ -473,6 +531,18 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Toggle Header 4",
             description: "Insert-panel button that inserts a toggle heading 4 block",
             id: "insertPanel.toggleHeading4"
+        },
+        "insertPanel.file":
+        {
+            defaultMessage: "File",
+            description: "Insert-panel button that opens the native file picker",
+            id: "insertPanel.file"
+        },
+        "insertPanel.video":
+        {
+            defaultMessage: "Video",
+            description: "Insert-panel button that opens the shared image and video picker",
+            id: "insertPanel.video"
         },
         "linkSheet.apply":
         {
@@ -681,7 +751,7 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
         "toolbar.filePicker":
         {
             defaultMessage: "Insert media",
-            description: "Inserts an image or file (not yet implemented)",
+            description: "Opens the insert-media picker",
             id: "toolbar.filePicker"
         },
         "toolbar.format":

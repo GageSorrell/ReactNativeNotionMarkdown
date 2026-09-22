@@ -9,14 +9,14 @@
  * @license   MIT
  */
 
-import type { ProofBlock, ProofSnapshot } from "react-native-notion-markdown";
+import type { EditorBlock, EditorSnapshot } from "react-native-notion-markdown";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
 
-export type BlocksPanelProps = { snapshot: ProofSnapshot | undefined };
+export type BlocksPanelProps = { snapshot: EditorSnapshot | undefined };
 
 /**
- * Renders the current ProofSnapshot's block list. This is the full "block tree" available before
+ * Renders the current EditorSnapshot's block list. This is the full "block tree" available before
  * milestone 2's Notion AST lands — the message shape (blocks: Array<...>) is designed to stay
  * the extension point once a real parser exists.
  */
@@ -27,8 +27,8 @@ export function BlocksPanel({ snapshot }: BlocksPanelProps)
         return (
             <View style={ styles.empty }>
                 <Text style={ styles.emptyText }>
-                    Waiting for a snapshot. Open the &quot;Native editing proof&quot; story on-device
-                    to start reporting Proof transport state.
+                    Waiting for a snapshot. Open the &quot;Native editing editor&quot; story on-device
+                    to start reporting Editor transport state.
                 </Text>
             </View>
         );
@@ -36,7 +36,7 @@ export function BlocksPanel({ snapshot }: BlocksPanelProps)
 
     return (
         <ScrollView contentContainerStyle={ styles.content }>
-            {snapshot.blocks.map((block: ProofBlock, index: number) => (
+            {snapshot.blocks.map((block: EditorBlock, index: number) => (
                 <BlockRow
                     block={ block }
                     index={ index }
@@ -47,7 +47,7 @@ export function BlocksPanel({ snapshot }: BlocksPanelProps)
     );
 }
 
-function BlockRow({ block, index }: { block: ProofBlock; index: number })
+function BlockRow({ block, index }: { block: EditorBlock; index: number })
 {
     return (
         <View style={ styles.block }>

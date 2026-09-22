@@ -1,0 +1,32 @@
+---
+import LandingHeader from "./LandingHeader.astro"
+import LandingGridRails from "./LandingGridRails.astro"
+import LandingHero from "./sections/LandingHero.astro"
+import LandingExamples from "./sections/LandingExamples.astro"
+import LandingTestimonials from "./sections/LandingTestimonials.astro"
+import LandingProblem from "./sections/LandingProblem.astro"
+import LandingMentalModel from "./sections/LandingMentalModel.astro"
+import LandingCodingWithAi from "./sections/LandingCodingWithAi.astro"
+import LandingQuotes from "./sections/LandingQuotes.astro"
+import LandingFaq from "./sections/LandingFaq.astro"
+import LandingCallToAction from "./sections/LandingCallToAction.astro"
+import type { LandingPageConfig } from "@/lib/landing"
+import "@/styles/landing.css"
+interface Props { readonly config: LandingPageConfig }
+const { config } = Astro.props
+---
+<div class="effect-landing-page relative">
+  <LandingGridRails />
+  <LandingHeader name={config.name} items={config.navItems} />
+  <main>
+    <LandingHero config={config} />
+    <LandingExamples config={config} />
+    <LandingTestimonials config={config} />
+    <LandingProblem config={config} />
+    <LandingMentalModel config={config} />
+    <LandingCodingWithAi config={config} />
+    <LandingQuotes config={config} />
+    <LandingFaq config={config} />
+    <LandingCallToAction config={config} />
+  </main>
+</div>

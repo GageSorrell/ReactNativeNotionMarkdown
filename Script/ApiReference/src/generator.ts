@@ -32,8 +32,8 @@ async function run(command: string, args: readonly string[], cwd: string): Promi
 async function runTypeDoc(output: string, entryPoints: readonly string[]): Promise<void> {
   const typedocPackage = require.resolve("typedoc/package.json")
   const typedocBin = join(resolve(typedocPackage, ".."), "bin/typedoc")
-  const packageTsConfig = resolve(repositoryRoot(), "Package/react-native-notion-markdown/tsconfig.json")
-  await run(process.execPath, [typedocBin, "--json", output.replaceAll("\\", "/"), "--tsconfig", packageTsConfig.replaceAll("\\", "/"), "--entryPointStrategy", "Resolve", "--excludePrivate", "--excludeProtected", "--excludeInternal", "--skipErrorChecking", ...entryPoints.map((entryPoint) => entryPoint.replaceAll("\\", "/"))], repositoryRoot())
+  const referenceTsConfig = resolve(repositoryRoot(), "Script/ApiReference/typedoc.tsconfig.json")
+  await run(process.execPath, [typedocBin, "--json", output.replaceAll("\\", "/"), "--tsconfig", referenceTsConfig.replaceAll("\\", "/"), "--entryPointStrategy", "Resolve", "--excludePrivate", "--excludeProtected", "--excludeInternal", "--skipErrorChecking", ...entryPoints.map((entryPoint) => entryPoint.replaceAll("\\", "/"))], repositoryRoot())
 }
 
 export async function generate(version: string, sourceRef = "HEAD"): Promise<ReferenceManifest> {

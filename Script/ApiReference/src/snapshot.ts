@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
 import { create } from "tar"
-import { dataDirectory, REFERENCE_CONFIG, REFERENCE_SCHEMA_VERSION, repositoryRoot } from "./config.js"
+import { dataDirectory, REFERENCE_CONFIG, REFERENCE_SCHEMA_VERSION, repositoryRoot, UNKNOWN_SOURCE_REVISION } from "./config.js"
 import type { ReferenceManifest, ReferenceModule, ReferencePackage } from "./model.js"
 
 export function sha256(value: string | Buffer): string {
@@ -22,7 +22,17 @@ export function sha256(value: string | Buffer): string {
 }
 
 export function gitRevision(ref = "HEAD"): string {
-  return execFileSync("git", ["rev-parse", "--verify", ref], { cwd: repositoryRoot(), encoding: "utf8" }).trim()
+  const configuredRevision = process.env.API_REFERENCE_SOURCE_REVISION?.trim()
+  const vercelRevision = ref === "HEAD" ? process.env.VERCEL_GIT_COMMIT_SHA?.trim() : undefined
+  if (configuredRevision) return configuredRevision
+  if (vercelRevision) return vercelRevision
+  if (ref === "HEAD" && !existsSync(resolve(repositoryRoot(), ".git"))) return UNKNOWN_SOURCE_REVISION
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", ref], { cwd: repositoryRoot(), encoding: "utf8" }).trim()
+  } catch (error) {
+    if (ref !== "HEAD") throw error
+    return UNKNOWN_SOURCE_REVISION
+  }
 }
 
 export function generatorDigest(): string {

@@ -1,0 +1,23 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/landing/InstallTabs @file InstallTabs.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import LandingTabPanel from "./LandingTabPanel.astro"
+import LandingTabs from "./LandingTabs.astro"
+import type { LandingInstallOption } from "@/lib/landing"
+interface Props { readonly options: readonly LandingInstallOption[] }
+const { options } = Astro.props
+---
+<LandingTabs group="install" ariaLabel="Package manager" tabs={options}>
+  {options.map((option, index) => <LandingTabPanel id={option.id} group="install" active={index === 0}><code>{option.command}</code><button type="button" class="landing-copy-button" data-copy-command={option.command}>Copy</button></LandingTabPanel>)}
+</LandingTabs>
+<script>
+  document.querySelectorAll<HTMLButtonElement>("[data-copy-command]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const command = button.dataset.copyCommand
+      if (!command) return
+      await navigator.clipboard?.writeText(command)
+      const original = button.textContent
+      button.textContent = "Copied"
+      window.setTimeout(() => { button.textContent = original }, 1200)
+    })
+  })
+</script>

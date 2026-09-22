@@ -1,0 +1,13 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/landing/ComparisonTabs @file ComparisonTabs.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import LandingTabPanel from "./LandingTabPanel.astro"
+import LandingTabs from "./LandingTabs.astro"
+import type { LandingComparisonTier } from "@/lib/landing"
+interface Props { readonly tiers: readonly LandingComparisonTier[] }
+const { tiers } = Astro.props
+---
+<div class="landing-comparison">
+  <LandingTabs group="comparison-tier" ariaLabel="Comparison scale" syncKey="comparison-tier" tabs={tiers}>
+    {tiers.map((tier, tierIndex) => <LandingTabPanel id={tier.id} group="comparison-tier" active={tierIndex === 0}><div class="landing-tier-intro"><p>{tier.description}</p></div><LandingTabs group={`comparison-${tier.id}`} ariaLabel={`${tier.label} comparison`} tabs={tier.features}>{tier.features.map((feature, featureIndex) => <LandingTabPanel id={feature.id} group={`comparison-${tier.id}`} active={featureIndex === 0}><div class="landing-feature-panel"><p class="landing-eyebrow">{feature.label}</p><h3>{feature.title}</h3><p>{feature.description}</p><div class="landing-before-after"><article><span>Without a document layer</span><p>{feature.without}</p></article><article class="landing-with-card"><span>With react-native-notion-markdown</span><p>{feature.with}</p></article></div></div></LandingTabPanel>)}</LandingTabs></LandingTabPanel>)}
+  </LandingTabs>
+</div>

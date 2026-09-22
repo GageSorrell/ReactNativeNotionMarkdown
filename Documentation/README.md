@@ -183,7 +183,7 @@ Put the public description immediately above an exported declaration and use nor
  * const result = parseNotionMarkdown(markdown)
  * ```
  */
-export function parseNotionMarkdown(markdown: string) {}
+export function parseNotionMarkdown(markdown: string) { }
 ```
 
 After changing a public declaration or its comments, regenerate the references and run `npm run verify --workspace Documentation`. Declaration anchors are derived from the exported name and should be treated as stable permalinks.
@@ -214,15 +214,34 @@ When a new `react-native-notion-markdown` version is published, update the packa
 
 Update navigation labels, GitHub/npm links, or the References tab in `src/lib/navigation.ts` and `src/components/navigation/DocsNavigation.astro`. Change the supported versions in `src/lib/versions.ts`. Guide grouping and onboarding order are controlled by `src/content/docs/sidebar-config.json` and `src/content/docs/onboarding-groups.json`.
 
-The visual theme is defined in `src/styles/global.css`. Change the light and dark CSS variables in `:root` and `.dark` for colors, update the `@theme` mappings for Tailwind utilities, and adjust typography or responsive rules in the same file. The site already supports the system preference plus the persisted light/dark theme toggle; new components should use the existing `background`, `foreground`, `muted`, `muted-foreground`, `border`, and `accent` tokens so both variants remain consistent. Fonts, heading permalink generation, redirects, and integrations are configured in `astro.config.ts`.
+The visual theme is defined in `src/styles/global.css`. Change the light and dark CSS variables in `:root` and `.dark` for colors, update the `@theme` mappings for Tailwind utilities, and adjust typography or responsive rules in the same file. The site already supports the system preference plus the persisted light/dark theme toggle; new components should use the existing `background`, `foreground`, `muted`, `muted-foreground`, `border`, `accent`, `code-background`, and `code-foreground` tokens so both variants remain consistent. Markdown code blocks use the `github-light`/`github-dark` Expressive Code themes configured in `astro.config.ts` and switch from the root `data-theme` value when the theme toggle is used. Fonts, heading permalink generation, redirects, and integrations are configured in `astro.config.ts`.
 
 Reference pages use `src/components/api/`, `src/pages/docs/[version]/api/`, and the custom `apiReference` loader in `content.config.ts`. Keep generated data out of source files and make presentation changes in these components instead of editing `.data` records.
 
+### Customize the landing page
+
+The public home page is `src/pages/index.astro`. It composes the reusable landing components in `src/components/landing/` with the typed `LANDING_CONFIG` in `src/lib/landing.ts`. Change package copy, links, install commands, comparison panels, capability cards, statements, and FAQs in that configuration instead of embedding package-specific content in the components.
+
+The landing page follows the section rhythm of the cloned Effect website in `EffectDocs/apps/web`, but its copy and package data are specific to this repository. `LandingHero`, `LandingExamples`, `LandingTestimonials`, `LandingProblem`, `LandingMentalModel`, `LandingCodingWithAi`, `LandingQuotes`, `LandingFaq`, and `LandingCallToAction` own the reusable section layouts. `LandingInstallCommand` owns the package-manager dropdown, icons, copy feedback, and keyboard behavior. `LandingGridBackground` provides the repeating light/dark grid used by the hero and final CTA, while `LandingGridRails` provides the desktop container rails. The source visual-effects runtime is not copied: the examples area uses a static pipeline panel while retaining the nested Start/Scale comparison tabs.
+
+The landing styles live in `src/styles/landing.css` and use the same light/dark tokens as the documentation site. Keep new package configurations compatible with `LandingPageConfig`, and reuse `LandingTabs` and `LandingTabPanel` for static, keyboard-accessible tab groups. Nested tab groups have independent state; matching `syncKey` values can synchronize related groups when that is useful. The landing tabs intentionally do not include visual-effect animations, canvas code, or animation-specific dependencies. The header uses the same `ThemeToggle` as the docs site; theme state is persisted in `localStorage` under `theme` and follows the system preference until a user chooses a mode.
+
+To add a future package, create another configuration that implements `LandingPageConfig`, pass it to `LandingPage` from a package-specific route, and provide that package's logo, links, documentation paths, install commands, and content. The existing docs `Tabs` and `TabItem` components remain available to MDX pages and now support stable IDs, keyboard navigation, and optional synchronization keys.
+
 ## Vercel setup and deployment
 
-The repository root is the Vercel project root. `vercel.json` pins the Astro output to `Documentation/dist`; `.nvmrc` selects Node 24; and the build command is `npm run build:snapshot --workspace Documentation`. Configure the Vercel project with automatic Git deployment disabled, then add these repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`. Add `PUBLIC_SITE_URL` as a repository or Vercel environment variable so canonical and Open Graph URLs use the deployed origin.
+The repository root is linked to the Vercel project `sorrell/react-native-notion-markdown`. The link is stored in the ignored `.vercel/project.json` file, so each collaborator should run `vercel login` and `vercel link` from the repository root once. `vercel.json` pins the Astro output to `Documentation/dist`, `.nvmrc` selects Node 24, and the normal Vercel build regenerates the API dataset from the checked-out package source.
 
-The supported custom-CI sequence is `vercel pull`, `vercel build`, and `vercel deploy --prebuilt` using the pinned `vercel@59.25.0` CLI. Preview deployments run for same-repository pull requests when the Vercel secrets are available; fork pull requests retain all checks and skip credentialed deployment. Production deploys run on every `Master` push, restore the latest published API snapshot, smoke-test the API landing page, an OG PNG, and Pagefind, and then promote the verified deployment.
+For a direct local deployment, run:
+
+```sh
+vercel pull --yes --environment=production
+vercel --prod
+```
+
+The first command downloads the linked project's settings and environment variables; the second runs the configured build and promotes the result to production. Use `vercel` without `--prod` for a preview deployment. Add `PUBLIC_SITE_URL` as a repository or Vercel environment variable so canonical and Open Graph URLs use the deployed origin.
+
+The repository also supports deterministic snapshot deployments through GitHub Actions. The production and rollback workflows restore an exact API snapshot, then use `vercel.snapshot.json` with the pinned `vercel@59.25.0` CLI so the restored dataset is not regenerated during the Vercel build. Configure the Vercel project with automatic Git deployment disabled when using these workflows, then add the repository secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`. Preview deployments run for same-repository pull requests when those secrets are available; fork pull requests retain all checks and skip credentialed deployment. Production deploys run on every `Master` push, restore the latest published API snapshot, smoke-test the API landing page, an OG PNG, and Pagefind, and then promote the verified deployment.
 
 Run the same checks locally before changing deployment settings:
 
@@ -232,5 +251,7 @@ npm run lint --workspace Documentation
 npm run build --workspace Documentation
 npm run verify --workspace Documentation
 ```
+
+To update the Vercel project settings or inspect the current deployment, use `vercel project ls`, `vercel inspect <deployment-url>`, and `vercel logs <deployment-url>`. Do not commit `.vercel/` or `.env.local`; both are local Vercel state and are already ignored.
 
 To roll back, run the `Roll back documentation` workflow with an ancestor website commit and the exact `api-reference-<sha256>` snapshot tag. It rebuilds that deterministic pair, performs the same smoke test, and promotes the deployment only after verification.

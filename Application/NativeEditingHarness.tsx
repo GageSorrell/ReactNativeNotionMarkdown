@@ -1,18 +1,18 @@
 /**
- * @module notion-markdown-storybook/NativeProof
+ * @module notion-markdown-storybook/NativeEditingHarness
  *
- * @file      NativeProof.tsx
+ * @file      NativeEditingHarness.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
  */
 
 import {
-    AcceptProofEvent,
-    CreateProofDocument,
-    type ProofBlock,
-    type ProofCommand,
-    type ProofEvent
+    AcceptEditorEvent,
+    CreateEditorDocument,
+    type EditorBlock,
+    type EditorCommand,
+    type EditorEvent
 } from "react-native-notion-markdown";
 import { NotionEditor, type NotionEditorComponents } from "react-native-notion-markdown/editor/ui";
 import { ScrollView, StyleSheet, Text, View, useColorScheme } from "react-native";
@@ -25,7 +25,7 @@ interface DiagnosticButtonProps
     readonly onPress: () => void;
 }
 
-/** Accessible proof-harness diagnostic action. */
+/** Accessible diagnostic-harness action. */
 function DiagnosticButton({ label, onPress }: DiagnosticButtonProps)
 {
     return <Text accessibilityRole="button"
@@ -33,24 +33,24 @@ function DiagnosticButton({ label, onPress }: DiagnosticButtonProps)
         style={ styles.diagnosticButton }>{ label }</Text>;
 }
 
-/** Optional button components accepted by the proof harness host. */
-export type NativeProofProps = { components?: NotionEditorComponents };
+/** Optional button components accepted by the diagnostic harness host. */
+export type NativeEditingHarnessProps = { components?: NotionEditorComponents };
 
 /** Acceptance harness around the package's configured editor UI. */
-export function NativeProof({ components }: NativeProofProps = {})
+export function NativeEditingHarness({ components }: NativeEditingHarnessProps = {})
 {
-    const [ snapshot, setSnapshot ] = useState(CreateProofDocument);
+    const [ snapshot, setSnapshot ] = useState(CreateEditorDocument);
     const currentSnapshot = useRef(snapshot);
-    const [ event, setEvent ] = useState<ProofEvent>();
-    const [ command, setCommand ] = useState<ProofCommand>();
+    const [ event, setEvent ] = useState<EditorEvent>();
+    const [ command, setCommand ] = useState<EditorCommand>();
     const sequence = useRef(0);
     const dark = useColorScheme() === "dark";
     const foreground = dark ? "#eeeeee" : "#262626";
     const background = dark ? "#191919" : "#ffffff";
     const devtools = useNotionMarkdownDevTools({
         dark,
-        dispatchCommand: (action: ProofCommand["action"]) => send(action),
-        onReplaceDocument: (blocks?: Array<ProofBlock>) => resetDocument(blocks),
+        dispatchCommand: (action: EditorCommand["action"]) => send(action),
+        onReplaceDocument: (blocks?: Array<EditorBlock>) => resetDocument(blocks),
         snapshot
     });
 
@@ -89,11 +89,12 @@ export function NativeProof({ components }: NativeProofProps = {})
 
     /** Dispatch a uniquely numbered command against the current document epoch. */
     const send = useCallback((
-        action: ProofCommand["action"],
-        extra?: Pick<ProofCommand, "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
+        action: EditorCommand["action"],
+        extra?: Pick<EditorCommand,
+            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label">
     ) =>
     {
-        const next: ProofCommand = {
+        const next: EditorCommand = {
             action,
             epoch: currentSnapshot.current.epoch,
             id: ++sequence.current,
@@ -127,9 +128,9 @@ export function NativeProof({ components }: NativeProofProps = {})
     }
 
     /** Invalidate queued native input before rendering a replacement document. */
-    function resetDocument(blocks?: Array<ProofBlock>)
+    function resetDocument(blocks?: Array<EditorBlock>)
     {
-        const seeded = CreateProofDocument(currentSnapshot.current.epoch + 1);
+        const seeded = CreateEditorDocument(currentSnapshot.current.epoch + 1);
         currentSnapshot.current = blocks?.length ? { ...seeded, blocks } : seeded;
         setSnapshot(currentSnapshot.current);
         setEvent(undefined);
@@ -137,10 +138,10 @@ export function NativeProof({ components }: NativeProofProps = {})
     }
 
     /** Accept fresh edits and selection reports without a controlled Markdown typing loop. */
-    function receiveEdit({ nativeEvent }: { nativeEvent: ProofEvent })
+    function receiveEdit({ nativeEvent }: { nativeEvent: EditorEvent })
     {
         const current = currentSnapshot.current;
-        const next = AcceptProofEvent(current, nativeEvent);
+        const next = AcceptEditorEvent(current, nativeEvent);
         const accepted = next !== current;
         devtools.reportEvent(current, nativeEvent, accepted);
         if (accepted)
@@ -157,9 +158,9 @@ export function NativeProof({ components }: NativeProofProps = {})
     return (
         <View style={ rootStyle }>
             <Text accessibilityRole="header"
-                style={ statusStyle }>Three-block native proof</Text>
+                style={ statusStyle }>Three-block native editor</Text>
             <Text style={ statusStyle }
-                testID="proof-status">
+                testID="editor-status">
                 { snapshot.blocks.length } blocks ·{ " " }
                 epoch { snapshot.epoch } ·{ " " }
                 revision { snapshot.revision }{ "\n" }
@@ -192,7 +193,7 @@ export function NativeProof({ components }: NativeProofProps = {})
                 onEdit={ receiveEdit }
                 snapshot={ snapshot }
                 style={ styles.editor }
-                testID="proof-editor"
+                testID="editor-view"
             />
         </View>
     );

@@ -1,0 +1,36 @@
+---
+import { ArrowUpRight } from "@lucide/astro"
+import type { LandingPageConfig } from "@/lib/landing"
+
+interface Props { readonly config: LandingPageConfig }
+const { config } = Astro.props
+---
+
+<section id="testimonials" class="effect-landing-section relative w-full py-24 md:pt-40 md:pb-24">
+  <div class="effect-landing-container mx-auto mb-12 w-full px-4">
+    <p class="effect-landing-label mb-3">// Built for the real world</p>
+    <h2>One package, several useful boundaries.</h2>
+    <div class="mt-8 flex flex-wrap items-center gap-3">
+      {config.navItems.slice(0, 3).map((item) => <a href={item.href} class="effect-landing-secondary-link" {...item.external ? { target: "_blank", rel: "noopener noreferrer" } : {}}>{item.label}<ArrowUpRight class="h-4 w-4" aria-hidden="true" /></a>)}
+    </div>
+  </div>
+  <div class="effect-landing-container mx-auto flex w-full flex-col gap-12 px-4 md:gap-16">
+    {config.capabilities.map((item, index) => {
+      const imageOnRight = index % 2 === 1
+      return (
+        <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-center">
+          <div class:list={["flex w-full flex-col gap-5 lg:mx-auto lg:max-w-104", imageOnRight ? "lg:order-1" : "lg:order-2"]}>
+            <h3>{item.title}</h3>
+            <p class="effect-landing-section-copy max-w-md">{item.description}</p>
+            <a href={item.href} class="effect-landing-inline-link">{item.linkLabel}<ArrowUpRight class="h-4 w-4" aria-hidden="true" /></a>
+          </div>
+          <div class:list={["effect-landing-testimonial-panel", imageOnRight ? "lg:order-2" : "lg:order-1"]}>
+            <div class="effect-landing-testimonial-number">0{index + 1}</div>
+            <div class="effect-landing-testimonial-lines"><span></span><span></span><span></span></div>
+            <p>{item.eyebrow}</p>
+          </div>
+        </div>
+      )
+    })}
+  </div>
+</section>

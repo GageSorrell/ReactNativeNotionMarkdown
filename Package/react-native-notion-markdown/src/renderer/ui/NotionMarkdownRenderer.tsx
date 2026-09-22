@@ -934,7 +934,7 @@ export function NotionBlockView({
             padding: 12
         },
         icon: { fontSize: context.theme.fontSize * 1.3 },
-        iconWrap: { marginTop: context.theme.fontSize * 0.47, width: 24 },
+        iconWrap: { marginRight: 8, marginTop: context.theme.fontSize * 0.47, width: 24 },
         root: { ...base, paddingBottom: 8, paddingLeft: 8, paddingRight: 8, paddingTop: 8 }
     }), [ backgroundColor, base, context.theme.border, context.theme.fontSize, context.theme.surface ]);
 

@@ -1,28 +1,28 @@
 /**
- * @module react-native-notion-markdown/NativeProofEditor
+ * @module react-native-notion-markdown/NativeEditor
  *
- * @file      NativeProofEditor.tsx
+ * @file      NativeEditor.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
  */
 
-import type { ProofBlock, ProofCommand, ProofEvent, ProofSnapshot } from "./prototype.ts";
+import type { EditorBlock, EditorCommand, EditorEvent, EditorSnapshot } from "./prototype.ts";
 import type { ComponentType } from "react";
 import type { ViewProps } from "react-native";
 import { requireNativeViewManager } from "expo-modules-core";
 
 /**
- * Native epoch/revision transport and proof editing events.
+ * Native epoch/revision transport and editor editing events.
  *
  * @since 1.0.0
  */
-export interface NativeProofEditorProps extends ViewProps
+export interface NativeEditorProps extends ViewProps
 {
-    readonly snapshot: ProofSnapshot;
-    readonly command?: ProofCommand;
+    readonly snapshot: EditorSnapshot;
+    readonly command?: EditorCommand;
     readonly dark?: boolean;
-    readonly onEdit?: (Event: { nativeEvent: ProofEvent }) => void;
+    readonly onEdit?: (Event: { nativeEvent: EditorEvent }) => void;
     readonly onPageReferencePress?: (
         Event: { nativeEvent: NativePageReferencePressEvent }
     ) => void;
@@ -38,7 +38,7 @@ export interface NativeProofEditorProps extends ViewProps
     readonly onContentSize?: (
         Event: { nativeEvent: NativeContentSizeEvent }
     ) => void;
-    /** Optional glyph used by the native proof view when a page has no fetched icon. */
+    /** Optional glyph used by the native editor view when a page has no fetched icon. */
     readonly pageReferenceFallbackIcon?: string;
 
     /** Maximum rendered width of image and video blocks, in logical pixels. */
@@ -51,7 +51,7 @@ export interface NativeProofEditorProps extends ViewProps
 }
 
 /**
- * Data emitted when a page reference is pressed in the native proof editor.
+ * Data emitted when a page reference is pressed in the native editor.
  *
  * @category Interfaces
  * @since 1.0.0
@@ -66,7 +66,7 @@ export interface NativePageReferencePressEvent
 
 /**
  * Data emitted when a block that opens the actions sheet (e.g. a divider) is tapped in the
- * native proof editor.
+ * native editor.
  *
  * @category Interfaces
  * @since 1.0.0
@@ -74,11 +74,11 @@ export interface NativePageReferencePressEvent
 export interface NativeBlockActionsPressEvent
 {
     readonly id: string;
-    readonly type: ProofBlock["type"];
+    readonly type: EditorBlock["type"];
 }
 
 /**
- * Data emitted when the native proof editor's own content height changes.
+ * Data emitted when the native editor's own content height changes.
  *
  * @category Interfaces
  * @since 1.0.0
@@ -90,11 +90,11 @@ export interface NativeContentSizeEvent
 }
 
 /**
- * Android-only native coordinator. One shared buffer is intentional for this proof.
+ * Android-only native coordinator. One shared buffer is intentional for this editor.
  *
  * @since 1.0.0
  */
-const NativeProofEditor: ComponentType<NativeProofEditorProps> =
+const NativeEditor: ComponentType<NativeEditorProps> =
     requireNativeViewManager("NotionMarkdown");
 
-export { NativeProofEditor };
+export { NativeEditor };

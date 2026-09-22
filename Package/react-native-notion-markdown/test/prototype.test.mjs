@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createProofDocument,
-  acceptProofEvent,
-  proofPointAt,
+  createEditorDocument,
+  acceptEditorEvent,
+  editorPointAt,
   parseNotionMarkdown,
   serializeNotionMarkdown,
   fromNotionBlocks,
@@ -14,96 +14,96 @@ import {
 } from 'react-native-notion-markdown/renderer';
 
 test('renderer entry loads without React Native; seed has three stable blocks', () => {
-  assert.equal(createProofDocument().blocks.length, 3);
+  assert.equal(createEditorDocument().blocks.length, 3);
 });
 test('package root exposes the pure engine without loading Expo', async () => {
   const root = await import('react-native-notion-markdown');
   assert.equal(typeof root.parseNotionMarkdown, 'function');
 });
 test('epoch and revision reject stale events, preserving unaffected blocks', () => {
-  const initial = createProofDocument();
+  const initial = createEditorDocument();
   const event = { ...initial, revision: 1, blocks: initial.blocks.map((b, i) => i ? b : { ...b, text: 'changed' }) };
-  const updated = acceptProofEvent(initial, event);
+  const updated = acceptEditorEvent(initial, event);
   assert.equal(updated.blocks[1], initial.blocks[1]);
   assert.equal(updated.blocks[0].text, 'changed');
-  assert.equal(acceptProofEvent(updated, event), updated);
-  assert.equal(acceptProofEvent(createProofDocument(2), event).epoch, 2);
+  assert.equal(acceptEditorEvent(updated, event), updated);
+  assert.equal(acceptEditorEvent(createEditorDocument(2), event).epoch, 2);
 });
 test('UTF-16 mapping includes separators and clamps endpoints', () => {
   const blocks = [{ id: 'a', type: 'text', text: '👋' }, { id: 'b', type: 'text', text: 'אבג' }];
-  assert.equal(proofPointAt(blocks, 2).offset, 2);
-  assert.deepEqual(proofPointAt(blocks, 3), { blockId: 'b', field: 'rich_text', offset: 0 });
-  assert.equal(proofPointAt(blocks, 99).offset, 3);
+  assert.equal(editorPointAt(blocks, 2).offset, 2);
+  assert.deepEqual(editorPointAt(blocks, 3), { blockId: 'b', field: 'rich_text', offset: 0 });
+  assert.equal(editorPointAt(blocks, 99).offset, 3);
 });
 test('invalid or duplicate payloads cannot enter the store', () => {
-  const initial = createProofDocument();
-  assert.equal(acceptProofEvent(initial, { ...initial, revision: 1, blocks: [] }), initial);
-  assert.equal(acceptProofEvent(initial, { ...initial, revision: 1, blocks: [initial.blocks[0], initial.blocks[0]] }), initial);
-  assert.equal(acceptProofEvent(initial, { ...initial, revision: 1, blocks: [{ ...initial.blocks[0], text: 'bad\nseparator' }] }), initial);
+  const initial = createEditorDocument();
+  assert.equal(acceptEditorEvent(initial, { ...initial, revision: 1, blocks: [] }), initial);
+  assert.equal(acceptEditorEvent(initial, { ...initial, revision: 1, blocks: [initial.blocks[0], initial.blocks[0]] }), initial);
+  assert.equal(acceptEditorEvent(initial, { ...initial, revision: 1, blocks: [{ ...initial.blocks[0], text: 'bad\nseparator' }] }), initial);
 });
-test('to-do proof blocks preserve checked state and reject it on other block types', () => {
-  const initial = createProofDocument();
+test('to-do editor blocks preserve checked state and reject it on other block types', () => {
+  const initial = createEditorDocument();
   const todo = { ...initial.blocks[0], checked: true, type: 'to_do' };
-  const accepted = acceptProofEvent(initial, { ...initial, blocks: [todo, ...initial.blocks.slice(1)], revision: 1 });
+  const accepted = acceptEditorEvent(initial, { ...initial, blocks: [todo, ...initial.blocks.slice(1)], revision: 1 });
   assert.equal(accepted.blocks[0].checked, true);
-  const invalid = acceptProofEvent(initial, {
+  const invalid = acceptEditorEvent(initial, {
     ...initial,
     blocks: [{ ...initial.blocks[0], checked: true }, ...initial.blocks.slice(1)],
     revision: 1
   });
   assert.equal(invalid, initial);
 });
-test('column proof blocks preserve supported column counts', () => {
-  const initial = createProofDocument();
+test('column editor blocks preserve supported column counts', () => {
+  const initial = createEditorDocument();
   for (const columnCount of [ 2, 3, 4, 5 ]) {
     const columns = { ...initial.blocks[0], columnCount, text: '\u200B', type: 'column_list' };
-    const accepted = acceptProofEvent(initial, {
+    const accepted = acceptEditorEvent(initial, {
       ...initial,
       blocks: [columns, ...initial.blocks.slice(1)],
       revision: columnCount
     });
     assert.equal(accepted.blocks[0].columnCount, columnCount);
   }
-  const invalid = acceptProofEvent(initial, {
+  const invalid = acceptEditorEvent(initial, {
     ...initial,
     blocks: [{ ...initial.blocks[0], columnCount: 6, text: '\u200B', type: 'column_list' }, ...initial.blocks.slice(1)],
     revision: 1
   });
   assert.equal(invalid, initial);
 });
-test('proof snapshots accept list block types for continued Enter items', () => {
-  const initial = createProofDocument();
+test('editor snapshots accept list block types for continued Enter items', () => {
+  const initial = createEditorDocument();
   for (const type of [ 'bulleted_list_item', 'numbered_list_item' ]) {
     const list = { ...initial.blocks[0], text: 'Item', type };
-    const accepted = acceptProofEvent(initial, { ...initial, blocks: [list, ...initial.blocks.slice(1)], revision: 1 });
+    const accepted = acceptEditorEvent(initial, { ...initial, blocks: [list, ...initial.blocks.slice(1)], revision: 1 });
     assert.equal(accepted.blocks[0].type, type);
   }
 });
-test('page-reference proof blocks preserve URL and icon metadata', () => {
-  const initial = createProofDocument();
+test('page-reference editor blocks preserve URL and icon metadata', () => {
+  const initial = createEditorDocument();
   const page = { ...initial.blocks[0], icon: '📄', text: 'A page', type: 'link_to_page', url: 'https://example.com/page' };
-  const accepted = acceptProofEvent(initial, { ...initial, blocks: [page, ...initial.blocks.slice(1)], revision: 1 });
+  const accepted = acceptEditorEvent(initial, { ...initial, blocks: [page, ...initial.blocks.slice(1)], revision: 1 });
   assert.equal(accepted.blocks[0].url, page.url);
   assert.equal(accepted.blocks[0].icon, page.icon);
-  const invalid = acceptProofEvent(initial, {
+  const invalid = acceptEditorEvent(initial, {
     ...initial,
     blocks: [{ ...page, url: undefined }, ...initial.blocks.slice(1)],
     revision: 1
   });
   assert.equal(invalid, initial);
 });
-test('media proof blocks preserve image and video URLs', () => {
-  const initial = createProofDocument();
+test('media editor blocks preserve image and video URLs', () => {
+  const initial = createEditorDocument();
   for (const type of [ 'image', 'video' ]) {
     const media = { ...initial.blocks[0], text: '', type, url: `file:///tmp/${type}.asset` };
-    const accepted = acceptProofEvent(initial, {
+    const accepted = acceptEditorEvent(initial, {
       ...initial,
       blocks: [media, ...initial.blocks.slice(1)],
       revision: 1
     });
     assert.equal(accepted.blocks[0].type, type);
     assert.equal(accepted.blocks[0].url, media.url);
-    const invalid = acceptProofEvent(initial, {
+    const invalid = acceptEditorEvent(initial, {
       ...initial,
       blocks: [{ ...media, url: undefined }, ...initial.blocks.slice(1)],
       revision: 1
@@ -111,8 +111,8 @@ test('media proof blocks preserve image and video URLs', () => {
     assert.equal(invalid, initial);
   }
 });
-test('audio proof blocks preserve metadata and reject empty URLs', () => {
-  const initial = createProofDocument();
+test('audio editor blocks preserve metadata and reject empty URLs', () => {
+  const initial = createEditorDocument();
   const audio = {
     ...initial.blocks[0],
     duration: 12.5,
@@ -123,11 +123,28 @@ test('audio proof blocks preserve metadata and reject empty URLs', () => {
     type: 'audio',
     url: 'file:///tmp/memo.m4a'
   };
-  const accepted = acceptProofEvent(initial, { ...initial, blocks: [audio, ...initial.blocks.slice(1)], revision: 1 });
+  const accepted = acceptEditorEvent(initial, { ...initial, blocks: [audio, ...initial.blocks.slice(1)], revision: 1 });
   assert.equal(accepted.blocks[0].type, 'audio');
   assert.equal(accepted.blocks[0].fileName, audio.fileName);
   assert.equal(accepted.blocks[0].duration, audio.duration);
-  assert.equal(acceptProofEvent(initial, { ...initial, blocks: [{ ...audio, url: '' }, ...initial.blocks.slice(1)], revision: 1 }), initial);
+  assert.equal(acceptEditorEvent(initial, { ...initial, blocks: [{ ...audio, url: '' }, ...initial.blocks.slice(1)], revision: 1 }), initial);
+});
+test('file editor blocks preserve metadata and reject empty URLs', () => {
+  const initial = createEditorDocument();
+  const file = {
+    ...initial.blocks[0],
+    fileName: 'brief.pdf',
+    fileSize: 8192,
+    mimeType: 'application/pdf',
+    text: '',
+    type: 'file',
+    url: 'file:///tmp/brief.pdf'
+  };
+  const accepted = acceptEditorEvent(initial, { ...initial, blocks: [file, ...initial.blocks.slice(1)], revision: 1 });
+  assert.equal(accepted.blocks[0].type, 'file');
+  assert.equal(accepted.blocks[0].fileName, file.fileName);
+  assert.equal(accepted.blocks[0].fileSize, file.fileSize);
+  assert.equal(acceptEditorEvent(initial, { ...initial, blocks: [{ ...file, url: '' }, ...initial.blocks.slice(1)], revision: 1 }), initial);
 });
 test('audio Markdown preserves its URL and caption through a round trip', () => {
   const source = '<audio src="file:///tmp/memo.m4a">Voice **memo**</audio>';
@@ -136,19 +153,19 @@ test('audio Markdown preserves its URL and caption through a round trip', () => 
   assert.equal(parsed.document.blocks[0].audio.external.url, 'file:///tmp/memo.m4a');
   assert.match(serializeNotionMarkdown(parsed.document), /<audio src="file:\/\/\/tmp\/memo\.m4a">Voice \*\*memo\*\*<\/audio>/);
 });
-test('proof link marks preserve URLs and reject malformed links', () => {
-  const initial = createProofDocument();
+test('editor link marks preserve URLs and reject malformed links', () => {
+  const initial = createEditorDocument();
   const linked = {
     ...initial.blocks[0],
     marks: [ { end: 5, kind: 'link', start: 0, url: 'https://example.com' } ]
   };
-  const accepted = acceptProofEvent(initial, {
+  const accepted = acceptEditorEvent(initial, {
     ...initial,
     blocks: [linked, ...initial.blocks.slice(1)],
     revision: 1
   });
   assert.equal(accepted.blocks[0].marks[0].url, 'https://example.com');
-  const invalid = acceptProofEvent(initial, {
+  const invalid = acceptEditorEvent(initial, {
     ...initial,
     blocks: [{ ...linked, marks: [ { ...linked.marks[0], url: '' } ] }, ...initial.blocks.slice(1)],
     revision: 1
@@ -157,9 +174,9 @@ test('proof link marks preserve URLs and reject malformed links', () => {
 });
 test('soft breaks stay in a block; empty blocks have selectable endpoints', () => {
   const blocks = [{ id: 'empty', type: 'text', text: '' }, { id: 'soft', type: 'text', text: 'a\u2028b' }];
-  assert.deepEqual(proofPointAt(blocks, 0), { blockId: 'empty', field: 'rich_text', offset: 0 });
-  assert.deepEqual(proofPointAt(blocks, 3), { blockId: 'soft', field: 'rich_text', offset: 2 });
-  assert.throws(() => proofPointAt([], 0), /at least one block/);
+  assert.deepEqual(editorPointAt(blocks, 0), { blockId: 'empty', field: 'rich_text', offset: 0 });
+  assert.deepEqual(editorPointAt(blocks, 3), { blockId: 'soft', field: 'rich_text', offset: 2 });
+  assert.throws(() => editorPointAt([], 0), /at least one block/);
 });
 
 test('Milestone 2 parses rich text and block attributes', () => {

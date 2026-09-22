@@ -2,7 +2,7 @@
   "name": "@react-native-notion-markdown/devtools-plugin",
   "version": "0.1.0",
   "type": "module",
-  "description": "Expo DevTools plugin for developing react-native-notion-markdown: inspects the Proof transport (snapshots, events, commands) and drives the native editor from a browser panel.",
+  "description": "Expo DevTools plugin for developing react-native-notion-markdown: inspects the Editor transport (snapshots, events, commands) and drives the native editor from a browser panel.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "sideEffects": false,

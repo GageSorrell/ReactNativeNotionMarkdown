@@ -50,7 +50,7 @@ private val markColors: Map<String, Int> = mapOf(
 
 /**
  * One editable rich-text field: a single block's `rich_text`, `caption`, or table `cell`,
- * never a whole document. This supersedes the milestone-one [NotionProofView] shared buffer
+ * never a whole document. This supersedes the milestone-one [NotionEditorView] shared buffer
  * with the multi-field architecture described for milestone four: many of these mount
  * simultaneously (one per editable field currently on screen), and [NotionEditorCoordinator]
  * tracks them by session for cross-field navigation and selection.
@@ -63,7 +63,7 @@ private val markColors: Map<String, Int> = mapOf(
  * per-codepoint caret and delete behavior is already atomic for them.
  *
  * IME safety reuses the epoch-guarded [InputConnectionWrapper] pattern proven in
- * [NotionProofView]: every connection method rejects once its captured epoch is stale, so an
+ * [NotionEditorView]: every connection method rejects once its captured epoch is stale, so an
  * in-flight composition from a replaced document can never leak back into the new one.
  */
 class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {

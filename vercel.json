@@ -1,7 +1,7 @@
 {
   "framework": "astro",
   "installCommand": "npm ci",
-  "buildCommand": "npm run build:snapshot --workspace Documentation",
+  "buildCommand": "npm run build --workspace @react-native-notion-markdown/documentation",
   "outputDirectory": "Documentation/dist",
   "cleanUrls": true
 }

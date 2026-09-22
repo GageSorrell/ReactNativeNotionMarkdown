@@ -11,7 +11,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { requireOptionalNativeModule } from "expo";
 import { view } from "./.rnstorybook/storybook.requires";
+
+const DevMenuPreferences = requireOptionalNativeModule("DevMenuPreferences");
+DevMenuPreferences?.setPreferencesAsync({ showFloatingActionButton: false, showOnLaunch: false });
 
 const StorybookUIRoot = view.getStorybookUI({
     initialSelection: "editor--default",

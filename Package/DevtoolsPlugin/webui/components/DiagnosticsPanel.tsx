@@ -12,12 +12,12 @@
 import type { ErrorEntry, TimelineEntry } from "../hooks/useDevToolsBridge";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { TimelineRows, filterEntries } from "./TimelinePanel";
-import type { ProofSnapshot } from "react-native-notion-markdown";
+import type { EditorSnapshot } from "react-native-notion-markdown";
 import { theme } from "../theme";
 
 export type DiagnosticsPanelProps =
     {
-        snapshot: ProofSnapshot | undefined;
+        snapshot: EditorSnapshot | undefined;
         dark: boolean;
         timeline: Array<TimelineEntry>;
         onClearTimeline: () => void;

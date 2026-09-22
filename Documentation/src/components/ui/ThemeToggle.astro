@@ -1,0 +1,46 @@
+---
+/**
+ * @module @react-native-notion-markdown/documentation/components/ui/ThemeToggle
+ * @file ThemeToggle.astro
+ * @author Gage Sorrell <gage@sorrell.sh>
+ * @copyright (c) 2026 Gage Sorrell
+ * @license MIT
+ */
+import { Moon, Sun } from "@lucide/astro"
+
+interface Props { readonly className?: string }
+const { className = "" } = Astro.props
+---
+<button type="button" aria-label="Switch to dark theme" data-theme-toggle class={`inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-muted ${className}`}>
+  <span data-theme-icon="light"><Moon size={17} aria-hidden="true" /></span>
+  <span data-theme-icon="dark" class="hidden"><Sun size={17} aria-hidden="true" /></span>
+</button>
+
+<script>
+  const updateThemeToggles = () => {
+    const dark = document.documentElement.classList.contains("dark")
+    document.querySelectorAll<HTMLElement>("[data-theme-toggle]").forEach((button) => {
+      button.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme")
+      button.querySelector<HTMLElement>("[data-theme-icon='light']")?.classList.toggle("hidden", dark)
+      button.querySelector<HTMLElement>("[data-theme-icon='dark']")?.classList.toggle("hidden", !dark)
+    })
+  }
+
+  const setTheme = (dark: boolean) => {
+    document.documentElement.classList.toggle("dark", dark)
+    document.documentElement.dataset.theme = dark ? "dark" : "light"
+    try { localStorage.setItem("theme", dark ? "dark" : "light") } catch { /* Storage can be unavailable in privacy-restricted contexts. */ }
+    updateThemeToggles()
+    window.dispatchEvent(new Event("docs-theme:change"))
+  }
+
+  updateThemeToggles()
+  document.addEventListener("click", (event) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const button = target.closest<HTMLElement>("[data-theme-toggle]")
+    if (button) setTheme(!document.documentElement.classList.contains("dark"))
+  })
+  window.addEventListener("storage", (event) => { if (event.key === "theme") updateThemeToggles() })
+  window.addEventListener("docs-theme:change", updateThemeToggles)
+</script>

@@ -1,0 +1,21 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/landing/LandingHeader @file LandingHeader.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import logo from "@/assets/logo.svg"
+import ThemeToggle from "@/components/ui/ThemeToggle.astro"
+import type { LandingNavItem } from "@/lib/landing"
+interface Props { readonly name: string; readonly items: readonly LandingNavItem[] }
+const { name, items } = Astro.props
+---
+<header class="landing-header">
+  <div class="landing-container landing-header-inner">
+    <a href="/" class="landing-brand" aria-label={`${name} home`}><img src={logo.src} alt={name} width={logo.width} height={logo.height} /></a>
+    <nav class="landing-header-nav" aria-label="Primary navigation">
+      {items.map((item) => <a href={item.href} {...item.external ? { target: "_blank", rel: "noopener noreferrer" } : {}}>{item.label}</a>)}
+    </nav>
+    <div class="landing-header-actions"><ThemeToggle /></div>
+    <details class="landing-mobile-menu">
+      <summary aria-label="Open navigation"><span>Menu</span><span aria-hidden="true">+</span></summary>
+      <nav aria-label="Mobile navigation">{items.map((item) => <a href={item.href} {...item.external ? { target: "_blank", rel: "noopener noreferrer" } : {}}>{item.label}</a>)}<div class="landing-mobile-theme"><span>Theme</span><ThemeToggle /></div></nav>
+    </details>
+  </div>
+</header>

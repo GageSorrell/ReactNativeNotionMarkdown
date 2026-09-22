@@ -1,0 +1,25 @@
+---
+import { ArrowUpRight } from "@lucide/astro"
+import type { LandingPageConfig } from "@/lib/landing"
+
+interface Props { readonly config: LandingPageConfig }
+const { config } = Astro.props
+---
+
+<section id="coding-with-ai" class="effect-landing-section relative w-full overflow-hidden py-24 md:pt-40 md:pb-24">
+  <div class="effect-landing-container relative mx-auto w-full">
+    <div class="mb-12 grid grid-cols-1 gap-8 px-4 lg:grid-cols-2 lg:items-center">
+      <div><p class="effect-landing-label mb-3">{config.content.codingLabel}</p><h2>{config.content.codingTitle}</h2><p class="effect-landing-section-copy mt-4 max-w-lg">{config.content.codingDescription}</p><a href={config.primaryCta.href} class="effect-landing-secondary-link mt-6">{config.content.codingLinkLabel} <ArrowUpRight class="size-4" aria-hidden="true" /></a></div>
+      <div class="effect-landing-code-window"><div class="effect-landing-static-panel-header"><span class="effect-landing-dot"></span><span class="effect-landing-dot"></span><span class="effect-landing-dot"></span><span>screen.tsx</span></div><pre><code><span>const</span> document = useNotionDocument(source)
+
+<span>return</span> &lt;NotionMarkdown
+  document={"{"}document{"}"}
+  theme={"{"}appTheme{"}"}
+  components={"{"}customBlocks{"}"}
+/&gt;</code></pre></div>
+    </div>
+    <div class="grid grid-cols-1 gap-6 px-4 md:grid-cols-4">
+      {config.statements.slice(0, 4).map((item, index) => <div class="flex flex-col gap-2"><span class="font-mono text-sm">0{index + 1}</span><p class="effect-landing-section-copy"><strong>{item.title}</strong> {item.description}</p></div>)}
+    </div>
+  </div>
+</section>

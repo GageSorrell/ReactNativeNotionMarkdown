@@ -1,0 +1,31 @@
+---
+import { ArrowUpRight, Check } from "@lucide/astro"
+import type { LandingPageConfig } from "@/lib/landing"
+
+interface Props { readonly config: LandingPageConfig }
+const { config } = Astro.props
+---
+
+<section id="mental-model" class="effect-landing-section relative w-full overflow-hidden py-24 md:pt-40 md:pb-24">
+  <div class="effect-landing-container relative mx-auto w-full px-4">
+    <div class="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-12">
+      <div>
+        <p class="effect-landing-label mb-3">{config.content.modelLabel}</p>
+        <h2 class="max-w-lg">{config.content.modelTitle}</h2>
+        <p class="effect-landing-section-copy mt-4 max-w-lg">{config.content.modelDescription}</p>
+        <ul class="effect-landing-check-list mt-5 m-0 list-none space-y-2 p-0">
+          {config.content.modelChecks.map((check) => <li><Check class="h-4 w-4" aria-hidden="true" /><span>{check}</span></li>)}
+        </ul>
+      </div>
+      <div class="effect-landing-model-diagram flex items-center justify-center">
+        <div class="relative w-full max-w-md">
+          <div class="effect-landing-type-box font-mono text-center"><span>NotionDocument</span><span>&lt;</span><strong>Blocks</strong><span>, </span><strong>RichText</strong><span>, </span><strong>Metadata</strong><span>&gt;</span></div>
+          <div class="effect-landing-model-branches" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="grid grid-cols-3 gap-4 text-sm"><div class="text-center"><p>Parse</p><small>Input boundary</small></div><div class="text-center"><p>Transform</p><small>Document operations</small></div><div class="text-center"><p>Render</p><small>Application surface</small></div></div>
+          <div class="effect-landing-code-panel mt-4 md:mt-8"><div><span>const</span> document = parseNotionMarkdown(source)</div><div class="mt-1 pl-4"><span>const</span> rendered = renderDocument(document, theme)</div><div class="mt-1">serialize(document)</div><div class="mt-3 border-t pt-3 text-xs leading-relaxed"><p>- content remains inspectable</p><p>- each surface can be replaced independently</p></div></div>
+          <div class="mt-2 text-center"><a href={config.primaryCta.href} class="effect-landing-inline-link">Read the document model <ArrowUpRight class="h-3.5 w-3.5" aria-hidden="true" /></a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

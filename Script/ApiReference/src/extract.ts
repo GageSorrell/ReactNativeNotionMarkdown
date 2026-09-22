@@ -14,7 +14,7 @@ import { basename, relative } from "node:path"
 import { commentText, blockTagText, blockTagValues, renderInlineComment } from "./comments.js"
 import type { DiscoveredModule } from "./discovery.js"
 import type { ReferenceDeclaration, ReferenceModule, ReferenceSource } from "./model.js"
-import { relativeToRepository, REFERENCE_CONFIG, REFERENCE_VERSION } from "./config.js"
+import { relativeToRepository, REFERENCE_CONFIG, REFERENCE_VERSION, UNKNOWN_SOURCE_REVISION } from "./config.js"
 
 type Reflection = Record<string, any>
 
@@ -43,7 +43,8 @@ function sourceFor(reflection: Reflection, revision: string): ReferenceSource | 
   if (!source?.fileName) return undefined
   const file = relativeToRepository(source.fileName)
   const line = source.line ?? source.lineStart
-  return { file, line, character: source.character, revision, url: `${REFERENCE_CONFIG.repository}/blob/${revision}/${file}${line ? `#L${line}` : ""}` }
+  const sourceRevision = revision === UNKNOWN_SOURCE_REVISION ? "master" : revision
+  return { file, line, character: source.character, revision, url: `${REFERENCE_CONFIG.repository}/blob/${sourceRevision}/${file}${line ? `#L${line}` : ""}` }
 }
 
 function typeText(reflection: Reflection): string {
@@ -100,7 +101,8 @@ function exportedNamesFromSource(path: string, revision: string): readonly Refer
     const kind = match[1] === "type" ? "Type alias" : match[1].charAt(0).toUpperCase() + match[1].slice(1)
     const line = source.slice(0, match.index ?? 0).split("\n").length
     const file = relativeToRepository(path)
-    declarations.push({ id: `${file}:${match[2]}`, name: match[2], kind, category: categoryForKind(kind), anchor: slugify(match[2]), signature: `${match[1]} ${match[2]}`, description: "", examples: [], see: [], source: { file, line, revision, url: `${REFERENCE_CONFIG.repository}/blob/${revision}/${file}#L${line}` }, children: [] } as ReferenceDeclaration)
+    const sourceRevision = revision === UNKNOWN_SOURCE_REVISION ? "master" : revision
+    declarations.push({ id: `${file}:${match[2]}`, name: match[2], kind, category: categoryForKind(kind), anchor: slugify(match[2]), signature: `${match[1]} ${match[2]}`, description: "", examples: [], see: [], source: { file, line, revision, url: `${REFERENCE_CONFIG.repository}/blob/${sourceRevision}/${file}#L${line}` }, children: [] } as ReferenceDeclaration)
   }
   return declarations
 }

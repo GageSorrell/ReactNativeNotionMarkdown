@@ -10,7 +10,7 @@
  */
 
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { ProofSnapshot } from "react-native-notion-markdown";
+import type { EditorSnapshot } from "react-native-notion-markdown";
 import { theme } from "../theme";
 
 export type TabName = "Blocks" | "Timeline" | "Console" | "Diagnostics";
@@ -19,7 +19,7 @@ export const tabNames: Array<TabName> = [ "Blocks", "Timeline", "Console", "Diag
 
 export type HeaderProps = {
     connected: boolean;
-    snapshot: ProofSnapshot | undefined;
+    snapshot: EditorSnapshot | undefined;
     dark: boolean;
     lastMessageAt: number | undefined;
     activeTab: TabName;

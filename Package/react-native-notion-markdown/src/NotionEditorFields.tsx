@@ -2,7 +2,7 @@
  * Native wrappers for the per-field editable coordinator introduced in milestone four.
  * `NotionTextField` mounts one editable native field (a block's rich_text/caption/cell);
  * `NotionSelectionOverlay` draws and drags the coordinator-owned handles once a selection
- * spans more than one field. Both are registered by the same native module as `NotionProofView`
+ * spans more than one field. Both are registered by the same native module as `NotionEditorView`
  * (kept for milestone-one regression) under distinct view names. The native side omits the
  * `index` key entirely for fields without one, so it always arrives here as `undefined`,
  * matching `NotionSelectionPoint`'s convention elsewhere in the document model.

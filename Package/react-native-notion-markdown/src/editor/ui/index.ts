@@ -14,6 +14,8 @@ export {
     type NotionEditorAudioAction,
     type NotionEditorAudioAsset,
     type NotionEditorAudioSelection,
+    type NotionEditorFileAsset,
+    type NotionEditorFileSelection,
     type NotionEditorBlockActionsSelection,
     type NotionEditorButton,
     type NotionEditorComponents,

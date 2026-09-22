@@ -6,15 +6,65 @@ const { syncKey } = Astro.props
 <docs-tabs data-sync-key={syncKey}><div class="docs-tabs-list" role="tablist"></div><div class="docs-tabs-panels"><slot /></div></docs-tabs>
 <script>
   class DocsTabs extends HTMLElement {
+    private readonly buttons = () => Array.from(this.querySelector(":scope > .docs-tabs-list")?.querySelectorAll<HTMLButtonElement>("[role=tab]") ?? [])
+    private readonly panels = () => Array.from(this.querySelector(":scope > .docs-tabs-panels")?.querySelectorAll<HTMLElement>(":scope > .docs-tab-panel") ?? [])
+
     connectedCallback() {
       const list = this.querySelector<HTMLElement>("[role=tablist]")
-      const panels = [...this.querySelectorAll<HTMLElement>(":scope .docs-tab-panel")]
+      const panels = this.panels()
       if (!list || panels.length === 0) return
-      panels.forEach((panel, index) => { const button = document.createElement("button"); button.type = "button"; button.textContent = panel.dataset.label ?? `Tab ${index + 1}`; button.setAttribute("role", "tab"); button.addEventListener("click", () => this.select(index)); list.append(button) })
-      this.select(0)
+      panels.forEach((panel, index) => {
+        const id = panel.dataset.tabId ?? `tab-${index + 1}`
+        const button = document.createElement("button")
+        button.id = `${id}-tab`
+        button.type = "button"
+        button.textContent = panel.dataset.label ?? `Tab ${index + 1}`
+        button.setAttribute("role", "tab")
+        button.setAttribute("aria-controls", `${id}-panel`)
+        button.setAttribute("aria-selected", String(index === 0))
+        button.tabIndex = index === 0 ? 0 : -1
+        button.dataset.tabId = id
+        panel.id = `${id}-panel`
+        panel.setAttribute("aria-labelledby", `${id}-tab`)
+        panel.setAttribute("role", "tabpanel")
+        button.addEventListener("click", () => this.select(id))
+        button.addEventListener("keydown", (event) => this.onKeyDown(event, button))
+        list.append(button)
+      })
+      this.select(this.buttons()[0]?.dataset.tabId ?? "", false)
+      window.addEventListener("docs-tabs:change", this.onExternalChange as EventListener)
     }
-    select(index: number) { const panels = [...this.querySelectorAll<HTMLElement>(":scope .docs-tab-panel")]; const buttons = [...this.querySelectorAll<HTMLButtonElement>("[role=tab]")]; buttons.forEach((button, i) => button.setAttribute("aria-selected", String(i === index))); panels.forEach((panel, i) => panel.toggleAttribute("data-active", i === index)) }
+
+    disconnectedCallback() {
+      window.removeEventListener("docs-tabs:change", this.onExternalChange as EventListener)
+    }
+
+    private onExternalChange = (event: CustomEvent<{ key?: string; id: string; source: HTMLElement }>) => {
+      if (!this.dataset.syncKey || event.detail.source === this || event.detail.key !== this.dataset.syncKey) return
+      this.select(event.detail.id, false)
+    }
+
+    private onKeyDown(event: KeyboardEvent, button: HTMLButtonElement) {
+      const buttons = this.buttons()
+      const index = buttons.indexOf(button)
+      let nextIndex: number | undefined
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % buttons.length
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + buttons.length) % buttons.length
+      if (event.key === "Home") nextIndex = 0
+      if (event.key === "End") nextIndex = buttons.length - 1
+      if (nextIndex === undefined) return
+      event.preventDefault()
+      buttons[nextIndex]?.focus()
+      this.select(buttons[nextIndex]?.dataset.tabId ?? "")
+    }
+
+    private select(id: string, announce = true) {
+      if (!id) return
+      this.buttons().forEach((button) => { const active = button.dataset.tabId === id; button.setAttribute("aria-selected", String(active)); button.tabIndex = active ? 0 : -1 })
+      this.panels().forEach((panel) => { const active = panel.id === `${id}-panel`; panel.hidden = !active; panel.toggleAttribute("data-active", active) })
+      if (announce && this.dataset.syncKey) window.dispatchEvent(new CustomEvent("docs-tabs:change", { detail: { key: this.dataset.syncKey, id, source: this } }))
+    }
   }
   if (!customElements.get("docs-tabs")) customElements.define("docs-tabs", DocsTabs)
 </script>
-<style>.docs-tabs{margin:1.5rem 0}.docs-tabs-list{display:flex;gap:.25rem;border-bottom:1px solid var(--border);overflow:auto}.docs-tabs-list button{border:0;background:transparent;padding:.6rem .8rem;color:var(--muted-foreground);cursor:pointer}.docs-tabs-list button[aria-selected=true]{border-bottom:2px solid var(--foreground);color:var(--foreground);font-weight:600}.docs-tab-panel{display:none;padding-top:1rem}.docs-tab-panel[data-active]{display:block}</style>
+<style>.docs-tabs{margin:1.5rem 0}.docs-tabs-list{display:flex;gap:.25rem;border-bottom:1px solid var(--border);overflow:auto}.docs-tabs-list button{border:0;border-bottom:2px solid transparent;background:transparent;padding:.6rem .8rem;color:var(--muted-foreground);cursor:pointer;font:inherit}.docs-tabs-list button[aria-selected=true]{border-bottom-color:var(--foreground);color:var(--foreground);font-weight:600}.docs-tab-panel[hidden]{display:none}.docs-tab-panel{padding-top:1rem}.docs-tab-panel:focus-visible{outline:2px solid var(--border-strong);outline-offset:3px}</style>

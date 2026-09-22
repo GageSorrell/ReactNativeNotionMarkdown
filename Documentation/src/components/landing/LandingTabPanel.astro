@@ -1,0 +1,6 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/landing/LandingTabPanel @file LandingTabPanel.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+interface Props { readonly id: string; readonly group: string; readonly active?: boolean }
+const { id, group, active = false } = Astro.props
+---
+<section id={`${group}-${id}-panel`} data-tab-panel={id} role="tabpanel" aria-labelledby={`${group}-${id}-tab`} hidden={!active} tabindex="0"><slot /></section>

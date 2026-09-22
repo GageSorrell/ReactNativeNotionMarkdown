@@ -11,16 +11,16 @@ class NotionMarkdownModule : Module() {
       "Hello from NotionMarkdown Kotlin!"
     }
 
-    // Milestone-one proof coordinator: kept for regression. Superseded below by the
+    // Milestone-one editor coordinator: kept for regression. Superseded below by the
     // multi-field architecture (TextField/SelectionOverlay) for milestone four.
-    View(NotionProofView::class) {
+    View(NotionEditorView::class) {
       Events("onEdit", "onPageReferencePress", "onBlockActionsPress", "onContentSize")
-      Prop("snapshot") { view: NotionProofView, value: Map<String, Any?> -> view.setSnapshot(value) }
-      Prop("command") { view: NotionProofView, value: Map<String, Any?>? -> value?.let { view.command(it) } }
-      Prop("dark") { view: NotionProofView, value: Boolean -> view.setDark(value) }
-      Prop("emptyTogglePlaceholder") { view: NotionProofView, value: String? -> view.setEmptyTogglePlaceholder(value) }
-      Prop("pageReferenceFallbackIcon") { view: NotionProofView, value: String? -> view.setPageReferenceFallbackIcon(value) }
-      Prop("imageMaxWidth") { view: NotionProofView, value: Int? -> view.setImageMaxWidth(value) }
+      Prop("snapshot") { view: NotionEditorView, value: Map<String, Any?> -> view.setSnapshot(value) }
+      Prop("command") { view: NotionEditorView, value: Map<String, Any?>? -> value?.let { view.command(it) } }
+      Prop("dark") { view: NotionEditorView, value: Boolean -> view.setDark(value) }
+      Prop("emptyTogglePlaceholder") { view: NotionEditorView, value: String? -> view.setEmptyTogglePlaceholder(value) }
+      Prop("pageReferenceFallbackIcon") { view: NotionEditorView, value: String? -> view.setPageReferenceFallbackIcon(value) }
+      Prop("imageMaxWidth") { view: NotionEditorView, value: Int? -> view.setImageMaxWidth(value) }
     }
 
     // One editable native field per block's rich_text/caption/cell. Many mount at once; a

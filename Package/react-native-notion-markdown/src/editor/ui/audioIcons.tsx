@@ -102,3 +102,46 @@ export function CancelIcon({ color, size, strokeWidth }: NotionEditorIconProps)
             strokeWidth={ strokeWidth } />
     </Svg>;
 }
+
+/** Render a checkmark icon. */
+export function CheckIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+{
+    return <Svg height={ size }
+        viewBox="0 0 24 24"
+        width={ size }>
+        <Path d="m5 12 4 4L19 6"
+            fill="none"
+            stroke={ color }
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={ strokeWidth } />
+    </Svg>;
+}
+
+/** Render a play icon. */
+export function PlayIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+{
+    return <Svg height={ size }
+        viewBox="0 0 24 24"
+        width={ size }>
+        <Path d="m8 5 11 7-11 7Z"
+            fill="none"
+            stroke={ color }
+            strokeLinejoin="round"
+            strokeWidth={ strokeWidth } />
+    </Svg>;
+}
+
+/** Render a pause icon. */
+export function PauseIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+{
+    return <Svg height={ size }
+        viewBox="0 0 24 24"
+        width={ size }>
+        <Path d="M8 5v14m8-14v14"
+            fill="none"
+            stroke={ color }
+            strokeLinecap="round"
+            strokeWidth={ strokeWidth } />
+    </Svg>;
+}

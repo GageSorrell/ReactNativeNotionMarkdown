@@ -14,9 +14,9 @@ import type { NotionMarkdownColor } from "./document/types.ts";
  *
  * @since 1.0.0
  */
-export interface ProofBlock
+export interface EditorBlock
 {
-    /** Zero-based nesting depth used by the proof editor's structural actions. */
+    /** Zero-based nesting depth used by the editor's structural actions. */
     readonly depth?: number;
     readonly id: string;
     /** Whether a heading block is a collapsible toggle header. */
@@ -40,12 +40,14 @@ export interface ProofBlock
         | "image"
         | "audio"
         | "video"
+        | "file"
         | "link_to_page";
     readonly text: string;
     /** URL opened when the page reference is tapped. */
     readonly url?: string;
-    /** Optional media metadata retained for audio blocks. */
+    /** Optional media metadata retained for audio and file blocks. */
     readonly duration?: number;
+    readonly waveform?: ReadonlyArray<number>;
     readonly mimeType?: string;
     readonly fileName?: string;
     readonly fileSize?: number;
@@ -55,13 +57,13 @@ export interface ProofBlock
     /** Whether a to-do block is checked. */
     readonly checked?: boolean;
     /** Number of columns in a `column_list` block. */
-    readonly columnCount?: ProofColumnCount;
+    readonly columnCount?: EditorColumnCount;
     /** Inline formatting ranges contained by this block's text. */
-    readonly marks?: ReadonlyArray<ProofTextMark>;
+    readonly marks?: ReadonlyArray<EditorTextMark>;
 };
 
-/** Boolean inline formatting marks supported by the proof editor's format sub-menu. */
-export type ProofTextMarkKind =
+/** Boolean inline formatting marks supported by the editor's format sub-menu. */
+export type EditorTextMarkKind =
     | "bold"
     | "italic"
     | "strikethrough"
@@ -69,23 +71,23 @@ export type ProofTextMarkKind =
     | "code";
 
 /** Supported column counts for a `column_list` block. */
-export type ProofColumnCount = 2 | 3 | 4 | 5;
+export type EditorColumnCount = 2 | 3 | 4 | 5;
 
 /** A UTF-16 range carrying one inline formatting mark. */
-export interface ProofTextMark
+export interface EditorTextMark
 {
     readonly end: number;
-    readonly kind: ProofTextMarkKind | "link";
+    readonly kind: EditorTextMarkKind | "link";
     readonly start: number;
     readonly url?: string;
 }
 
 /**
- * A UTF-16 selection point within a proof block.
+ * A UTF-16 selection point within an editor block.
  *
  * @since 1.0.0
  */
-export interface ProofPoint
+export interface EditorPoint
 {
     readonly blockId: string;
     readonly field: "rich_text";
@@ -97,9 +99,9 @@ export interface ProofPoint
  *
  * @since 1.0.0
  */
-export interface ProofSnapshot
+export interface EditorSnapshot
 {
-    readonly blocks: Array<ProofBlock>;
+    readonly blocks: Array<EditorBlock>;
     readonly epoch: number;
     readonly revision: number;
 }
@@ -109,10 +111,10 @@ export interface ProofSnapshot
  *
  * @since 1.0.0
  */
-export interface ProofEvent extends ProofSnapshot
+export interface EditorEvent extends EditorSnapshot
 {
-    readonly anchor: ProofPoint;
-    readonly focus: ProofPoint;
+    readonly anchor: EditorPoint;
+    readonly focus: EditorPoint;
     readonly composingStart: number;
     readonly composingEnd: number;
     readonly source: string;
@@ -133,6 +135,8 @@ export type Action =
     | "split"
     | "backspace"
     | "softBreak"
+    | "bulletedList"
+    | "numberedList"
     | "heading"
     | "divider"
     | "tableOfContents"
@@ -142,6 +146,7 @@ export type Action =
     | "clearFormat"
     | "link"
     | "color"
+    | "icon"
     | "remove"
     | "turnInto"
     | "indent"
@@ -151,6 +156,7 @@ export type Action =
     | "insertImage"
     | "insertAudio"
     | "insertVideo"
+    | "insertFile"
     | "callout"
     | "quote"
     | "compose"
@@ -167,7 +173,7 @@ export type Action =
  *
  * @since 1.0.0
  */
-export interface ProofCommand
+export interface EditorCommand
 {
     readonly id: number;
     readonly epoch: number;
@@ -179,17 +185,20 @@ export interface ProofCommand
     /** Block color for a `"color"` action. Omit (or clear) for the default color. */
     readonly color?: NotionMarkdownColor;
 
+    /** Emoji icon for a callout `"icon"` action. */
+    readonly icon?: string;
+
     /** Block type for a `"turnInto"` action. */
-    readonly type?: ProofBlock["type"];
+    readonly type?: EditorBlock["type"];
 
     /** Whether a `"heading"` action inserts a toggle header. */
     readonly toggle?: boolean;
 
     /** Inline formatting mark for a `"format"` action. */
-    readonly mark?: ProofTextMarkKind;
+    readonly mark?: EditorTextMarkKind;
 
     /** Number of columns for a `"columns"` action. Defaults to 2 when omitted. */
-    readonly columnCount?: ProofColumnCount;
+    readonly columnCount?: EditorColumnCount;
 
     /** URL for a `"link"` action. */
     readonly url?: string;
@@ -207,33 +216,34 @@ export interface ProofCommand
 
     /** Audio metadata for an `insertAudio` or `replaceAudio` action. */
     readonly duration?: number;
+    readonly waveform?: ReadonlyArray<number>;
     readonly mimeType?: string;
     readonly fileName?: string;
     readonly fileSize?: number;
 };
 
 /**
- * Create the default three-block proof document for the requested epoch.
+ * Create the default three-block editor document for the requested epoch.
  *
  * @since 1.0.0
  */
-export function CreateProofDocument(epoch: number = 1): ProofSnapshot
+export function CreateEditorDocument(epoch: number = 1): EditorSnapshot
 {
     return {
         blocks:
         [
             {
-                id: "proof:first",
+                id: "editor:first",
                 text: "First block. Try autocorrection, composing text, and emoji here.",
                 type: "text"
             },
             {
-                id: "proof:heading",
+                id: "editor:heading",
                 text: "Second block heading",
                 type: "heading_1"
             },
             {
-                id: "proof:last",
+                id: "editor:last",
                 text: "Third block. Drag selection handles across the block boundaries.",
                 type: "text"
             }
@@ -248,20 +258,20 @@ export/**
        *
        * @since 1.0.0
        */
-const createProofDocument = CreateProofDocument;
+const createEditorDocument = CreateEditorDocument;
 
-/* Valid ProofBlock types -- kept separate from the SDK's `NotionMarkdownBlockType` since this
+/* Valid EditorBlock types -- kept separate from the SDK's `NotionMarkdownBlockType` since this
    internal transport uses a smaller set of editable text and list block types. */
-const validProofBlockTypes: ReadonlyArray<ProofBlock[ "type" ]> =
+const validEditorBlockTypes: ReadonlyArray<EditorBlock[ "type" ]> =
     [
         "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
         "numbered_list_item", "divider",
-        "to_do", "callout", "quote", "table_of_contents", "column_list", "image", "audio", "video",
+        "to_do", "callout", "quote", "table_of_contents", "column_list", "image", "audio", "video", "file",
         "link_to_page"
     ];
 
-/* Valid ProofBlock colors, matching `NotionMarkdownColor` exactly. */
-const validProofColors: ReadonlyArray<NotionMarkdownColor> =
+/* Valid EditorBlock colors, matching `NotionMarkdownColor` exactly. */
+const validEditorColors: ReadonlyArray<NotionMarkdownColor> =
     [
         "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red",
         "gray_bg", "brown_bg", "orange_bg", "yellow_bg", "green_bg",
@@ -273,14 +283,14 @@ const validProofColors: ReadonlyArray<NotionMarkdownColor> =
  *
  * @since 1.0.0
  */
-export function AcceptProofEvent(current: ProofSnapshot, event: ProofEvent): ProofSnapshot
+export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): EditorSnapshot
 {
     if (event.epoch !== current.epoch || event.revision <= current.revision)
     {
         return current;
     }
 
-    const ids = new Set(event.blocks.map((block: ProofBlock) => block.id));
+    const ids = new Set(event.blocks.map((block: EditorBlock) => block.id));
 
     if (!event.blocks.length || ids.size !== event.blocks.length)
     {
@@ -292,28 +302,37 @@ export function AcceptProofEvent(current: ProofSnapshot, event: ProofEvent): Pro
      *
      * @since 1.0.0
      */
-    const IsBlockValid = (Block: ProofBlock) => !(
+    const IsBlockValid = (Block: EditorBlock) => !(
         !Block.id ||
         Block.text.includes("\n") ||
-        !validProofBlockTypes.includes(Block.type) ||
+        !validEditorBlockTypes.includes(Block.type) ||
         (Block.depth !== undefined && (!Number.isInteger(Block.depth) || Block.depth < 0)) ||
         (Block.toggle === true && !Block.type.startsWith("heading_")) ||
         (Block.collapsed === true && Block.toggle !== true) ||
         (Block.checked !== undefined && Block.type !== "to_do") ||
         (Block.columnCount !== undefined && (Block.type !== "column_list"
             || ![ 2, 3, 4, 5 ].includes(Block.columnCount))) ||
-        (Block.url !== undefined && ((Block.type !== "link_to_page" && Block.type !== "image" && Block.type !== "audio" && Block.type !== "video") || typeof Block.url !== "string")) ||
+        (Block.url !== undefined && (
+            (Block.type !== "link_to_page" && Block.type !== "image" && Block.type !== "audio"
+                && Block.type !== "video" && Block.type !== "file") || typeof Block.url !== "string"
+        )) ||
         (Block.icon !== undefined && (
             !(Block.type === "link_to_page" || Block.type === "callout") ||
             typeof Block.icon !== "string"
         )) ||
-        ((Block.type === "link_to_page" || Block.type === "image" || Block.type === "audio" || Block.type === "video") && (typeof Block.url !== "string" || Block.url.trim().length === 0)) ||
-        (Block.duration !== undefined && (Block.type !== "audio" || !Number.isFinite(Block.duration) || Block.duration < 0)) ||
-        (Block.mimeType !== undefined && (Block.type !== "audio" || typeof Block.mimeType !== "string")) ||
-        (Block.fileName !== undefined && (Block.type !== "audio" || typeof Block.fileName !== "string")) ||
-        (Block.fileSize !== undefined && (Block.type !== "audio" || !Number.isFinite(Block.fileSize) || Block.fileSize < 0)) ||
-        (Block.color !== undefined && !validProofColors.includes(Block.color)) ||
-        (Block.marks !== undefined && Block.marks.some((mark: ProofTextMark) =>
+        ((Block.type === "link_to_page" || Block.type === "image" || Block.type === "audio"
+            || Block.type === "video" || Block.type === "file")
+            && (typeof Block.url !== "string" || Block.url.trim().length === 0)) ||
+        (Block.duration !== undefined && (Block.type !== "audio" || !Number.isFinite(Block.duration)
+            || Block.duration < 0)) ||
+        (Block.mimeType !== undefined && ((Block.type !== "audio" && Block.type !== "file")
+            || typeof Block.mimeType !== "string")) ||
+        (Block.fileName !== undefined && ((Block.type !== "audio" && Block.type !== "file")
+            || typeof Block.fileName !== "string")) ||
+        (Block.fileSize !== undefined && ((Block.type !== "audio" && Block.type !== "file")
+            || !Number.isFinite(Block.fileSize) || Block.fileSize < 0)) ||
+        (Block.color !== undefined && !validEditorColors.includes(Block.color)) ||
+        (Block.marks !== undefined && Block.marks.some((mark: EditorTextMark) =>
             mark.start < 0 || mark.end <= mark.start || mark.end > Block.text.length ||
             (![ "bold", "italic", "strikethrough", "underline", "code" ].includes(mark.kind)
                 && (mark.kind !== "link" || typeof mark.url !== "string" || mark.url.length === 0))
@@ -333,12 +352,12 @@ export function AcceptProofEvent(current: ProofSnapshot, event: ProofEvent): Pro
     }
 
     return {
-        blocks: event.blocks.map((block: ProofBlock) =>
+        blocks: event.blocks.map((block: EditorBlock) =>
         {
-            const previous = current.blocks.find((item: ProofBlock) => item.id === block.id);
+            const previous = current.blocks.find((item: EditorBlock) => item.id === block.id);
             const marksEqual = (previous?.marks ?? []).length === (block.marks ?? []).length
                 && (previous?.marks ?? []).every(
-                    (mark: ProofTextMark, index: number) =>
+                    (mark: EditorTextMark, index: number) =>
                     {
                         const next = block.marks?.[ index ];
                         return next?.end === mark.end
@@ -375,7 +394,7 @@ export/**
        *
        * @since 1.0.0
        */
-const acceptProofEvent = AcceptProofEvent;
+const acceptEditorEvent = AcceptEditorEvent;
 
 /**
  * Native buffer uses newline boundaries and U+2028 for within-block soft breaks.
@@ -384,11 +403,11 @@ const acceptProofEvent = AcceptProofEvent;
  *
  * @since 1.0.0
  */
-export function proofPointAt(blocks: ReadonlyArray<ProofBlock>, position: number): ProofPoint
+export function editorPointAt(blocks: ReadonlyArray<EditorBlock>, position: number): EditorPoint
 {
     if (!blocks.length)
     {
-        throw new Error("A proof document needs at least one block.");
+        throw new Error("An editor document needs at least one block.");
     }
 
     let remaining: number = Math.max(0, position);

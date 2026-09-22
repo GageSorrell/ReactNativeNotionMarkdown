@@ -10,34 +10,37 @@
  */
 
 import { type EventSubscription, useDevToolsPluginClient } from "expo/devtools";
-import type { ProofBlock, ProofCommand, ProofEvent, ProofSnapshot } from "react-native-notion-markdown";
 import { diagnoseRejection, pluginName } from "./protocol";
+// The public transport types intentionally stay grouped together even though their names sort
+// differently from the surrounding value imports.
+// eslint-disable-next-line sort-imports
+import type { EditorBlock, EditorCommand, EditorEvent, EditorSnapshot } from "react-native-notion-markdown";
 import { useCallback, useEffect, useRef } from "react";
 
 export type UseNotionMarkdownDevToolsOptions = {
-  /** The harness's current ProofSnapshot. Re-sent to the webUI whenever its epoch or revision changes. */
-  snapshot: ProofSnapshot;
+  /** The harness's current EditorSnapshot. Re-sent to the webUI whenever its epoch or revision changes. */
+  snapshot: EditorSnapshot;
   /** Whether the editor is currently rendering in dark mode. */
   dark: boolean;
   /** Dispatch a command exactly as if an on-device toolbar button had been pressed. */
-  dispatchCommand: (action: ProofCommand["action"]) => void;
+  dispatchCommand: (action: EditorCommand["action"]) => void;
   /** Replace the document. Called with `undefined` blocks to restore the default 3-block seed. */
-  onReplaceDocument: (blocks?: Array<ProofBlock>) => void;
+  onReplaceDocument: (blocks?: Array<EditorBlock>) => void;
 };
 
 export type UseNotionMarkdownDevToolsResult = {
-  /** Report the outcome of `acceptProofEvent` for one native edit, accepted or rejected. */
-  reportEvent: (current: ProofSnapshot, event: ProofEvent, accepted: boolean) => void;
+  /** Report the outcome of `acceptEditorEvent` for one native edit, accepted or rejected. */
+  reportEvent: (current: EditorSnapshot, event: EditorEvent, accepted: boolean) => void;
   /** Report a command that was actually dispatched, from either an on-device button or the webUI. */
-  reportCommand: (command: ProofCommand) => void;
+  reportCommand: (command: EditorCommand) => void;
   /** Report an uncaught error from the harness, for the Diagnostics panel. */
   reportError: (error: unknown) => void;
 };
 
-type CommandRequestData = { action: ProofCommand["action"] };
-type DocumentReplaceData = { blocks?: Array<ProofBlock> };
+type CommandRequestData = { action: EditorCommand["action"] };
+type DocumentReplaceData = { blocks?: Array<EditorBlock> };
 
-/** Bridges the harness's Proof transport state to the devtools webUI. No-ops outside development. */
+/** Bridges the harness's Editor transport state to the devtools webUI. No-ops outside development. */
 export function useNotionMarkdownDevTools(
   options: UseNotionMarkdownDevToolsOptions
 ): UseNotionMarkdownDevToolsResult {
@@ -76,7 +79,7 @@ export function useNotionMarkdownDevTools(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ client, options.snapshot.epoch, options.snapshot.revision, options.dark ]);
 
-  const reportEvent = useCallback((current: ProofSnapshot, event: ProofEvent, accepted: boolean) => {
+  const reportEvent = useCallback((current: EditorSnapshot, event: EditorEvent, accepted: boolean) => {
     client?.sendMessage("event:report", {
       accepted,
       event,
@@ -84,7 +87,7 @@ export function useNotionMarkdownDevTools(
     });
   }, [ client ]);
 
-  const reportCommand = useCallback((command: ProofCommand) => {
+  const reportCommand = useCallback((command: EditorCommand) => {
     client?.sendMessage("command:report", { command });
   }, [ client ]);
 

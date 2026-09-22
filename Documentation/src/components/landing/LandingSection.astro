@@ -1,0 +1,11 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/landing/LandingSection @file LandingSection.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+interface Props { readonly eyebrow: string; readonly title: string; readonly description?: string; readonly tone?: "default" | "muted" }
+const { eyebrow, title, description, tone = "default" } = Astro.props
+---
+<section class:list={["landing-section", tone === "muted" && "landing-section-muted"]}>
+  <div class="landing-container">
+    <div class="landing-section-heading"><p class="landing-eyebrow">{eyebrow}</p><h2>{title}</h2>{description && <p class="landing-section-description">{description}</p>}</div>
+    <slot />
+  </div>
+</section>

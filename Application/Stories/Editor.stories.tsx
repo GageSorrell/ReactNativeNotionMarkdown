@@ -23,7 +23,7 @@ import { Sparkles, Star } from "lucide-react-native";
 import { ThemeOverrideProvider, ThemeToggleButton, useThemeOverride } from "./themeToggle";
 import { useEffect, useState } from "react";
 import { Asset } from "expo-asset";
-import type { ProofSnapshot } from "react-native-notion-markdown";
+import type { EditorSnapshot } from "react-native-notion-markdown";
 import { notionEditorLucideIcons } from "react-native-notion-markdown/editor/ui/lucide-icons";
 
 /* Bundled Pexels stock photos used to seed the "With Images" story's starter document. */
@@ -51,7 +51,7 @@ async function resolveStockImageUris(): Promise<Record<StockImageKey, string>>
 
 /* Seed document for the "With Images" story: the three stock photos above, interleaved with a
    handful of other block types to show the editor starting from a populated page. */
-function buildRichSnapshot(images: Record<StockImageKey, string>): ProofSnapshot
+function buildRichSnapshot(images: Record<StockImageKey, string>): EditorSnapshot
 {
     const caption = "The ridge line just past the tree line.";
     const intro = "A few photos and a running list from Saturday's hike, dropped into the editor.";
@@ -154,7 +154,7 @@ function RichDocumentEditorStory(args: ComponentProps<typeof NotionEditor>)
 {
     const { override } = useThemeOverride();
     const dark = override === "system" ? args.dark === true : override === "dark";
-    const [ snapshot, setSnapshot ] = useState<ProofSnapshot>();
+    const [ snapshot, setSnapshot ] = useState<EditorSnapshot>();
 
     useEffect(() =>
     {

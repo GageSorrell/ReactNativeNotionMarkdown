@@ -1,0 +1,11 @@
+---
+interface Props {
+  readonly class?: string | undefined
+}
+
+const { class: className } = Astro.props
+---
+
+<div aria-hidden="true" class:list={["landing-grid-rails pointer-events-none absolute inset-0 z-60 hidden lg:block", className]}>
+  <div class="mx-auto h-full w-full max-w-[73.75rem] border-x border-border"></div>
+</div>

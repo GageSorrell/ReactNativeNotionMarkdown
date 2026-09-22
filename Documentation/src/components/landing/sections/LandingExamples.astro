@@ -1,0 +1,24 @@
+---
+import ComparisonTabs from "../ComparisonTabs.astro"
+import type { LandingPageConfig } from "@/lib/landing"
+
+interface Props {
+  readonly config: LandingPageConfig
+}
+
+const { config } = Astro.props
+---
+
+<section id="examples" class="effect-landing-section effect-landing-examples relative w-full pb-8">
+  <div class="effect-landing-container mx-auto w-full">
+    <div class="effect-landing-static-panel" aria-label="Static document pipeline preview">
+      <div class="effect-landing-static-panel-header"><span class="effect-landing-dot"></span><span class="effect-landing-dot"></span><span class="effect-landing-dot"></span><span>document-pipeline.ts</span></div>
+      <div class="effect-landing-pipeline">{config.content.pipelineSteps.map((step, index) => <>{index > 0 && <div class="effect-landing-pipeline-arrow" aria-hidden="true">→</div>}<div><span>{step.value}</span><strong>{step.title}</strong><small>{step.description}</small></div></>)}</div>
+    </div>
+    <p class="effect-landing-caption mt-4 px-4 text-center font-mono text-xs font-medium tracking-wider uppercase">{config.content.examplesCaption}</p>
+    <div class="effect-landing-example-tabs">
+      <p class="effect-landing-label">{config.content.examplesLabel}</p>
+      <ComparisonTabs tiers={config.comparisonTiers} />
+    </div>
+  </div>
+</section>

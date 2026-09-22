@@ -7,7 +7,7 @@ appId: com.gagesorrell.notionmarkdown.storybook
       ASSERT_TEXT: "Editor"
 - assertVisible: "Second block heading"
 
-# Type into the last of the default three-block document (CreateProofDocument in
+# Type into the last of the default three-block document (CreateEditorDocument in
 # prototype.ts), then format a word via the "Aa" text-formatting sub-toolbar.
 - tapOn: "Third block. Drag selection handles across the block boundaries."
 - inputText: " Recorded by Maestro."
@@ -21,6 +21,27 @@ appId: com.gagesorrell.notionmarkdown.storybook
 - tapOn: "Back"
 
 # Insert a representative set of block types from the insert panel.
+- tapOn: "Insert"
+- tapOn: "Bulleted list"
+- inputText: "A new bulleted item"
+- tapOn: "Insert"
+- tapOn: "Numbered list"
+- inputText: "A new numbered item"
+- tapOn: "Insert"
+- tapOn: "Aa"
+- inputText: "Typed after opening the style MAB."
+- tapOn: "Back"
+- tapOn: "Image"
+- assertVisible: "Insert Media"
+- pressKey: BACK
+- tapOn: "Insert"
+- tapOn: "Audio"
+- assertVisible: "Insert audio"
+- pressKey: BACK
+- tapOn: "Insert"
+- tapOn: "Video"
+- assertVisible: "Insert Media"
+- pressKey: BACK
 - tapOn: "Insert"
 - tapOn: "Heading 1"
 - inputText: "A new heading"

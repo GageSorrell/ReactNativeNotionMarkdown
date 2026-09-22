@@ -1,0 +1,16 @@
+---
+import { ArrowRight } from "@lucide/astro"
+import LandingInstallCommand from "../LandingInstallCommand.astro"
+import LandingGridBackground from "../LandingGridBackground.astro"
+import type { LandingPageConfig } from "@/lib/landing"
+
+interface Props { readonly config: LandingPageConfig }
+const { config } = Astro.props
+---
+
+<section class="effect-landing-cta relative w-full py-36 md:py-24">
+  <LandingGridBackground />
+  <div class="effect-landing-container relative z-10 mx-auto w-full px-4">
+    <div class="flex flex-col items-center text-center"><p class="effect-landing-cta-import mb-3 font-mono text-base">import {"{ "}<strong>{config.name}</strong>{" }"} from "{config.name}"</p><h2>{config.content.ctaTitle}</h2><div class="mx-auto mt-8 w-full max-w-xl"><LandingInstallCommand options={config.installOptions} /></div><div class="mt-6 flex flex-wrap items-center justify-center gap-3"><a href={config.primaryCta.href} class="effect-landing-cta-button effect-landing-cta-primary"><ArrowRight class="size-4" aria-hidden="true" />{config.primaryCta.label}</a><a href={config.secondaryCta.href} class="effect-landing-cta-button">{config.secondaryCta.label}</a></div></div>
+  </div>
+</section>

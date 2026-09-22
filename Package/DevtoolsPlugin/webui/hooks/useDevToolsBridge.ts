@@ -17,7 +17,7 @@ import {
   pluginName
 } from "@react-native-notion-markdown/devtools-plugin/src/protocol";
 import { type EventSubscription, useDevToolsPluginClient } from "expo/devtools";
-import type { ProofBlock, ProofCommand, ProofSnapshot } from "react-native-notion-markdown";
+import type { EditorBlock, EditorCommand, EditorSnapshot } from "react-native-notion-markdown";
 import { useCallback, useEffect, useState } from "react";
 
 export type TimelineEntry =
@@ -33,7 +33,7 @@ let nextEntryId = 0;
 
 export function useDevToolsBridge() {
   const client = useDevToolsPluginClient(pluginName);
-  const [ snapshot, setSnapshot ] = useState<ProofSnapshot>();
+  const [ snapshot, setSnapshot ] = useState<EditorSnapshot>();
   const [ dark, setDark ] = useState(false);
   const [ lastMessageAt, setLastMessageAt ] = useState<number>();
   const [ timeline, setTimeline ] = useState<Array<TimelineEntry>>([]);
@@ -86,11 +86,11 @@ export function useDevToolsBridge() {
     };
   }, [ client ]);
 
-  const sendCommand = useCallback((action: ProofCommand["action"]) => {
+  const sendCommand = useCallback((action: EditorCommand["action"]) => {
     client?.sendMessage("command:request", { action });
   }, [ client ]);
 
-  const replaceDocument = useCallback((blocks?: Array<ProofBlock>) => {
+  const replaceDocument = useCallback((blocks?: Array<EditorBlock>) => {
     client?.sendMessage("document:replace", { blocks });
   }, [ client ]);
 

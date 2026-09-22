@@ -7,17 +7,18 @@
  * @license   MIT
  */
 
+import * as DocumentPicker from "expo-document-picker";
 import {
-    AcceptProofEvent,
-    CreateProofDocument,
-    type ProofBlock,
-    type ProofColumnCount,
-    type ProofCommand,
-    type ProofEvent,
-    type ProofPoint,
-    type ProofSnapshot,
-    type ProofTextMark,
-    type ProofTextMarkKind
+    AcceptEditorEvent,
+    CreateEditorDocument,
+    type EditorBlock,
+    type EditorColumnCount,
+    type EditorCommand,
+    type EditorEvent,
+    type EditorPoint,
+    type EditorSnapshot,
+    type EditorTextMark,
+    type EditorTextMarkKind
 } from "../../prototype.ts";
 import Animated, { FadeIn, FadeOut, useAnimatedStyle } from "react-native-reanimated";
 import {
@@ -28,10 +29,10 @@ import {
 import {
     type NativeBlockActionsPressEvent,
     type NativeContentSizeEvent,
-    type NativePageReferencePressEvent,
-    NativeProofEditor,
-    type NativeProofEditorProps
-} from "../../NativeProofEditor.tsx";
+    NativeEditor,
+    type NativeEditorProps,
+    type NativePageReferencePressEvent
+} from "../../NativeEditor.tsx";
 import {
     Pressable,
     ScrollView,
@@ -46,6 +47,7 @@ import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
 import { AudioBottomSheet } from "./AudioBottomSheet.tsx";
 import type { ComponentType } from "react";
 import type { EditorMessageId } from "./messages.ts";
+import { EmojiBottomSheet } from "./EmojiBottomSheet.tsx";
 import type { LayoutChangeEvent } from "react-native";
 import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
 import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
@@ -76,6 +78,8 @@ export type NotionEditorButton =
     | "speech"
     | "record"
     | "stop"
+    | "play"
+    | "pause"
     | "filePicker"
     | "turnInto"
     | "undo"
@@ -88,6 +92,7 @@ export type NotionEditorButton =
     | "back"
     | "close"
     | "cancel"
+    | "check"
     | "copy"
     | "cut"
     | "paste"
@@ -95,6 +100,8 @@ export type NotionEditorButton =
     | "linkToPage"
     | "hideKeyboard"
     | "text"
+    | "bulletedList"
+    | "numberedList"
     | "divider"
     | "tableOfContents"
     | "columns"
@@ -175,6 +182,7 @@ export interface NotionEditorAudioAsset
     readonly fileName?: string;
     readonly fileSize?: number;
     readonly mimeType?: string;
+    readonly waveform?: ReadonlyArray<number>;
     readonly uri: string;
 }
 
@@ -185,6 +193,22 @@ export interface NotionEditorAudioSelection
     readonly asset?: NotionEditorAudioAsset;
     readonly canceled: boolean;
     readonly error?: string;
+}
+
+/** A portable file asset returned by the built-in native document picker. */
+export interface NotionEditorFileAsset
+{
+    readonly fileName?: string;
+    readonly fileSize?: number;
+    readonly mimeType?: string;
+    readonly uri: string;
+}
+
+/** Result delivered after the built-in file picker completes. */
+export interface NotionEditorFileSelection
+{
+    readonly asset?: NotionEditorFileAsset;
+    readonly canceled: boolean;
 }
 
 /**
@@ -209,8 +233,8 @@ export interface NotionEditorPageReference
  */
 export interface NotionEditorPageReferenceSelection
 {
-    readonly anchor: ProofPoint;
-    readonly focus: ProofPoint;
+    readonly anchor: EditorPoint;
+    readonly focus: EditorPoint;
 }
 
 /**
@@ -223,14 +247,14 @@ export interface NotionEditorPageReferenceSelection
 export interface NotionEditorBlockActionsSelection
 {
     readonly blockId: string;
-    readonly blockType: ProofBlock["type"];
+    readonly blockType: EditorBlock["type"];
 }
 
 /** The current text selection handed to a host link prompt. */
 export interface NotionEditorLinkSelection
 {
-    readonly anchor: ProofPoint;
-    readonly focus: ProofPoint;
+    readonly anchor: EditorPoint;
+    readonly focus: EditorPoint;
     readonly label: string;
     readonly url?: string;
 }
@@ -339,7 +363,7 @@ export type NotionEditorCustomButton =
  *
  * @since 1.0.0
  */
-export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command" | "onEdit" | "snapshot">
+export interface NotionEditorProps extends Omit<NativeEditorProps, "command" | "onEdit" | "snapshot">
 {
     /** Horizontal inset applied to the WYSIWYG page content. The MAB is not affected. */
     readonly pagePaddingHorizontal?: number;
@@ -348,20 +372,21 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
     readonly pageMaxWidth?: number;
 
     /** Document state. When omitted, a starter document is created and managed internally. */
-    readonly snapshot?: ProofSnapshot;
+    readonly snapshot?: EditorSnapshot;
 
     /** An externally controlled native command. */
-    readonly command?: ProofCommand;
+    readonly command?: EditorCommand;
 
     /** Receives native editing events. Omit this callback for internally managed document state. */
-    readonly onEdit?: (Event: { nativeEvent: ProofEvent }) => void;
+    readonly onEdit?: (Event: { nativeEvent: EditorEvent }) => void;
 
     /** Receives actions selected in the editor UI, plus any level/color/type/mark/url/label it carries. */
     readonly onCommand?: (
-        Action: ProofCommand["action"],
-        Extra?: Pick<ProofCommand,
-            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label" | "blockId"
-            | "duration" | "mimeType" | "fileName" | "fileSize">
+        Action: EditorCommand["action"],
+        Extra?: Pick<EditorCommand,
+            "level" | "color" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
+            | "label" | "blockId"
+            | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize">
     ) => void;
 
     /** Optional icon overrides for the editor UI. */
@@ -376,7 +401,7 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
     /** Replaces the built-in audio sheet opened by the existing `speech` toolbar button. */
     readonly onInsertAudio?: () => void | Promise<void>;
 
-    /** Alias for {@link onInsertMedia}, named after the built-in `filePicker` button id. */
+    /** Replaces the native file picker used by the Insert panel's File action. */
     readonly onFilePicker?: () => void | Promise<void>;
 
     /**
@@ -390,6 +415,11 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
     /** Observes picked, recorded, cancelled, and failed audio selections. */
     readonly onAudioSelected?: (
         Selection: NotionEditorAudioSelection
+    ) => void | Promise<void>;
+
+    /** Observes picked and cancelled selections from the built-in file picker. */
+    readonly onFileSelected?: (
+        Selection: NotionEditorFileSelection
     ) => void | Promise<void>;
 
     /** Requests that the dependent create a page reference for the current selection. */
@@ -589,7 +619,7 @@ function BlockOption({
     </Pressable>;
 }
 
-interface ProofColorOption
+interface EditorColorOption
 {
     readonly background: boolean;
     readonly color: NotionMarkdownColor | undefined;
@@ -598,7 +628,7 @@ interface ProofColorOption
 
 /* The Notion-flavored Markdown text colors, plus their `_bg` background variants, offered by the
    selection color panel. `undefined` clears the selected blocks back to their default color. */
-const proofColorOptions: ReadonlyArray<ProofColorOption> =
+const editorColorOptions: ReadonlyArray<EditorColorOption> =
     [
         { background: false, color: undefined, hex: undefined },
         { background: false, color: "gray", hex: "#787774" },
@@ -621,10 +651,10 @@ const proofColorOptions: ReadonlyArray<ProofColorOption> =
         { background: true, color: "red_bg", hex: "#D44C47" }
     ];
 
-const proofTurnIntoTypes: ReadonlyArray<ProofBlock["type"]> =
+const editorTurnIntoTypes: ReadonlyArray<EditorBlock["type"]> =
     [ "text", "heading_1", "heading_2", "heading_3", "heading_4" ];
 
-const proofColumnButtons: Readonly<Record<ProofColumnCount, Extract<NotionEditorButton,
+const editorColumnButtons: Readonly<Record<EditorColumnCount, Extract<NotionEditorButton,
     "columns2" | "columns3" | "columns4" | "columns5">>> =
     {
         2: "columns2",
@@ -634,18 +664,19 @@ const proofColumnButtons: Readonly<Record<ProofColumnCount, Extract<NotionEditor
     };
 
 /** Message id naming each block type, for the actions sheet's section-title label. */
-const proofBlockNameMessageIds: Readonly<Record<ProofBlock["type"], EditorMessageId>> =
+const editorBlockNameMessageIds: Readonly<Record<EditorBlock["type"], EditorMessageId>> =
     {
+        audio: "blockName.audio",
         bulleted_list_item: "blockName.bulletedListItem",
         callout: "blockName.callout",
         column_list: "blockName.columnList",
         divider: "blockName.divider",
+        file: "blockName.file",
         heading_1: "blockName.heading1",
         heading_2: "blockName.heading2",
         heading_3: "blockName.heading3",
         heading_4: "blockName.heading4",
         image: "blockName.image",
-        audio: "blockName.audio",
         link_to_page: "blockName.linkToPage",
         numbered_list_item: "blockName.numberedListItem",
         quote: "blockName.quote",
@@ -655,10 +686,10 @@ const proofBlockNameMessageIds: Readonly<Record<ProofBlock["type"], EditorMessag
         video: "blockName.video"
     };
 
-/** Return whether a proof block supports conversion to the requested proof block type. */
-function canConvertProofBlock(block: ProofBlock, type: ProofBlock["type"]): boolean
+/** Return whether an editor block supports conversion to the requested editor block type. */
+function canConvertEditorBlock(block: EditorBlock, type: EditorBlock["type"]): boolean
 {
-    return proofTurnIntoTypes.includes(block.type) && proofTurnIntoTypes.includes(type);
+    return editorTurnIntoTypes.includes(block.type) && editorTurnIntoTypes.includes(type);
 }
 
 /**
@@ -668,7 +699,7 @@ function canConvertProofBlock(block: ProofBlock, type: ProofBlock["type"]): bool
  *
  * @since 1.0.0
  */
-function proofCursorTouchesWord(text: string, offset: number): boolean
+function editorCursorTouchesWord(text: string, offset: number): boolean
 {
     const before = offset > 0 ? text[offset - 1] : undefined;
     const after = offset < text.length ? text[offset] : undefined;
@@ -681,7 +712,7 @@ function proofCursorTouchesWord(text: string, offset: number): boolean
  *
  * @since 1.0.0
  */
-function proofColorLabel(option: ProofColorOption, defaultLabel: string): string
+function editorColorLabel(option: EditorColorOption, defaultLabel: string): string
 {
     if (option.color === undefined) {return defaultLabel;}
 
@@ -697,7 +728,7 @@ interface ColorChoiceProps
     readonly iconColor: string;
     readonly label: string;
     readonly onPress: () => void;
-    readonly option: ProofColorOption;
+    readonly option: EditorColorOption;
     readonly selected: boolean;
 }
 
@@ -749,11 +780,11 @@ function ColorChoice({
 }
 
 /** Split color options into rows of two for the color panel's two-column grids. */
-function proofColorRows(
-    options: ReadonlyArray<ProofColorOption>
-): Array<Readonly<[ProofColorOption, ProofColorOption | undefined]>>
+function editorColorRows(
+    options: ReadonlyArray<EditorColorOption>
+): Array<Readonly<[EditorColorOption, EditorColorOption | undefined]>>
 {
-    const rows: Array<Readonly<[ProofColorOption, ProofColorOption | undefined]>> = [ ];
+    const rows: Array<Readonly<[EditorColorOption, EditorColorOption | undefined]>> = [ ];
     for (let index = 0; index < options.length; index += 2)
     {
         const first = options[ index ];
@@ -773,7 +804,7 @@ interface ColorOptionGridProps
     readonly foreground: string;
     readonly iconColor: string;
     readonly onSelect: (color: NotionMarkdownColor | undefined) => () => void;
-    readonly options: ReadonlyArray<ProofColorOption>;
+    readonly options: ReadonlyArray<EditorColorOption>;
 }
 
 /** Render one two-column color-option grid for a color-panel section. */
@@ -788,7 +819,7 @@ function ColorOptionGrid({
 {
     return <View>
         {
-            proofColorRows(options).map((row: Readonly<[ProofColorOption, ProofColorOption | undefined]>) =>
+            editorColorRows(options).map((row: Readonly<[EditorColorOption, EditorColorOption | undefined]>) =>
             {
                 const firstKey = row[ 0 ].color ?? "default";
                 return <View key={ firstKey }
@@ -797,7 +828,7 @@ function ColorOptionGrid({
                         cardBackground={ cardBackground }
                         foreground={ foreground }
                         iconColor={ iconColor }
-                        label={ proofColorLabel(row[ 0 ], defaultLabel) }
+                        label={ editorColorLabel(row[ 0 ], defaultLabel) }
                         onPress={ onSelect(row[ 0 ].color) }
                         option={ row[ 0 ] }
                         selected={ false } />
@@ -808,7 +839,7 @@ function ColorOptionGrid({
                                 cardBackground={ cardBackground }
                                 foreground={ foreground }
                                 iconColor={ iconColor }
-                                label={ proofColorLabel(row[ 1 ], defaultLabel) }
+                                label={ editorColorLabel(row[ 1 ], defaultLabel) }
                                 onPress={ onSelect(row[ 1 ].color) }
                                 option={ row[ 1 ] }
                                 selected={ false } />
@@ -885,6 +916,7 @@ export function NotionEditor({
     onInsertMedia,
     onInsertAudio,
     onAudioSelected,
+    onFileSelected,
     onMediaSelected,
     onOpenPageReference,
     emptyTogglePlaceholder: suppliedEmptyTogglePlaceholder,
@@ -897,11 +929,12 @@ export function NotionEditor({
 }: NotionEditorProps)
 {
     const t = useNotionEditorTranslate();
-    const [ defaultSnapshot ] = useState(CreateProofDocument);
-    const [ internalSnapshot, setInternalSnapshot ] = useState<ProofSnapshot>();
-    const [ internalCommand, setInternalCommand ] = useState<ProofCommand>();
+    const [ defaultSnapshot ] = useState(CreateEditorDocument);
+    const [ internalSnapshot, setInternalSnapshot ] = useState<EditorSnapshot>();
+    const [ internalCommand, setInternalCommand ] = useState<EditorCommand>();
     const [ row, setRow ] = useState<ToolbarRow>("main");
     const [ openPanel, setOpenPanel ] = useState<OpenPanel>(NoPanelOpen);
+    const refocusAfterPanelClose = useRef(false);
     const [ mediaSheetVisible, setMediaSheetVisible ] = useState(false);
     const [ audioSheetVisible, setAudioSheetVisible ] = useState(false);
     const [ audioSheetInitialAction, setAudioSheetInitialAction ] = useState<NotionEditorAudioAction>();
@@ -909,9 +942,11 @@ export function NotionEditor({
     const [ linkSheetVisible, setLinkSheetVisible ] = useState(false);
     const [ linkRequest, setLinkRequest ] = useState<NotionEditorLinkSelection>();
     const [ blockActionsRequest, setBlockActionsRequest ] = useState<NotionEditorBlockActionsSelection>();
+    const [ emojiSheetVisible, setEmojiSheetVisible ] = useState(false);
+    const [ emojiSheetBlockId, setEmojiSheetBlockId ] = useState<string>();
     /* The native text layout's own content height, in dp -- reported by the native view since
        `shouldUseAndroidLayout` keeps its Yoga-assigned box fixed regardless of content (see
-       NativeProofEditor's onContentSize doc). Sizing the page to this explicitly, rather than
+       NativeEditor's onContentSize doc). Sizing the page to this explicitly, rather than
        `flex: 1`, is what lets content taller than the viewport (e.g. a tall image) become
        reachable by scrolling instead of being silently clipped. `undefined` until the first
        report arrives, during which the page falls back to filling the available viewport. */
@@ -921,14 +956,14 @@ export function NotionEditor({
     /* A JS-side history of past/undone snapshots for the internally-managed document. This needs
        no native undo support: undoing/redoing simply hands the native editor an older/newer
        snapshot under a bumped epoch, the same "replace the whole document" path already used for
-       a host-supplied `snapshot` -- see NotionProofView.kt's `setSnapshot`. Edits reported with
+       a host-supplied `snapshot` -- see NotionEditorView.kt's `setSnapshot`. Edits reported with
        `source === "replacement"` are our own history replay landing back through `onEdit`, not new
        user edits, so they're accepted into state but never pushed onto the undo stack. */
-    const undoStack = useRef<Array<ProofSnapshot>>([ ]);
-    const redoStack = useRef<Array<ProofSnapshot>>([ ]);
+    const undoStack = useRef<Array<EditorSnapshot>>([ ]);
+    const redoStack = useRef<Array<EditorSnapshot>>([ ]);
     const [ canUndo, setCanUndo ] = useState(false);
     const [ canRedo, setCanRedo ] = useState(false);
-    /* The block(s) the current native selection spans, tracked from `ProofEvent.anchor`/`focus`
+    /* The block(s) the current native selection spans, tracked from `EditorEvent.anchor`/`focus`
        so the move-up/move-down buttons can tell whether a contiguous block range is addressable
        and, if so, whether it's already at the top/bottom of the document. `undefined` until the
        native view reports its first selection (e.g. on focus), matching "only appear once the
@@ -944,6 +979,7 @@ export function NotionEditor({
     const systemDark = useColorScheme() === "dark";
     const dark = suppliedDark ?? systemDark;
     const keyboardState = useKeyboardState();
+    const previousKeyboardVisibility = useRef(keyboardState.isVisible);
     const { height, progress } = useReanimatedKeyboardAnimation();
     const foreground = dark ? "#eeeeee" : "#2C2C2B";
     const background = dark ? "#191919" : "#ffffff";
@@ -960,7 +996,7 @@ export function NotionEditor({
        it at increasing opacity instead of a plain, harder-edged divider. */
     const backgroundRgb = dark ? "25, 25, 25" : "255, 255, 255";
     const snapshot = suppliedSnapshot ?? internalSnapshot ?? defaultSnapshot;
-    const columnLabels: Record<ProofColumnCount, string> =
+    const columnLabels: Record<EditorColumnCount, string> =
         {
             2: t("insertPanel.columns2"),
             3: t("insertPanel.columns3"),
@@ -978,10 +1014,10 @@ export function NotionEditor({
         }
 
         const anchorIndex = snapshot.blocks.findIndex(
-            (block: ProofBlock) => block.id === selectionAnchorBlockId
+            (block: EditorBlock) => block.id === selectionAnchorBlockId
         );
         const focusIndex = snapshot.blocks.findIndex(
-            (block: ProofBlock) => block.id === selectionFocusBlockId
+            (block: EditorBlock) => block.id === selectionFocusBlockId
         );
 
         return anchorIndex === -1 || focusIndex === -1
@@ -996,7 +1032,7 @@ export function NotionEditor({
             || selectionAnchorOffset !== selectionFocusOffset);
     const canColorSelection = hasTextSelection && selectionBlockRange !== undefined
         && snapshot.blocks.slice(selectionBlockRange.low, selectionBlockRange.high + 1).some(
-            (block: ProofBlock) => block.type === "text"
+            (block: EditorBlock) => block.type === "text"
                 || block.type === "heading_1"
                 || block.type === "heading_2"
                 || block.type === "heading_3"
@@ -1011,19 +1047,19 @@ export function NotionEditor({
         && selectionAnchorBlockId === selectionFocusBlockId
         && selectionAnchorOffset === selectionFocusOffset;
     const cursorBlock = selectionIsCollapsed
-        ? snapshot.blocks.find((block: ProofBlock) => block.id === selectionAnchorBlockId)
+        ? snapshot.blocks.find((block: EditorBlock) => block.id === selectionAnchorBlockId)
         : undefined;
     const canFormatCollapsedCursor = cursorBlock !== undefined
         && cursorBlock.type !== "link_to_page"
-        && proofCursorTouchesWord(cursorBlock.text, selectionAnchorOffset as number);
+        && editorCursorTouchesWord(cursorBlock.text, selectionAnchorOffset as number);
     const canFormatSelection = canFormatCollapsedCursor
         || (hasTextSelection && selectionBlockRange !== undefined
             && !snapshot.blocks.slice(selectionBlockRange.low, selectionBlockRange.high + 1).some(
-                (block: ProofBlock) => block.type === "link_to_page"
+                (block: EditorBlock) => block.type === "link_to_page"
             ));
     const canLinkSelection = canFormatSelection && selectionBlockRange !== undefined
         && snapshot.blocks.slice(selectionBlockRange.low, selectionBlockRange.high + 1).every(
-            (block: ProofBlock) => [
+            (block: EditorBlock) => [
                 "text", "heading_1", "heading_2", "heading_3", "heading_4",
                 "bulleted_list_item", "numbered_list_item", "to_do"
             ].includes(block.type)
@@ -1031,7 +1067,7 @@ export function NotionEditor({
     const canIndent = selectionBlockRange !== undefined && selectionBlockRange.low > 0;
     const canOutdent = selectionBlockRange !== undefined
         && snapshot.blocks.slice(selectionBlockRange.low, selectionBlockRange.high + 1).some(
-            (block: ProofBlock) => (block.depth ?? 0) > 0
+            (block: EditorBlock) => (block.depth ?? 0) > 0
         );
     const selectedPageReference = useMemo<NotionEditorPageReference | undefined>(() =>
     {
@@ -1053,15 +1089,15 @@ export function NotionEditor({
     {
         if (selectionBlockRange === undefined)
         {
-            return new Set<ProofBlock["type"]>();
+            return new Set<EditorBlock["type"]>();
         }
 
         const selectedBlocks = snapshot.blocks.slice(
             selectionBlockRange.low, selectionBlockRange.high + 1
         );
-        return new Set<ProofBlock["type"]>(proofTurnIntoTypes.filter(
-            (type: ProofBlock["type"]) => selectedBlocks.length > 0
-                && selectedBlocks.every((block: ProofBlock) => canConvertProofBlock(block, type))
+        return new Set<EditorBlock["type"]>(editorTurnIntoTypes.filter(
+            (type: EditorBlock["type"]) => selectedBlocks.length > 0
+                && selectedBlocks.every((block: EditorBlock) => canConvertEditorBlock(block, type))
         ));
     }, [ selectionBlockRange, snapshot.blocks ]);
     const customButtonsById = useMemo(() =>
@@ -1173,10 +1209,11 @@ export function NotionEditor({
     }, [ measureBottomGap ]);
 
     const send = useCallback((
-        action: ProofCommand["action"],
-        extra?: Pick<ProofCommand,
-            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label" | "blockId"
-            | "duration" | "mimeType" | "fileName" | "fileSize">
+        action: EditorCommand["action"],
+        extra?: Pick<EditorCommand,
+            "level" | "color" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
+            | "label" | "blockId"
+            | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize">
     ) =>
     {
         if (onCommand !== undefined)
@@ -1185,7 +1222,7 @@ export function NotionEditor({
             return;
         }
 
-        const next: ProofCommand =
+        const next: EditorCommand =
             {
                 action,
                 epoch: currentSnapshot.current.epoch,
@@ -1195,6 +1232,36 @@ export function NotionEditor({
 
         setInternalCommand(next);
     }, [ onCommand ]);
+
+    const refocusEditor = useCallback(() => send("focus"), [ send ]);
+
+    /* A panel intentionally dismisses the keyboard when it opens. If the user summons the
+       keyboard again while that panel is still visible, return to the compact toolbar so the
+       keyboard and the MAB panel never compete for the same bottom edge. Track the transition
+       rather than the steady visible state so opening a panel while the keyboard is already up
+       does not immediately close the panel again. */
+    useEffect(() =>
+    {
+        const wasVisible = previousKeyboardVisibility.current;
+        previousKeyboardVisibility.current = keyboardState.isVisible;
+
+        if (!wasVisible && keyboardState.isVisible && panelOpen)
+        {
+            refocusAfterPanelClose.current = false;
+            setOpenPanel(NoPanelOpen);
+        }
+    }, [ keyboardState.isVisible, panelOpen ]);
+
+    useEffect(() =>
+    {
+        if (!refocusAfterPanelClose.current || row !== "format" || openPanel.kind !== "none")
+        {
+            return;
+        }
+        refocusAfterPanelClose.current = false;
+        const focusTimeout = setTimeout(refocusEditor, 160);
+        return () => clearTimeout(focusTimeout);
+    }, [ openPanel.kind, refocusEditor, row ]);
 
     /* Panel content replaces the keyboard, so enforce dismissal after the panel has actually
        entered the rendered tree as well as at the initiating button press. This also covers
@@ -1207,7 +1274,7 @@ export function NotionEditor({
         }
     }, [ audioSheetVisible, mediaSheetVisible, panelOpen, send ]);
 
-    const receiveEdit = useCallback(({ nativeEvent }: { nativeEvent: ProofEvent }) =>
+    const receiveEdit = useCallback(({ nativeEvent }: { nativeEvent: EditorEvent }) =>
     {
         setSelectionAnchorBlockId(nativeEvent.anchor.blockId);
         setSelectionAnchorOffset(nativeEvent.anchor.offset);
@@ -1217,7 +1284,7 @@ export function NotionEditor({
         if (suppliedSnapshot === undefined && onEdit === undefined)
         {
             const previous = currentSnapshot.current;
-            const next = AcceptProofEvent(previous, nativeEvent);
+            const next = AcceptEditorEvent(previous, nativeEvent);
             if (next !== previous)
             {
                 currentSnapshot.current = next;
@@ -1225,12 +1292,12 @@ export function NotionEditor({
 
                 /* A follow-up selection/focus event right after a history-restoring
                    `setSnapshot` reload still bumps the native revision counter, so it reaches
-                   here as "accepted" even though nothing textual changed -- `AcceptProofEvent`
+                   here as "accepted" even though nothing textual changed -- `AcceptEditorEvent`
                    reuses unchanged block references, so comparing block identity (not just the
                    wrapper object) tells a real edit from that housekeeping event. */
                 const blocksChanged = next.blocks.length !== previous.blocks.length
                     || next.blocks.some(
-                        (block: ProofBlock, index: number) => block !== previous.blocks[ index ]
+                        (block: EditorBlock, index: number) => block !== previous.blocks[ index ]
                     );
 
                 if (nativeEvent.source !== "replacement" && blocksChanged)
@@ -1345,12 +1412,49 @@ export function NotionEditor({
         }
         send("color", { blockId, color });
     }, [ blockActionsRequest, send ]);
+    const handleEditCalloutIcon = useCallback(() =>
+    {
+        const blockId = blockActionsRequest?.blockId;
+        setBlockActionsRequest(undefined);
+        if (blockId === undefined)
+        {
+            send("focus");
+            return;
+        }
+        setEmojiSheetBlockId(blockId);
+        setEmojiSheetVisible(true);
+        send("dismiss");
+    }, [ blockActionsRequest, send ]);
+    const handleEmojiSheetDismiss = useCallback(() =>
+    {
+        setEmojiSheetVisible(false);
+        setEmojiSheetBlockId(undefined);
+        send("focus");
+    }, [ send ]);
+    const handleCalloutIcon = useCallback((icon: string) =>
+    {
+        const blockId = emojiSheetBlockId;
+        setEmojiSheetVisible(false);
+        setEmojiSheetBlockId(undefined);
+        if (blockId === undefined)
+        {
+            send("focus");
+            return;
+        }
+        /* Selection also dismisses the picker, which queues a focus command. Let that command
+           render first so the icon update remains the final command in this interaction. */
+        setTimeout(() => send("icon", { blockId, icon }), 0);
+    }, [ emojiSheetBlockId, send ]);
 
     const handleMode = useCallback((nextRow: ToolbarRow) => () =>
     {
+        /* An open MAB panel means the native editor was explicitly dismissed. Returning to the
+           style MAB must restore the editing connection so the keyboard can be summoned again. */
+        const shouldRefocusEditor = nextRow === "format" && openPanel.kind !== "none";
+        refocusAfterPanelClose.current = shouldRefocusEditor;
         setRow(nextRow);
         setOpenPanel(NoPanelOpen);
-    }, [ ]);
+    }, [ openPanel.kind ]);
     const handleInsert = useCallback(() =>
     {
         setOpenPanel({ kind: "insert" });
@@ -1358,7 +1462,7 @@ export function NotionEditor({
     }, [ send ]);
     const handleInsertMedia = useCallback(() =>
     {
-        const override = onInsertMedia ?? onFilePicker;
+        const override = onInsertMedia;
         if (override !== undefined)
         {
             send("dismiss");
@@ -1368,7 +1472,45 @@ export function NotionEditor({
 
         setMediaSheetVisible(true);
         send("dismiss");
-    }, [ onFilePicker, onInsertMedia, send ]);
+    }, [ onInsertMedia, send ]);
+    const handleInsertFile = useCallback(async () =>
+    {
+        setOpenPanel(NoPanelOpen);
+        send("dismiss");
+        if (onFilePicker !== undefined)
+        {
+            await onFilePicker();
+            return;
+        }
+
+        const result = await DocumentPicker.getDocumentAsync({
+            copyToCacheDirectory: true,
+            multiple: false,
+            type: "*/*"
+        });
+        const pickedAsset = result.canceled ? undefined : result.assets?.[ 0 ];
+        const selection: NotionEditorFileSelection = {
+            asset: pickedAsset === undefined
+                ? undefined
+                : {
+                    fileName: pickedAsset.name,
+                    fileSize: pickedAsset.size,
+                    mimeType: pickedAsset.mimeType,
+                    uri: pickedAsset.uri
+                },
+            canceled: result.canceled
+        };
+        if (selection.asset !== undefined)
+        {
+            send("insertFile", {
+                fileName: selection.asset.fileName,
+                fileSize: selection.asset.fileSize,
+                mimeType: selection.asset.mimeType,
+                url: selection.asset.uri
+            });
+        }
+        await onFileSelected?.(selection);
+    }, [ onFilePicker, onFileSelected, send ]);
     const handleInsertAudio = useCallback(() =>
     {
         if (onInsertAudio !== undefined)
@@ -1414,10 +1556,10 @@ export function NotionEditor({
             return;
         }
         const anchorIndex = snapshot.blocks.findIndex(
-            (block: ProofBlock) => block.id === selectionAnchorBlockId
+            (block: EditorBlock) => block.id === selectionAnchorBlockId
         );
         const focusIndex = snapshot.blocks.findIndex(
-            (block: ProofBlock) => block.id === selectionFocusBlockId
+            (block: EditorBlock) => block.id === selectionFocusBlockId
         );
         if (anchorIndex === -1 || focusIndex === -1) {return;}
         const low = Math.min(anchorIndex, focusIndex);
@@ -1436,18 +1578,18 @@ export function NotionEditor({
             startOffset = start;
             endOffset = end;
         }
-        const label = snapshot.blocks.slice(low, high + 1).map((block: ProofBlock, index: number) =>
+        const label = snapshot.blocks.slice(low, high + 1).map((block: EditorBlock, index: number) =>
         {
             const start = index === 0 ? startOffset : 0;
             const end = index === high - low ? endOffset : block.text.length;
             return block.text.slice(start, end);
         }).join("\n");
         const urls = new Set<string>();
-        snapshot.blocks.slice(low, high + 1).forEach((block: ProofBlock, index: number) =>
+        snapshot.blocks.slice(low, high + 1).forEach((block: EditorBlock, index: number) =>
         {
             const start = index === 0 ? startOffset : 0;
             const end = index === high - low ? endOffset : block.text.length;
-            block.marks?.forEach((mark: ProofTextMark) =>
+            block.marks?.forEach((mark: EditorTextMark) =>
             {
                 if (mark.kind === "link" && mark.url !== undefined
                     && mark.start < end && mark.end > start)
@@ -1507,7 +1649,7 @@ export function NotionEditor({
         if (previous === undefined) {return;}
 
         redoStack.current.push(currentSnapshot.current);
-        const restored: ProofSnapshot = { ...previous, epoch: currentSnapshot.current.epoch + 1 };
+        const restored: EditorSnapshot = { ...previous, epoch: currentSnapshot.current.epoch + 1 };
         currentSnapshot.current = restored;
         setInternalSnapshot(restored);
         setCanUndo(undoStack.current.length > 0);
@@ -1519,7 +1661,7 @@ export function NotionEditor({
         if (next === undefined) {return;}
 
         undoStack.current.push(currentSnapshot.current);
-        const restored: ProofSnapshot = { ...next, epoch: currentSnapshot.current.epoch + 1 };
+        const restored: EditorSnapshot = { ...next, epoch: currentSnapshot.current.epoch + 1 };
         currentSnapshot.current = restored;
         setInternalSnapshot(restored);
         setCanRedo(redoStack.current.length > 0);
@@ -1535,7 +1677,7 @@ export function NotionEditor({
         setOpenPanel({ kind: "turnInto" });
         send("dismiss");
     }, [ send ]);
-    const handleTurnInto = useCallback((type: ProofBlock["type"]) => () =>
+    const handleTurnInto = useCallback((type: EditorBlock["type"]) => () =>
     {
         /* Turning a block into another type ends the MAB interaction. Close the panel before
            dispatching the native command so the toolbar immediately returns to its compact
@@ -1549,7 +1691,7 @@ export function NotionEditor({
         setOpenPanel({ kind: "color" });
         send("dismiss");
     }, [ canColorSelection, send ]);
-    const handleFormat = useCallback((mark: ProofTextMarkKind) => () =>
+    const handleFormat = useCallback((mark: EditorTextMarkKind) => () =>
         send("format", { mark }), [ send ]);
     const handleEraseFormatting = useCallback(() => send("clearFormat"), [ send ]);
     const handleCustomPanelOpen = useCallback((id: string) => () =>
@@ -1558,6 +1700,8 @@ export function NotionEditor({
         send("dismiss");
     }, [ send ]);
     const handleSplit = useCallback(() => send("split"), [ send ]);
+    const handleBulletedList = useCallback(() => send("bulletedList"), [ send ]);
+    const handleNumberedList = useCallback(() => send("numberedList"), [ send ]);
     const handleHeading1 = useCallback(
         () => send("heading", { level: 1 }), [ send ]
     );
@@ -1572,7 +1716,7 @@ export function NotionEditor({
     );
     const handleDivider = useCallback(() => send("divider"), [ send ]);
     const handleTableOfContents = useCallback(() => send("tableOfContents"), [ send ]);
-    const handleColumns = useCallback((columnCount: ProofColumnCount) => () =>
+    const handleColumns = useCallback((columnCount: EditorColumnCount) => () =>
         send("columns", { columnCount }), [ send ]);
     const handleToDo = useCallback(() => send("toDo"), [ send ]);
     const handleCallout = useCallback(() => send("callout"), [ send ]);
@@ -1647,7 +1791,8 @@ export function NotionEditor({
                 fileName: selection.asset.fileName,
                 fileSize: selection.asset.fileSize,
                 mimeType: selection.asset.mimeType,
-                url: selection.asset.uri
+                url: selection.asset.uri,
+                waveform: selection.asset.waveform
             };
             if (audioReplacementBlockId !== undefined)
             {
@@ -1738,6 +1883,13 @@ export function NotionEditor({
         takePicture: t("mediaSheet.takePicture"),
         title: t("mediaSheet.title")
     }), [ t ]);
+    /* This title is intentionally coupled to callout blocks. The picker is only used for
+       callouts for now, so a generic icon title would imply support we do not expose yet. */
+    const emojiLabels = useMemo(() => ({
+        common: t("emojiSheet.common"),
+        filter: t("emojiSheet.filter"),
+        title: t("emojiSheet.title")
+    }), [ t ]);
     const audioLabels = useMemo(() => ({
         cancel: t("audioSheet.cancel"),
         chooseFile: t("audioSheet.chooseFile"),
@@ -1745,8 +1897,8 @@ export function NotionEditor({
         error: t("audioSheet.error"),
         noAudio: t("audioSheet.noAudio"),
         pause: t("audioSheet.pause"),
-        play: t("audioSheet.play"),
         permissionDenied: t("audioSheet.permissionDenied"),
+        play: t("audioSheet.play"),
         preparing: t("audioSheet.preparing"),
         preview: t("audioSheet.preview"),
         record: t("audioSheet.record"),
@@ -1765,6 +1917,7 @@ export function NotionEditor({
     }), [ t ]);
     const actionsLabels = useMemo(() => ({
         background: t("actionsSheet.background"),
+        chooseAudio: t("audioSheet.chooseFile"),
         chooseColor: t("actionsSheet.chooseColor"),
         color: t("actionsSheet.color"),
         defaultColor: t("actionsSheet.defaultColor"),
@@ -1776,7 +1929,6 @@ export function NotionEditor({
         /* Reuses the insert-media sheet's own labels -- replacing an image performs the exact
            same gallery/camera pick as inserting one. */
         openGallery: t("mediaSheet.openGallery"),
-        chooseAudio: t("audioSheet.chooseFile"),
         recordAudio: t("audioSheet.record"),
         takePicture: t("mediaSheet.takePicture"),
         text: t("actionsSheet.text"),
@@ -1784,7 +1936,7 @@ export function NotionEditor({
     }), [ t ]);
     const blockActionsName = blockActionsRequest === undefined
         ? undefined
-        : t(proofBlockNameMessageIds[ blockActionsRequest.blockType ]);
+        : t(editorBlockNameMessageIds[ blockActionsRequest.blockType ]);
     return (
         <View
             { ...nativeViewProps }
@@ -1797,7 +1949,7 @@ export function NotionEditor({
                     keyboardShouldPersistTaps="handled"
                     style={ styles.pageScroll }>
                     <View style={ pageStyle }>
-                        <NativeProofEditor
+                        <NativeEditor
                             { ...nativeViewProps }
                             command={ command }
                             dark={ dark }
@@ -1909,7 +2061,7 @@ export function NotionEditor({
                                             key="speech"
                                             label={ t("toolbar.speech") }
                                             onPress={ handleInsertAudio } />;
-                                        case "filePicker": return <ActionButton button="filePicker"
+                                        case "filePicker": return <ActionButton button="gallery"
                                             color={ iconColor }
                                             components={ components }
                                             key="filePicker"
@@ -2089,6 +2241,22 @@ export function NotionEditor({
                                     label={ t("insertPanel.text") }
                                     labelColor={ iconColor }
                                     onPress={ handleSplit } />
+                                <BlockOption background={ cardBackground }
+                                    button="bulletedList"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.bulletedList") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleBulletedList } />
+                                <BlockOption background={ cardBackground }
+                                    button="numberedList"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.numberedList") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleNumberedList } />
                                 {
                                     onCreatePageReference !== undefined && <BlockOption
                                         background={ cardBackground }
@@ -2100,6 +2268,38 @@ export function NotionEditor({
                                         labelColor={ iconColor }
                                         onPress={ handleCreatePageReference } />
                                 }
+                                <BlockOption background={ cardBackground }
+                                    button="picture"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.image") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleInsertMedia } />
+                                <BlockOption background={ cardBackground }
+                                    button="speech"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.audio") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleInsertAudio } />
+                                <BlockOption background={ cardBackground }
+                                    button="video"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.video") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleInsertMedia } />
+                                <BlockOption background={ cardBackground }
+                                    button="filePicker"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.file") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleInsertFile } />
                                 <BlockOption background={ cardBackground }
                                     button="divider"
                                     color={ iconColor }
@@ -2116,9 +2316,9 @@ export function NotionEditor({
                                     label={ t("insertPanel.tableOfContents") }
                                     labelColor={ iconColor }
                                     onPress={ handleTableOfContents } />
-                                { ([ 2, 3, 4, 5 ] as const).map((columnCount: ProofColumnCount) =>
+                                { ([ 2, 3, 4, 5 ] as const).map((columnCount: EditorColumnCount) =>
                                     <BlockOption background={ cardBackground }
-                                        button={ proofColumnButtons[ columnCount ] }
+                                        button={ editorColumnButtons[ columnCount ] }
                                         color={ iconColor }
                                         components={ components }
                                         grid
@@ -2295,8 +2495,8 @@ export function NotionEditor({
                                 foreground={ foreground }
                                 iconColor={ iconColor }
                                 onSelect={ handleSelectColor }
-                                options={ proofColorOptions.filter(
-                                    (option: ProofColorOption) => !option.background
+                                options={ editorColorOptions.filter(
+                                    (option: EditorColorOption) => !option.background
                                 ) } />
                             <Text style={ colorLabelStyle }>
                                 { t("colorPanel.background") }
@@ -2307,8 +2507,8 @@ export function NotionEditor({
                                 foreground={ foreground }
                                 iconColor={ iconColor }
                                 onSelect={ handleSelectColor }
-                                options={ proofColorOptions.filter(
-                                    (option: ProofColorOption) => option.background
+                                options={ editorColorOptions.filter(
+                                    (option: EditorColorOption) => option.background
                                         || option.color === undefined
                                 ) } />
                         </ScrollView>
@@ -2333,6 +2533,13 @@ export function NotionEditor({
                     labels={ mediaLabels }
                     onDismiss={ handleMediaSheetDismiss }
                     onSelected={ handleMediaSelected } />
+            }
+            {
+                emojiSheetVisible && <EmojiBottomSheet
+                    dark={ dark }
+                    labels={ emojiLabels }
+                    onDismiss={ handleEmojiSheetDismiss }
+                    onSelected={ handleCalloutIcon } />
             }
             {
                 audioSheetVisible && <AudioBottomSheet
@@ -2362,13 +2569,14 @@ export function NotionEditor({
                         onAction={ handleBlockAction }
                         onColor={ handleCalloutColor }
                         onDismiss={ handleBlockActionsDismiss }
+                        onEditIcon={ handleEditCalloutIcon }
+                        onReplaceAudio={ handleReplaceAudio }
                         onReplaceImage={ (url: string) =>
                             handleReplaceImage(blockActionsRequest.blockId, url) }
-                        onReplaceAudio={ handleReplaceAudio }
-                        showInsertAbove={ blockActionsRequest.blockType !== "divider" }
                         showCalloutActions={ blockActionsRequest.blockType === "callout" }
-                        showReplaceImage={ blockActionsRequest.blockType === "image" }
-                        showReplaceAudio={ blockActionsRequest.blockType === "audio" } />
+                        showInsertAbove={ blockActionsRequest.blockType !== "divider" }
+                        showReplaceAudio={ blockActionsRequest.blockType === "audio" }
+                        showReplaceImage={ blockActionsRequest.blockType === "image" } />
             }
         </View>
     );

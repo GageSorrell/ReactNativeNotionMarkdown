@@ -1,0 +1,41 @@
+---
+interface Props {
+  readonly class?: string | undefined
+}
+
+const { class: className } = Astro.props
+---
+
+<div aria-hidden="true" class:list={["landing-grid-background pointer-events-none absolute inset-0", className]}>
+  <div class="landing-grid landing-grid-light absolute inset-0"></div>
+  <div class="landing-grid landing-grid-dark absolute inset-0"></div>
+</div>
+
+<style>
+  .landing-grid {
+    background-size: calc(73.75rem / 6) 194px;
+    background-position: calc(50% + 73.75rem / 12) 0;
+  }
+
+  .landing-grid-light {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, #e4e4e7 70%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, #e4e4e7 70%, transparent) 1px, transparent 1px);
+    opacity: 1;
+  }
+
+  .landing-grid-dark {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, #27272a 70%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, #27272a 70%, transparent) 1px, transparent 1px);
+    opacity: 0;
+  }
+
+  :global(.dark) .landing-grid-light {
+    opacity: 0;
+  }
+
+  :global(.dark) .landing-grid-dark {
+    opacity: 1;
+  }
+</style>

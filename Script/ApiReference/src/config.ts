@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url"
 
 export const REFERENCE_SCHEMA_VERSION = 1
 export const REFERENCE_VERSION = "v1"
+export const UNKNOWN_SOURCE_REVISION = "0000000000000000000000000000000000000000"
 export const PACKAGE_NAME = "react-native-notion-markdown"
 export const PACKAGE_DIRECTORY = "Package/react-native-notion-markdown"
 export const REPOSITORY_URL = "https://github.com/GageSorrell/ReactNativeNotionMarkdown"

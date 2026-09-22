@@ -13,12 +13,18 @@ import mdx from "@astrojs/mdx";
 import { rehypeHeadingIds, unified } from "@astrojs/markdown-remark";
 import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
-import expressiveCode from "astro-expressive-code";
+import expressiveCode, { type AstroExpressiveCodeOptions } from "astro-expressive-code";
 import { defineConfig, fontProviders } from "astro/config";
 import { fileURLToPath } from "node:url";
 import { rehypeHeadingLinks } from "./src/features/docs/rehype-heading-links";
 
 const FontsourceProvider = fontProviders.fontsource();
+
+const expressiveCodeOptions: AstroExpressiveCodeOptions = {
+    themes: [ "github-light", "github-dark" ],
+    useDarkModeMediaQuery: false,
+    themeCssSelector: (theme) => theme.type === "dark" ? "[data-theme='dark']" : false
+};
 
 // https://astro.build/config
 export default defineConfig({
@@ -46,7 +52,7 @@ export default defineConfig({
         }
     },
 
-    integrations: [ expressiveCode(), react(), mdx() ],
+    integrations: [ expressiveCode(expressiveCodeOptions), react(), mdx() ],
 
     fonts: [
         {
@@ -69,7 +75,6 @@ export default defineConfig({
     ],
 
     redirects: {
-        "/": "/docs",
         "/docs": "/docs/v1/onboarding/introduction"
     }
 });

@@ -10,23 +10,23 @@
  */
 
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import type { ProofBlock, ProofCommand, ProofSnapshot } from "react-native-notion-markdown";
+import type { EditorBlock, EditorCommand, EditorSnapshot } from "react-native-notion-markdown";
 import { theme } from "../theme";
 import { useState } from "react";
 
-const commandActions: Array<ProofCommand["action"]> = [
+const commandActions: Array<EditorCommand["action"]> = [
     "focus", "dismiss", "selectAll", "copy", "cut", "paste",
     "split", "backspace", "softBreak", "heading", "compose", "commit"
 ];
 
-const blockTypes: Array<ProofBlock["type"]> = [ "text", "heading_1" ];
+const blockTypes: Array<EditorBlock["type"]> = [ "text", "heading_1" ];
 
 let nextRowId = 0;
 
 export type ConsolePanelProps = {
-    snapshot: ProofSnapshot | undefined;
-    onSendCommand: (action: ProofCommand["action"]) => void;
-    onReplaceDocument: (blocks?: Array<ProofBlock>) => void;
+    snapshot: EditorSnapshot | undefined;
+    onSendCommand: (action: EditorCommand["action"]) => void;
+    onReplaceDocument: (blocks?: Array<EditorBlock>) => void;
 };
 
 /**
@@ -36,31 +36,31 @@ export type ConsolePanelProps = {
  */
 export function ConsolePanel({ snapshot, onSendCommand, onReplaceDocument }: ConsolePanelProps)
 {
-    const [ rows, setRows ] = useState<Array<ProofBlock>>([]);
+    const [ rows, setRows ] = useState<Array<EditorBlock>>([]);
 
     function loadFromSnapshot()
     {
         if (snapshot)
         {
-            setRows(snapshot.blocks.map((block: ProofBlock) => ({ ...block })));
+            setRows(snapshot.blocks.map((block: EditorBlock) => ({ ...block })));
         }
     }
 
     function addRow()
     {
-        const row: ProofBlock = { id: `block-${ ++nextRowId }`, text: "", type: "text" };
-        setRows((current: Array<ProofBlock>) => [ ...current, row ]);
+        const row: EditorBlock = { id: `block-${ ++nextRowId }`, text: "", type: "text" };
+        setRows((current: Array<EditorBlock>) => [ ...current, row ]);
     }
 
-    function updateRow(index: number, patch: Partial<ProofBlock>)
+    function updateRow(index: number, patch: Partial<EditorBlock>)
     {
-        setRows((current: Array<ProofBlock>) => current.map((row: ProofBlock, i: number) =>
+        setRows((current: Array<EditorBlock>) => current.map((row: EditorBlock, i: number) =>
             i === index ? { ...row, ...patch } : row));
     }
 
     function removeRow(index: number)
     {
-        setRows((current: Array<ProofBlock>) => current.filter((_: ProofBlock, i: number) => i !== index));
+        setRows((current: Array<EditorBlock>) => current.filter((_: EditorBlock, i: number) => i !== index));
     }
 
     function apply()
@@ -83,7 +83,7 @@ export function ConsolePanel({ snapshot, onSendCommand, onReplaceDocument }: Con
                 Dispatched exactly as if an on-device toolbar button was pressed.
             </Text>
             <View style={ styles.commandGrid }>
-                {commandActions.map((action: ProofCommand["action"]) => (
+                {commandActions.map((action: EditorCommand["action"]) => (
                     <CommandButton
                         action={ action }
                         key={ action }
@@ -114,7 +114,7 @@ export function ConsolePanel({ snapshot, onSendCommand, onReplaceDocument }: Con
                 </Pressable>
             </View>
 
-            {rows.map((row: ProofBlock, index: number) => (
+            {rows.map((row: EditorBlock, index: number) => (
                 <BlockEditorRow
                     key={ row.id }
                     onRemove={ removeRow }
@@ -135,8 +135,8 @@ export function ConsolePanel({ snapshot, onSendCommand, onReplaceDocument }: Con
 }
 
 type CommandButtonProps = {
-    action: ProofCommand["action"];
-    onPress: (action: ProofCommand["action"]) => void;
+    action: EditorCommand["action"];
+    onPress: (action: EditorCommand["action"]) => void;
 };
 
 function CommandButton({ action, onPress }: CommandButtonProps)
@@ -156,9 +156,9 @@ function CommandButton({ action, onPress }: CommandButtonProps)
 }
 
 type BlockEditorRowProps = {
-    row: ProofBlock;
+    row: EditorBlock;
     rowIndex: number;
-    onUpdate: (index: number, patch: Partial<ProofBlock>) => void;
+    onUpdate: (index: number, patch: Partial<EditorBlock>) => void;
     onRemove: (index: number) => void;
 };
 
@@ -189,7 +189,7 @@ function BlockEditorRow({ row, rowIndex, onUpdate, onRemove }: BlockEditorRowPro
                 value={ row.id }
             />
             <View style={ styles.typeToggle }>
-                {blockTypes.map((type: ProofBlock["type"]) => (
+                {blockTypes.map((type: EditorBlock["type"]) => (
                     <TypeOption
                         active={ row.type === type }
                         key={ type }
@@ -216,10 +216,10 @@ function BlockEditorRow({ row, rowIndex, onUpdate, onRemove }: BlockEditorRowPro
 }
 
 type TypeOptionProps = {
-    type: ProofBlock["type"];
+    type: EditorBlock["type"];
     active: boolean;
     rowIndex: number;
-    onSelect: (index: number, patch: Partial<ProofBlock>) => void;
+    onSelect: (index: number, patch: Partial<EditorBlock>) => void;
 };
 
 function TypeOption({ type, active, rowIndex, onSelect }: TypeOptionProps)

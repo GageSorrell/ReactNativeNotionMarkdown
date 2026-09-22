@@ -1,0 +1,16 @@
+---
+import { ArrowRight, ChevronDown } from "@lucide/astro"
+import type { LandingPageConfig } from "@/lib/landing"
+
+interface Props { readonly config: LandingPageConfig }
+const { config } = Astro.props
+---
+
+<section id="faq" class="effect-landing-section relative w-full py-24 md:pt-40 md:pb-24">
+  <div class="effect-landing-container mx-auto w-full">
+    <div class="flex flex-col lg:flex-row">
+      <div class="w-full px-4 lg:w-1/2"><p class="effect-landing-label mb-3">{config.content.faqLabel}</p><h2>{config.content.faqTitle}</h2><p class="effect-landing-section-copy mt-5 max-w-lg">{config.content.faqDescription}</p><a href={config.secondaryCta.href} class="effect-landing-secondary-link mt-6">Explore the documentation <ArrowRight class="size-4" aria-hidden="true" /></a></div>
+      <div class="mt-8 w-full px-4 lg:mt-0 lg:w-1/2 lg:pt-6 lg:pr-4 lg:pl-3"><div class="space-y-4">{config.faqs.map((faq) => <details class="effect-landing-faq-item group"><summary>{faq.question}<span><ChevronDown class="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" /></span></summary><div><p>{faq.answer}</p></div></details>)}</div></div>
+    </div>
+  </div>
+</section>

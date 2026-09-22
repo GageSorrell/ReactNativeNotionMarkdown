@@ -10,10 +10,10 @@
  */
 
 export {
-    NativeProofEditor,
+    NativeEditor,
     type NativePageReferencePressEvent,
-    type NativeProofEditorProps
-} from "../NativeProofEditor.tsx";
+    type NativeEditorProps
+} from "../NativeEditor.tsx";
 export { default as NotionMarkdown } from "../NotionMarkdownModule.ts";
 
 /** Pure store and React bindings for composable editors. */

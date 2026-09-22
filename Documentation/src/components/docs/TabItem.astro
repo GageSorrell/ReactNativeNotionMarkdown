@@ -1,6 +1,6 @@
 ---
 /** @module @react-native-notion-markdown/documentation/components/docs/TabItem @file TabItem.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
-interface Props { readonly label: string; readonly icon?: string }
-const { label } = Astro.props
+interface Props { readonly label: string; readonly id?: string; readonly icon?: string }
+const { label, id } = Astro.props
 ---
-<div class="docs-tab-panel" data-label={label}><slot /></div>
+<div class="docs-tab-panel" data-label={label} data-tab-id={id ?? label.toLowerCase().replace(/[^a-z0-9]+/g, "-")} tabindex="0"><slot /></div>

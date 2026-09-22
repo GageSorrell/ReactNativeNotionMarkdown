@@ -1,0 +1,11 @@
+---
+/** @module @react-native-notion-markdown/documentation/pages/index @file index.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import Footer from "@/components/Footer.astro"
+import LandingPage from "@/components/landing/LandingPage.astro"
+import BaseLayout from "@/layouts/BaseLayout.astro"
+import { LANDING_CONFIG } from "@/lib/landing"
+---
+<BaseLayout title="react-native-notion-markdown · Structured content for React Native" description={LANDING_CONFIG.description}>
+  <LandingPage config={LANDING_CONFIG} />
+  <Footer />
+</BaseLayout>

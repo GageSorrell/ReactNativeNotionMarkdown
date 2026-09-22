@@ -1,0 +1,38 @@
+---
+import { Activity, ArrowDown, Check, FileCheckCorner, GitBranch, Network, Smartphone, Type } from "@lucide/astro"
+import LandingComplexityChart from "../blocks/LandingComplexityChart.astro"
+import type { LandingPageConfig } from "@/lib/landing"
+
+interface Props { readonly config: LandingPageConfig }
+const { config } = Astro.props
+const icons = [Type, Network, GitBranch, Smartphone, Activity, FileCheckCorner]
+---
+
+<section id="problem" class="effect-landing-section relative w-full py-24 md:pt-40 md:pb-24">
+  <div class="effect-landing-container relative mx-auto w-full px-4">
+    <div class="mb-8 grid grid-cols-1 gap-12 lg:mb-16 lg:grid-cols-2 lg:gap-8">
+      <div>
+        <p class="effect-landing-label mb-3">{config.content.problemLabel}</p>
+        <h2 class="max-w-md">{config.content.problemTitle}</h2>
+      </div>
+      <div class="flex flex-col justify-center"><LandingComplexityChart /></div>
+    </div>
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {config.capabilities.map((feature, index) => {
+        const Icon = icons[index % icons.length]
+        return (
+          <article class="effect-landing-problem-card flex flex-col">
+            <p class="effect-landing-card-problem">{feature.description}</p>
+            <div class="my-4 flex items-center gap-2"><div class="h-px flex-1"></div><ArrowDown class="h-4 w-4" aria-hidden="true" /><div class="h-px flex-1"></div></div>
+            <h3 class="flex items-center gap-2 font-mono text-base font-medium uppercase"><span class="effect-landing-icon-box"><Icon class="h-4 w-4" aria-hidden="true" /></span>{feature.title}</h3>
+            <ul class="mt-3 m-0 flex list-none flex-col gap-1.5 p-0">
+              <li class="flex items-start gap-2"><span class="effect-landing-check"><Check class="h-4 w-4" aria-hidden="true" /></span><span>{feature.linkLabel}</span></li>
+              <li class="flex items-start gap-2"><span class="effect-landing-check"><Check class="h-4 w-4" aria-hidden="true" /></span><span>Composable with application-owned UI</span></li>
+              <li class="flex items-start gap-2"><span class="effect-landing-check"><Check class="h-4 w-4" aria-hidden="true" /></span><span>Designed for incremental adoption</span></li>
+            </ul>
+          </article>
+        )
+      })}
+    </div>
+  </div>
+</section>

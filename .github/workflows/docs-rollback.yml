@@ -41,7 +41,7 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           npx vercel@59.25.0 pull --yes --environment=production --token "$VERCEL_TOKEN"
-          npx vercel@59.25.0 build --prod --token "$VERCEL_TOKEN"
+          npx vercel@59.25.0 build --prod --local-config vercel.snapshot.json --token "$VERCEL_TOKEN"
           DEPLOYMENT=$(npx vercel@59.25.0 deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN" | tail -n 1)
           curl --fail --silent --show-error "$DEPLOYMENT/docs/v1/api" >/dev/null
           npx vercel@59.25.0 promote "$DEPLOYMENT" --token "$VERCEL_TOKEN"

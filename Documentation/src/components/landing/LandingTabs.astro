@@ -1,0 +1,68 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/landing/LandingTabs @file LandingTabs.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+interface TabItem { readonly id: string; readonly label: string }
+interface Props { readonly tabs: readonly TabItem[]; readonly group: string; readonly ariaLabel: string; readonly syncKey?: string }
+const { tabs, group, ariaLabel, syncKey } = Astro.props
+const tabId = (id: string) => `${group}-${id}`
+---
+<landing-tabs data-group={group} data-sync-key={syncKey}>
+  <div class="landing-tabs-list" role="tablist" aria-label={ariaLabel}>
+    {tabs.map((tab, index) => <button id={`${tabId(tab.id)}-tab`} type="button" role="tab" aria-controls={`${tabId(tab.id)}-panel`} aria-selected={index === 0 ? "true" : "false"} data-tab-id={tab.id} tabindex={index === 0 ? 0 : -1}>{tab.label}</button>)}
+  </div>
+  <div class="landing-tabs-panels"><slot /></div>
+</landing-tabs>
+<script>
+  class LandingTabs extends HTMLElement {
+    private readonly tabButtons = () => Array.from(this.querySelector(":scope > .landing-tabs-list")?.querySelectorAll<HTMLButtonElement>("[role=tab]") ?? [])
+    private readonly tabPanels = () => Array.from(this.querySelector(":scope > .landing-tabs-panels")?.querySelectorAll<HTMLElement>(":scope > [data-tab-panel]") ?? [])
+
+    connectedCallback() {
+      this.tabButtons().forEach((button) => {
+        button.addEventListener("click", () => this.select(button.dataset.tabId ?? ""))
+        button.addEventListener("keydown", (event) => this.onKeyDown(event, button))
+      })
+      const selected = this.tabButtons().find((button) => button.getAttribute("aria-selected") === "true")
+      this.select(selected?.dataset.tabId ?? this.tabButtons()[0]?.dataset.tabId ?? "", false)
+      window.addEventListener("landing-tabs:change", this.onExternalChange as EventListener)
+    }
+
+    disconnectedCallback() {
+      window.removeEventListener("landing-tabs:change", this.onExternalChange as EventListener)
+    }
+
+    private onExternalChange = (event: CustomEvent<{ key?: string; id: string; source: HTMLElement }>) => {
+      if (!this.dataset.syncKey || event.detail.source === this || event.detail.key !== this.dataset.syncKey) return
+      this.select(event.detail.id, false)
+    }
+
+    private onKeyDown(event: KeyboardEvent, button: HTMLButtonElement) {
+      const buttons = this.tabButtons()
+      const index = buttons.indexOf(button)
+      let nextIndex: number | undefined
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % buttons.length
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + buttons.length) % buttons.length
+      if (event.key === "Home") nextIndex = 0
+      if (event.key === "End") nextIndex = buttons.length - 1
+      if (nextIndex === undefined) return
+      event.preventDefault()
+      buttons[nextIndex]?.focus()
+      this.select(buttons[nextIndex]?.dataset.tabId ?? "")
+    }
+
+    private select(id: string, announce = true) {
+      if (!id) return
+      this.tabButtons().forEach((button) => {
+        const active = button.dataset.tabId === id
+        button.setAttribute("aria-selected", String(active))
+        button.tabIndex = active ? 0 : -1
+      })
+      this.tabPanels().forEach((panel) => {
+        const active = panel.dataset.tabPanel === id
+        panel.hidden = !active
+        panel.toggleAttribute("data-active", active)
+      })
+      if (announce && this.dataset.syncKey) window.dispatchEvent(new CustomEvent("landing-tabs:change", { detail: { key: this.dataset.syncKey, id, source: this } }))
+    }
+  }
+  if (!customElements.get("landing-tabs")) customElements.define("landing-tabs", LandingTabs)
+</script>

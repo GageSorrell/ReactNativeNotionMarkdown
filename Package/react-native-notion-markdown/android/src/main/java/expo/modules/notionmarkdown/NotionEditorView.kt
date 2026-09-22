@@ -59,15 +59,17 @@ import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
-private const val FRAGMENT_MIME = "application/vnd.react-native-notion-markdown.proof+json"
+private const val FRAGMENT_MIME = "application/vnd.react-native-notion-markdown.editor+json"
+private const val AUDIO_WAVEFORM_BAR_COUNT = 32
 
 /** Relative text size applied to each heading level's span, matching Notion's own descending scale. */
 private val headingScale = mapOf(1 to 1.875f, 2 to 1.5f, 3 to 1.25f, 4 to 1.125f)
 
 /** Solid text colors -- the same nine named colors and RGB values as `NotionTextFieldView`'s
  *  inline `markColors`, kept in sync manually since this is a block-level, not inline, span. */
-private val proofTextColors: Map<String, Int> = mapOf(
+private val editorTextColors: Map<String, Int> = mapOf(
   "gray" to Color.rgb(120, 119, 116),
   "brown" to Color.rgb(159, 107, 83),
   "orange" to Color.rgb(217, 115, 13),
@@ -79,9 +81,9 @@ private val proofTextColors: Map<String, Int> = mapOf(
   "red" to Color.rgb(212, 76, 71)
 )
 
-/** The `_bg` background variants -- the same nine hues as `proofTextColors`, applied as a
+/** The `_bg` background variants -- the same nine hues as `editorTextColors`, applied as a
  *  translucent tint so they read against both light and dark editor backgrounds. */
-private val proofBackgroundColors: Map<String, Int> = mapOf(
+private val editorBackgroundColors: Map<String, Int> = mapOf(
   "gray_bg" to Color.argb(56, 120, 119, 116),
   "brown_bg" to Color.argb(56, 159, 107, 83),
   "orange_bg" to Color.argb(56, 217, 115, 13),
@@ -93,37 +95,37 @@ private val proofBackgroundColors: Map<String, Int> = mapOf(
   "red_bg" to Color.argb(56, 212, 76, 71)
 )
 
-private val proofValidBlockTypes = listOf(
+private val editorValidBlockTypes = listOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
-  "numbered_list_item", "to_do", "callout", "quote", "divider", "table_of_contents", "column_list", "image", "audio", "video",
+  "numbered_list_item", "to_do", "callout", "quote", "divider", "table_of_contents", "column_list", "image", "audio", "video", "file",
   "link_to_page"
 )
-private val proofValidColors = proofTextColors.keys + proofBackgroundColors.keys
+private val editorValidColors = editorTextColors.keys + editorBackgroundColors.keys
 
 /** Block types with mergeable text content -- eligible on either side of an atomic-block-skipping
- *  backspace merge (see [NotionProofView.handleAtomicBlockBackspace]). */
-private val proofMergeableBlockTypes = setOf(
+ *  backspace merge (see [NotionEditorView.handleAtomicBlockBackspace]). */
+private val editorMergeableBlockTypes = setOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4",
   "bulleted_list_item", "numbered_list_item", "to_do", "callout", "quote"
 )
 
-/** Block types with no navigable text of their own -- see [NotionProofView.handleAtomicBlockBackspace]. */
-private val proofAtomicBlockTypes = setOf("divider", "image", "audio", "video")
+/** Block types with no navigable text of their own -- see [NotionEditorView.handleAtomicBlockBackspace]. */
+private val editorAtomicBlockTypes = setOf("divider", "image", "audio", "video", "file")
 
 /** A checked to-do's checkbox fill and its unchecked border, matching the renderer's theme accent. */
-private fun proofAccentColor(dark: Boolean) = if (dark) Color.rgb(0x81, 0xB8, 0xE7) else Color.rgb(0x2F, 0x6E, 0xAB)
+private fun editorAccentColor(dark: Boolean) = if (dark) Color.rgb(0x81, 0xB8, 0xE7) else Color.rgb(0x2F, 0x6E, 0xAB)
 
 /** A checked to-do's text color, matching the renderer theme's muted foreground. */
-private fun proofMutedColor(dark: Boolean) = if (dark) Color.rgb(0xA0, 0xA0, 0xA0) else Color.rgb(0x73, 0x73, 0x73)
+private fun editorMutedColor(dark: Boolean) = if (dark) Color.rgb(0xA0, 0xA0, 0xA0) else Color.rgb(0x73, 0x73, 0x73)
 
 /** An unchecked to-do checkbox's border color, matching the renderer theme's border. */
-private fun proofCheckboxBorderColor(dark: Boolean) = if (dark) Color.rgb(0x41, 0x41, 0x41) else Color.rgb(0xDE, 0xDE, 0xDB)
+private fun editorCheckboxBorderColor(dark: Boolean) = if (dark) Color.rgb(0x41, 0x41, 0x41) else Color.rgb(0xDE, 0xDE, 0xDB)
 
 /** A callout's default box tint when no `_bg` color is chosen, matching the renderer theme's surface. */
-private fun proofCalloutDefaultBackground(dark: Boolean) = if (dark) Color.rgb(0x25, 0x25, 0x25) else Color.rgb(0xF7, 0xF7, 0xF5)
+private fun editorCalloutDefaultBackground(dark: Boolean) = if (dark) Color.rgb(0x25, 0x25, 0x25) else Color.rgb(0xF7, 0xF7, 0xF5)
 
 /** A quote's default left-border bar color when no color is chosen, matching the renderer's blockquote border. */
-private fun proofQuoteBarColor(dark: Boolean) = if (dark) Color.rgb(0x41, 0x41, 0x41) else Color.rgb(0xDE, 0xDE, 0xDB)
+private fun editorQuoteBarColor(dark: Boolean) = if (dark) Color.rgb(0x41, 0x41, 0x41) else Color.rgb(0xDE, 0xDE, 0xDB)
 private const val DIVIDER_TEXT = "\u200B"
 private const val TABLE_OF_CONTENTS_TEXT = "\u200B"
 private const val COLUMNS_TEXT = "\u200B"
@@ -131,6 +133,7 @@ private const val EMPTY_BLOCK_TEXT = "\u200B"
 private const val MEDIA_TEXT = "\uFFFC"
 private const val TABLE_OF_CONTENTS_LABEL = "Table of contents"
 private const val DEFAULT_EMPTY_TOGGLE_PLACEHOLDER = "Empty toggle.  Tap to add text or create a new block."
+private const val DEFAULT_EMPTY_TODO_PLACEHOLDER = "To do"
 private const val DEFAULT_CALLOUT_ICON = "\uD83D\uDCAC"
 private const val TOGGLE_BUTTON_WIDTH_SCALE = 1.5f
 private const val TODO_CHECKBOX_WIDTH_SCALE = 1.5f
@@ -138,12 +141,13 @@ private const val LIST_MARKER_WIDTH_SCALE = 1.5f
 private const val CALLOUT_OUTER_PADDING_DP = 8
 private const val CALLOUT_SURFACE_PADDING_DP = 12
 private const val CALLOUT_ICON_WIDTH_DP = 24
+private const val CALLOUT_ICON_GAP_DP = 8
 private const val CALLOUT_BLOCK_PADDING_DP =
   CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP + 6
 private const val QUOTE_BAR_WIDTH_DP = 3
 private const val QUOTE_TEXT_INDENT_DP = 12
 
-private fun proofHeadingLevel(type: String): Int? = when (type) {
+private fun editorHeadingLevel(type: String): Int? = when (type) {
   "heading_1" -> 1
   "heading_2" -> 2
   "heading_3" -> 3
@@ -151,7 +155,7 @@ private fun proofHeadingLevel(type: String): Int? = when (type) {
   else -> null
 }
 
-private data class ProofBlock(
+private data class EditorBlock(
   val id: String,
   var type: String,
   var text: String,
@@ -159,7 +163,7 @@ private data class ProofBlock(
   var depth: Int = 0,
   var toggle: Boolean = false,
   var collapsed: Boolean = false,
-  val marks: MutableList<ProofMark> = mutableListOf(),
+  val marks: MutableList<EditorMark> = mutableListOf(),
   var checked: Boolean = false,
   var url: String? = null,
   var icon: String? = null,
@@ -167,7 +171,8 @@ private data class ProofBlock(
   var duration: Double? = null,
   var mimeType: String? = null,
   var fileName: String? = null,
-  var fileSize: Double? = null
+  var fileSize: Double? = null,
+  var waveform: List<Float>? = null
 ) {
   fun payload(): Map<String, Any?> {
     val base = mutableMapOf<String, Any?>("id" to id, "type" to type, "text" to text)
@@ -177,14 +182,17 @@ private data class ProofBlock(
     if (toggle && collapsed) base["collapsed"] = true
     if (type == "to_do") base["checked"] = checked
     if (type == "column_list") base["columnCount"] = (columnCount ?: 2).coerceIn(2, 5)
-    if (type == "link_to_page" || type == "image" || type == "audio" || type == "video") {
+    if (type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file") {
       url?.let { base["url"] = it }
     }
-    if (type == "audio") {
+    if (type == "audio" || type == "file") {
       duration?.let { base["duration"] = it }
       mimeType?.let { base["mimeType"] = it }
       fileName?.let { base["fileName"] = it }
       fileSize?.let { base["fileSize"] = it }
+    }
+    if (type == "audio") {
+      waveform?.takeIf { it.isNotEmpty() }?.let { base["waveform"] = it }
     }
     if (type == "link_to_page" || type == "callout") {
       icon?.let { base["icon"] = it }
@@ -203,18 +211,18 @@ private data class ProofBlock(
   }
 }
 
-private data class ProofMark(
+private data class EditorMark(
   val kind: String,
   var start: Int,
   var end: Int,
   val url: String? = null
 )
 
-private data class ProofPasteBlock(
+private data class EditorPasteBlock(
   val type: String,
   val text: String,
   val color: String?,
-  val marks: List<ProofMark>,
+  val marks: List<EditorMark>,
   val checked: Boolean = false,
   val url: String? = null,
   val icon: String? = null,
@@ -222,20 +230,21 @@ private data class ProofPasteBlock(
   val duration: Double? = null,
   val mimeType: String? = null,
   val fileName: String? = null,
-  val fileSize: Double? = null
+  val fileSize: Double? = null,
+  val waveform: List<Float>? = null
 )
 
 /** Marker span used to preserve inline marks while Android adjusts ranges during text edits. */
-private class ProofInlineMarkSpan(val kind: String, val url: String? = null) : android.text.style.CharacterStyle() {
+private class EditorInlineMarkSpan(val kind: String, val url: String? = null) : android.text.style.CharacterStyle() {
   override fun updateDrawState(textPaint: android.text.TextPaint) = Unit
 }
 
 /**
  * Adds a block's top/bottom padding and a one-eighth natural-height gap between wrapped lines.
  * [blockStart] and [blockEnd] are the block's own fixed offsets at span-creation time (recomputed
- * every [NotionProofView.styleBlocks] pass), compared against the line range Android passes to
+ * every [NotionEditorView.styleBlocks] pass), compared against the line range Android passes to
  * [chooseHeight] to tell a block's boundary line from an interior wrapped line.
- * This also implements [UpdateLayout] because [NotionProofView.styleBlocks] replaces these spans
+ * This also implements [UpdateLayout] because [NotionEditorView.styleBlocks] replaces these spans
  * after edits; DynamicLayout only recalculates existing lines when a changed span has that marker.
  */
 private class BlockPaddingSpan(
@@ -289,15 +298,15 @@ private class BlockPaddingSpan(
 }
 
 /** Keeps non-rendering blocks measurable while Android applies spans to their caret lines. */
-private fun ProofBlock.nativeText(): String = when {
-  type == "image" || type == "audio" || type == "video" -> MEDIA_TEXT
+private fun EditorBlock.nativeText(): String = when {
+  type == "image" || type == "audio" || type == "video" || type == "file" -> MEDIA_TEXT
   text.isEmpty() -> EMPTY_BLOCK_TEXT
   else -> text
 }
 
-private fun List<ProofBlock>.nativeText(): String = joinToString("\n") { it.nativeText() }
+private fun List<EditorBlock>.nativeText(): String = joinToString("\n") { it.nativeText() }
 
-/** Draws a divider block while keeping its proof text payload invisible and editable. */
+/** Draws a divider block while keeping its editor text payload invisible and editable. */
 private class DividerSpan(
   private val leftInset: Int,
   private val rightInset: Int
@@ -343,7 +352,7 @@ private class DividerSpan(
 }
 
 /** Renders a local camera/gallery asset as a centered, full-width image block. */
-private class ProofImageSpan(
+private class EditorImageSpan(
   private val input: EditText,
   source: String,
   private val maxWidth: Int
@@ -415,7 +424,7 @@ private class ProofImageSpan(
 }
 
 /** Renders a local camera/gallery video as a centered, full-width poster with a play affordance. */
-private class ProofVideoSpan(
+private class EditorVideoSpan(
   private val input: EditText,
   source: String,
   private val maxWidth: Int
@@ -512,18 +521,48 @@ private class ProofVideoSpan(
   }
 }
 
-/** Draws a compact, atomic audio card. Playback is owned by [NotionProofView] so every audio
+private fun fallbackAudioWaveform(seed: String): List<Float> {
+  var hash = 2166136261L
+  seed.forEach { character ->
+    hash = (hash xor character.code.toLong()) * 16777619L
+  }
+  return List(AUDIO_WAVEFORM_BAR_COUNT) { index ->
+    (0.18f + abs(sin((index + 1) * 1.73 + (hash and 0xffffffffL) / 100000000.0)).toFloat() * 0.62f)
+      .coerceIn(0.18f, 1f)
+  }
+}
+
+private fun audioWaveformFromValue(value: Any?): List<Float>? =
+  (value as? List<*>)?.mapNotNull { (it as? Number)?.toFloat()?.takeIf { number -> number.isFinite() } }
+    ?.map { it.coerceIn(0f, 1f) }
+    ?.take(AUDIO_WAVEFORM_BAR_COUNT)
+    ?.takeIf { it.isNotEmpty() }
+
+private fun audioWaveform(block: EditorBlock): List<Float> =
+  block.waveform?.filter { it.isFinite() }?.map { it.coerceIn(0f, 1f) }?.takeIf { it.isNotEmpty() }
+    ?: fallbackAudioWaveform(block.fileName ?: block.url ?: block.id)
+
+private fun blendAudioColors(from: Int, to: Int, amount: Float): Int {
+  val fraction = amount.coerceIn(0f, 1f)
+  val red = (Color.red(from) + (Color.red(to) - Color.red(from)) * fraction).roundToInt()
+  val green = (Color.green(from) + (Color.green(to) - Color.green(from)) * fraction).roundToInt()
+  val blue = (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * fraction).roundToInt()
+  return Color.rgb(red, green, blue)
+}
+
+/** Draws a compact, atomic audio card. Playback is owned by [NotionEditorView] so every audio
  * block in one editor shares one player and tapping the card can distinguish play from select. */
-private class ProofAudioSpan(
+private class EditorAudioSpan(
   private val input: EditText,
   private val label: String,
   private val durationSeconds: Double?,
+  private val waveform: List<Float>,
   private val dark: Boolean,
   private val currentTimeSeconds: () -> Double,
   private val playing: () -> Boolean
 ) : ReplacementSpan() {
   private val density = input.resources.displayMetrics.density
-  private val cardHeight = (72 * density).roundToInt().coerceAtLeast(1)
+  private val cardHeight = (88 * density).roundToInt().coerceAtLeast(1)
 
   private fun targetWidth(): Int = (input.width - input.paddingLeft - input.paddingRight).coerceAtLeast(1)
 
@@ -582,12 +621,37 @@ private class ProofAudioSpan(
     }
     paint.color = if (dark) Color.WHITE else Color.rgb(44, 44, 43)
     paint.textSize = 16 * density
-    canvas.drawText(label.ifBlank { "Audio" }.take(42), rect.left + 52 * density, centerY - 2 * density, paint)
+    canvas.drawText(label.ifBlank { "Audio" }.take(42), rect.left + 52 * density, centerY - 22 * density, paint)
+
+    val current = currentTimeSeconds().coerceAtLeast(0.0).coerceAtMost(durationSeconds ?: Double.MAX_VALUE)
+    val progress = if (durationSeconds != null && durationSeconds > 0) {
+      (current / durationSeconds).toFloat().coerceIn(0f, 1f)
+    } else 0f
+    val waveformLeft = rect.left + 52 * density
+    val waveformRight = rect.right - 12 * density
+    val waveformWidth = (waveformRight - waveformLeft).coerceAtLeast(1f)
+    val gap = 2 * density
+    val barSlotWidth = ((waveformWidth - gap * (waveform.size - 1)) / waveform.size).coerceAtLeast(1f)
+    val barWidth = barSlotWidth / 2
+    val waveformCenter = centerY - 1 * density
+    val lightWaveformColor = if (dark) Color.rgb(91, 127, 148) else Color.rgb(169, 201, 216)
+    val darkWaveformColor = if (dark) Color.rgb(142, 193, 219) else Color.rgb(51, 126, 169)
+    waveform.forEachIndexed { index, amplitude ->
+      val startProgress = index.toFloat() / waveform.size
+      val endProgress = (index + 1).toFloat() / waveform.size
+      val colorAmount = ((progress - startProgress) / (endProgress - startProgress)).coerceIn(0f, 1f)
+      paint.color = blendAudioColors(lightWaveformColor, darkWaveformColor, colorAmount)
+      val barHeight = (5 + amplitude.coerceIn(0f, 1f) * 19) * density
+      val left = waveformLeft + index * (barSlotWidth + gap) + (barSlotWidth - barWidth) / 2
+      canvas.drawRoundRect(left, waveformCenter - barHeight / 2, left + barWidth,
+        waveformCenter + barHeight / 2, barWidth / 2, barWidth / 2, paint)
+    }
+
+    paint.color = if (dark) Color.WHITE else Color.rgb(44, 44, 43)
     paint.textSize = 12 * density
     paint.alpha = 175
     val duration = durationSeconds?.takeIf { it.isFinite() && it >= 0 }?.let { formatAudioTime(it) } ?: "Audio"
-    val current = currentTimeSeconds().coerceAtLeast(0.0).coerceAtMost(durationSeconds ?: Double.MAX_VALUE)
-    canvas.drawText("${formatAudioTime(current)} / $duration", rect.left + 52 * density, centerY + 18 * density, paint)
+    canvas.drawText("${formatAudioTime(current)} / $duration", rect.left + 52 * density, centerY + 30 * density, paint)
     paint.alpha = 255
     paint.color = previousColor
     paint.style = previousStyle
@@ -599,7 +663,105 @@ private class ProofAudioSpan(
   }
 }
 
-/** Draws a compact table-of-contents placeholder for the proof editor's non-text block. */
+private fun formatFileSize(bytes: Double?): String {
+  if (bytes == null || !bytes.isFinite() || bytes < 0) return "Unknown size"
+  val units = arrayOf("B", "KB", "MB", "GB", "TB")
+  var value = bytes
+  var unit = 0
+  while (value >= 1024 && unit < units.lastIndex) {
+    value /= 1024
+    unit += 1
+  }
+  val formatted = if (unit == 0) value.roundToInt().toString() else String.format("%.1f", value)
+  return "$formatted ${units[unit]}"
+}
+
+/** Draws a compact, atomic file card with a generic document icon and file metadata. */
+private class EditorFileSpan(
+  private val input: EditText,
+  private val fileName: String?,
+  private val fileSize: Double?,
+  private val dark: Boolean
+) : ReplacementSpan() {
+  private val density = input.resources.displayMetrics.density
+  private val cardHeight = (72 * density).roundToInt().coerceAtLeast(1)
+
+  private fun targetWidth(): Int = (input.width - input.paddingLeft - input.paddingRight).coerceAtLeast(1)
+
+  override fun getSize(
+    paint: Paint,
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    fm: Paint.FontMetricsInt?
+  ): Int {
+    fm?.let {
+      it.top = -cardHeight
+      it.ascent = -cardHeight
+      it.descent = 0
+      it.bottom = 0
+    }
+    return targetWidth()
+  }
+
+  override fun draw(
+    canvas: Canvas,
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    x: Float,
+    top: Int,
+    y: Int,
+    bottom: Int,
+    paint: Paint
+  ) {
+    val width = targetWidth().toFloat()
+    val rect = RectF(x, (y - cardHeight).toFloat(), x + width, y.toFloat())
+    val previousColor = paint.color
+    val previousStyle = paint.style
+    val previousStrokeWidth = paint.strokeWidth
+    paint.style = Paint.Style.FILL
+    paint.color = if (dark) Color.rgb(45, 45, 44) else Color.rgb(247, 247, 245)
+    canvas.drawRoundRect(rect, 12 * density, 12 * density, paint)
+
+    val iconLeft = rect.left + 16 * density
+    val iconTop = rect.centerY() - 18 * density
+    val iconRight = iconLeft + 28 * density
+    val iconBottom = iconTop + 36 * density
+    paint.color = if (dark) Color.rgb(142, 193, 219) else Color.rgb(51, 126, 169)
+    canvas.drawRoundRect(iconLeft, iconTop, iconRight, iconBottom, 4 * density, 4 * density, paint)
+    paint.color = if (dark) Color.rgb(45, 45, 44) else Color.rgb(247, 247, 245)
+    val fold = Path().apply {
+      moveTo(iconRight - 10 * density, iconTop)
+      lineTo(iconRight, iconTop + 10 * density)
+      lineTo(iconRight - 10 * density, iconTop + 10 * density)
+      close()
+    }
+    canvas.drawPath(fold, paint)
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = 1.5f * density
+    paint.color = if (dark) Color.rgb(45, 54, 59) else Color.WHITE
+    canvas.drawLine(iconLeft + 7 * density, iconTop + 19 * density,
+      iconRight - 7 * density, iconTop + 19 * density, paint)
+    canvas.drawLine(iconLeft + 7 * density, iconTop + 25 * density,
+      iconRight - 7 * density, iconTop + 25 * density, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+    paint.textSize = 16 * density
+    canvas.drawText((fileName ?: "File").ifBlank { "File" }.take(48),
+      rect.left + 58 * density, rect.centerY() - 3 * density, paint)
+    paint.color = if (dark) Color.rgb(173, 169, 163) else Color.rgb(120, 119, 116)
+    paint.textSize = 12 * density
+    canvas.drawText(formatFileSize(fileSize), rect.left + 58 * density,
+      rect.centerY() + 19 * density, paint)
+    paint.color = previousColor
+    paint.style = previousStyle
+    paint.strokeWidth = previousStrokeWidth
+  }
+}
+
+/** Draws a compact table-of-contents placeholder for the editor's non-text block. */
 private class TableOfContentsSpan : ReplacementSpan() {
   override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int =
     (paint.measureText(TABLE_OF_CONTENTS_LABEL) + paint.textSize * 2.5f).toInt()
@@ -628,7 +790,7 @@ private class TableOfContentsSpan : ReplacementSpan() {
   }
 }
 
-/** Draws the selected-column-count placeholder used by the proof editor's composite column block. */
+/** Draws the selected-column-count placeholder used by the editor's composite column block. */
 private class ColumnsSpan(private val columnCount: Int) : ReplacementSpan() {
   private val count = columnCount.coerceIn(2, 5)
 
@@ -883,7 +1045,7 @@ private class ListMarkerSpan(
 }
 
 /**
- * A callout's rounded background box is drawn directly in [NotionProofView.ProofInput.onDraw],
+ * A callout's rounded background box is drawn directly in [NotionEditorView.EditorInput.onDraw],
  * before the base [EditText] draws its text and cursor -- not as a [LineBackgroundSpan]. Android
  * runs a `LineBackgroundSpan` in the same pass that positions the text cursor, and an opaque
  * fill drawn there can end up layered over the cursor instead of under it, hiding it while the
@@ -994,7 +1156,7 @@ private class CollapsedBlockSpan : ReplacementSpan() {
  * This deliberately proves Android's continuous handles/IME path before separate mounted
  * fields, atomic spans, and heterogeneous blocks are introduced in later milestones.
  */
-class NotionProofView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
+class NotionEditorView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
   private val onEdit by EventDispatcher()
   private val onPageReferencePress by EventDispatcher()
@@ -1013,8 +1175,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   private var emissionPending = false
   private var source = "selection"
   private var dark = false
-  private val blocks = mutableListOf<ProofBlock>()
-  private val input = ProofInput(context)
+  private val blocks = mutableListOf<EditorBlock>()
+  // Android may dispatch selection callbacks while the inner EditText is still being constructed.
+  private var inputInitialized = false
+  private val input = EditorInput(context)
   private var removed = ""
   private var editBlock = 0
   private var probeConnection: InputConnection? = null
@@ -1030,7 +1194,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     override fun run() {
       if (audioPlayerPlaying) {
         input.invalidate()
-        audioProgressHandler.postDelayed(this, 250)
+        audioProgressHandler.postDelayed(this, 50)
       }
     }
   }
@@ -1071,7 +1235,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         }
         val inserted = s?.subSequence(start, start + count)?.count { it == '\n' } ?: 0
         repeat(inserted) { index ->
-          blocks.add(editBlock + index + 1, ProofBlock(newId(), continuedType, "", depth = continuedDepth))
+          blocks.add(editBlock + index + 1, EditorBlock(newId(), continuedType, "", depth = continuedDepth))
         }
         val lines = s?.toString()?.split('\n') ?: listOf("")
         lines.forEachIndexed { index, text ->
@@ -1096,6 +1260,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       }
     })
     setDark(false)
+    inputInitialized = true
   }
 
   override fun onAttachedToWindow() {
@@ -1113,7 +1278,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val id = block["id"] as? String ?: return@mapNotNull null
       val text = block["text"] as? String ?: return@mapNotNull null
       val type = block["type"] as? String ?: return@mapNotNull null
-      val color = (block["color"] as? String)?.takeIf { it in proofValidColors }
+      val color = (block["color"] as? String)?.takeIf { it in editorValidColors }
       val depth = (block["depth"] as? Number)?.toInt()?.takeIf { it >= 0 } ?: 0
       val toggle = (block["toggle"] as? Boolean) == true && type.startsWith("heading_")
       val collapsed = (block["collapsed"] as? Boolean) == true && toggle
@@ -1123,8 +1288,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val mimeType = block["mimeType"] as? String
       val fileName = block["fileName"] as? String
       val fileSize = (block["fileSize"] as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0 }
+      val waveform = (block["waveform"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat()?.takeIf { value -> value.isFinite() } }
+        ?.take(AUDIO_WAVEFORM_BAR_COUNT)?.takeIf { it.isNotEmpty() }
       val icon = block["icon"] as? String
-      val marks = mutableListOf<ProofMark>()
+      val marks = mutableListOf<EditorMark>()
       (block["marks"] as? List<*>)?.forEach { rawMark ->
         val mark = rawMark as? Map<*, *> ?: return@forEach
         val kind = mark["kind"] as? String ?: return@forEach
@@ -1134,13 +1301,13 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         if ((kind in listOf("bold", "italic", "strikethrough", "underline", "code")
           || (kind == "link" && !markUrl.isNullOrBlank())) &&
           start >= 0 && end > start && end <= text.length) {
-          marks.add(ProofMark(kind, start, end, markUrl))
+          marks.add(EditorMark(kind, start, end, markUrl))
         }
       }
       val columnCount = (block["columnCount"] as? Number)?.toInt()?.takeIf { it in 2..5 }
-      if (text.contains('\n') || type !in proofValidBlockTypes
-        || ((type == "link_to_page" || type == "image" || type == "audio" || type == "video") && url.isNullOrBlank())) null
-      else ProofBlock(id, type, text, color, depth, toggle, collapsed, marks, checked, url, icon, columnCount, duration, mimeType, fileName, fileSize)
+      if (text.contains('\n') || type !in editorValidBlockTypes
+        || ((type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file") && url.isNullOrBlank())) null
+      else EditorBlock(id, type, text, color, depth, toggle, collapsed, marks, checked, url, icon, columnCount, duration, mimeType, fileName, fileSize, waveform)
     }
     if (nextBlocks.isEmpty() || nextBlocks.size != supplied.size || nextBlocks.map { it.id }.distinct().size != nextBlocks.size) return
     applying = true
@@ -1221,7 +1388,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     }
   }
 
-  private fun toggleAudio(block: ProofBlock) {
+  private fun toggleAudio(block: EditorBlock) {
     val url = block.url ?: return
     if (audioPlayerBlockId == block.id && audioPlayer != null) {
       if (!audioPlayerPrepared) return
@@ -1327,6 +1494,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       "cut" -> copy(true)
       "paste" -> paste()
       "split" -> if (!handleListEnter() && !handleDividerEnter()) replaceSelection("\n")
+      "bulletedList" -> insertList("bulleted_list_item")
+      "numberedList" -> insertList("numbered_list_item")
       "divider" -> insertDivider()
       "tableOfContents" -> insertTableOfContents()
       "columns" -> insertColumns((value["columnCount"] as? Number)?.toInt() ?: 2)
@@ -1336,9 +1505,16 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         (value["duration"] as? Number)?.toDouble(),
         value["mimeType"] as? String,
         value["fileName"] as? String,
-        (value["fileSize"] as? Number)?.toDouble()
+        (value["fileSize"] as? Number)?.toDouble(),
+        audioWaveformFromValue(value["waveform"])
       )
       "insertVideo" -> insertMedia("video", value["url"] as? String)
+      "insertFile" -> insertFile(
+        value["url"] as? String,
+        value["fileName"] as? String,
+        (value["fileSize"] as? Number)?.toDouble(),
+        value["mimeType"] as? String
+      )
       "toDo" -> insertToDo()
       "callout" -> insertCallout()
       "quote" -> insertQuote()
@@ -1348,14 +1524,14 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         val level = (value["level"] as? Number)?.toInt()?.coerceIn(1, 4) ?: 1
         val heading = blocks.getOrNull(index) ?: return
         heading.type = "heading_$level"
-        heading.color = (value["color"] as? String)?.takeIf { it in proofValidColors }
+        heading.color = (value["color"] as? String)?.takeIf { it in editorValidColors }
         heading.toggle = (value["toggle"] as? Boolean) == true
         heading.collapsed = false
         if (heading.toggle) {
           val childIndex = index + 1
           val child = blocks.getOrNull(childIndex)
           if (child == null || child.text.isNotEmpty()) {
-            blocks.add(childIndex, ProofBlock(newId(), "text", "", depth = heading.depth + 1))
+            blocks.add(childIndex, EditorBlock(newId(), "text", "", depth = heading.depth + 1))
           } else {
             child.type = "text"
             child.color = null
@@ -1370,10 +1546,11 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         scheduleEvent("insert-heading")
       }
       "color" -> {
-        val color = (value["color"] as? String)?.takeIf { it in proofValidColors }
+        val color = (value["color"] as? String)?.takeIf { it in editorValidColors }
         val blockId = value["blockId"] as? String
         if (blockId.isNullOrBlank()) applySelectionColor(color) else applyBlockColor(blockId, color)
       }
+      "icon" -> applyBlockIcon(value["blockId"] as? String, value["icon"] as? String)
       "format" -> toggleFormat((value["mark"] as? String)?.takeIf {
         it in listOf("bold", "italic", "strikethrough", "underline", "code")
       })
@@ -1384,7 +1561,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       )
       "remove" -> removeBlocks()
       "turnInto" -> turnIntoBlocks((value["type"] as? String)?.takeIf {
-        it in proofValidBlockTypes && it != "link_to_page"
+        it in editorValidBlockTypes && it != "link_to_page"
       })
       "indent" -> indentBlocks()
       "outdent" -> outdentBlocks()
@@ -1401,7 +1578,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         (value["duration"] as? Number)?.toDouble(),
         value["mimeType"] as? String,
         value["fileName"] as? String,
-        (value["fileSize"] as? Number)?.toDouble()
+        (value["fileSize"] as? Number)?.toDouble(),
+        audioWaveformFromValue(value["waveform"])
       )
       "softBreak" -> replaceSelection("\u2028")
       // Acceptance probe uses the actual EditText connection, not fabricated composing events.
@@ -1430,7 +1608,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
 
   private fun inputMethodManager() = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
   private fun clipboard() = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-  private fun newId() = "proof:${UUID.randomUUID()}"
+  private fun newId() = "editor:${UUID.randomUUID()}"
 
   private fun replaceSelection(text: String) {
     if (selectedBlockRange()?.any { blocks[it].type == "link_to_page" } == true) return
@@ -1510,8 +1688,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     }
     ranges.forEach { (index, range) ->
       clearMarkRange(blocks[index], range.first, range.last, "link")
-      blocks[index].marks.add(ProofMark("link", range.first, range.last, url))
-      blocks[index].marks.sortWith(compareBy<ProofMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+      blocks[index].marks.add(EditorMark("link", range.first, range.last, url))
+      blocks[index].marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
     }
     styleBlocks()
     scheduleEvent("link")
@@ -1547,7 +1725,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     return start to end
   }
 
-  private fun coversMarkRange(block: ProofBlock, kind: String, start: Int, endInclusive: Int): Boolean {
+  private fun coversMarkRange(block: EditorBlock, kind: String, start: Int, endInclusive: Int): Boolean {
     var cursor = start
     block.marks.filter { it.kind == kind && it.end > it.start }
       .sortedBy { it.start }
@@ -1558,28 +1736,28 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   }
 
   private fun toggleMarkRange(
-    block: ProofBlock,
+    block: EditorBlock,
     kind: String,
     start: Int,
     endInclusive: Int,
     remove: Boolean
   ) {
     val end = endInclusive
-    val next = mutableListOf<ProofMark>()
+    val next = mutableListOf<EditorMark>()
     block.marks.forEach { mark ->
       if (mark.kind != kind || mark.end <= start || mark.start >= end) {
         next.add(mark)
       } else if (remove) {
-        if (mark.start < start) next.add(ProofMark(mark.kind, mark.start, start, mark.url))
-        if (mark.end > end) next.add(ProofMark(mark.kind, end, mark.end, mark.url))
+        if (mark.start < start) next.add(EditorMark(mark.kind, mark.start, start, mark.url))
+        if (mark.end > end) next.add(EditorMark(mark.kind, end, mark.end, mark.url))
       } else {
         next.add(mark)
       }
     }
-    if (!remove) next.add(ProofMark(kind, start, end))
+    if (!remove) next.add(EditorMark(kind, start, end))
     block.marks.clear()
     next.filter { it.start < it.end }
-      .sortedWith(compareBy<ProofMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+      .sortedWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
       .forEach { mark ->
         val previous = block.marks.lastOrNull()
         if (previous?.kind == mark.kind && previous.end >= mark.start) {
@@ -1590,20 +1768,20 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       }
   }
 
-  private fun clearMarkRange(block: ProofBlock, start: Int, end: Int, kind: String? = null) {
-    val next = mutableListOf<ProofMark>()
+  private fun clearMarkRange(block: EditorBlock, start: Int, end: Int, kind: String? = null) {
+    val next = mutableListOf<EditorMark>()
     block.marks.forEach { mark ->
       if (mark.end <= start || mark.start >= end || (kind != null && mark.kind != kind)) {
         next.add(mark)
       } else {
-        if (mark.start < start) next.add(ProofMark(mark.kind, mark.start, start, mark.url))
-        if (mark.end > end) next.add(ProofMark(mark.kind, end, mark.end, mark.url))
+        if (mark.start < start) next.add(EditorMark(mark.kind, mark.start, start, mark.url))
+        if (mark.end > end) next.add(EditorMark(mark.kind, end, mark.end, mark.url))
       }
     }
     block.marks.clear()
     block.marks.addAll(
       next.filter { it.start < it.end }
-        .sortedWith(compareBy<ProofMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+        .sortedWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
     )
   }
 
@@ -1612,7 +1790,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     replaceSelection("\n")
     val index = input.text.take(input.selectionStart).count { it == '\n' }
     if (index !in 0..blocks.size) return
-    blocks.add(index, ProofBlock(newId(), "divider", DIVIDER_TEXT))
+    blocks.add(index, EditorBlock(newId(), "divider", DIVIDER_TEXT))
     replaceNativeTextAndSelect(index + 1)
     scheduleEvent("insert-divider")
   }
@@ -1622,7 +1800,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     replaceSelection("\n")
     val index = input.text.take(input.selectionStart).count { it == '\n' }
     if (index !in 0..blocks.size) return
-    blocks.add(index, ProofBlock(newId(), "table_of_contents", TABLE_OF_CONTENTS_TEXT))
+    blocks.add(index, EditorBlock(newId(), "table_of_contents", TABLE_OF_CONTENTS_TEXT))
     replaceNativeTextAndSelect(index + 1)
     scheduleEvent("insert-table-of-contents")
   }
@@ -1632,7 +1810,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     replaceSelection("\n")
     val index = input.text.take(input.selectionStart).count { it == '\n' }
     if (index !in 0..blocks.size) return
-    blocks.add(index, ProofBlock(newId(), "column_list", COLUMNS_TEXT, columnCount = columnCount.coerceIn(2, 5)))
+    blocks.add(index, EditorBlock(newId(), "column_list", COLUMNS_TEXT, columnCount = columnCount.coerceIn(2, 5)))
     replaceNativeTextAndSelect(index + 1)
     scheduleEvent("insert-columns")
   }
@@ -1643,9 +1821,23 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     replaceSelection("\n")
     val index = input.text.take(input.selectionStart).count { it == '\n' }
     if (index !in 0..blocks.size) return
-    blocks.add(index, ProofBlock(newId(), type, "", url = url))
+    blocks.add(index, EditorBlock(newId(), type, "", url = url))
     replaceNativeTextAndSelect(index + 1)
     scheduleEvent("insert-$type")
+  }
+
+  /** Insert an atomic file block after the current selection, retaining display metadata. */
+  private fun insertFile(rawUrl: String?, fileName: String?, fileSize: Double?, mimeType: String?) {
+    val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    replaceSelection("\n")
+    val index = input.text.take(input.selectionStart).count { it == '\n' }
+    if (index !in 0..blocks.size) return
+    blocks.add(index, EditorBlock(newId(), "file", "", url = url,
+      mimeType = mimeType?.takeIf { it.isNotBlank() },
+      fileName = fileName?.takeIf { it.isNotBlank() },
+      fileSize = fileSize?.takeIf { it.isFinite() && it >= 0 }))
+    replaceNativeTextAndSelect(index + 1)
+    scheduleEvent("insert-file")
   }
 
   /** Insert an audio block after the current selection, retaining optional asset metadata. */
@@ -1654,19 +1846,38 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     duration: Double?,
     mimeType: String?,
     fileName: String?,
-    fileSize: Double?
+    fileSize: Double?,
+    waveform: List<Float>?
   ) {
     val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
     replaceSelection("\n")
     val index = input.text.take(input.selectionStart).count { it == '\n' }
     if (index !in 0..blocks.size) return
-    blocks.add(index, ProofBlock(newId(), "audio", "", url = url,
+    blocks.add(index, EditorBlock(newId(), "audio", "", url = url,
       duration = duration?.takeIf { it.isFinite() && it >= 0 },
       mimeType = mimeType?.takeIf { it.isNotBlank() },
       fileName = fileName?.takeIf { it.isNotBlank() },
-      fileSize = fileSize?.takeIf { it.isFinite() && it >= 0 }))
+      fileSize = fileSize?.takeIf { it.isFinite() && it >= 0 },
+      waveform = waveform))
     replaceNativeTextAndSelect(index + 1)
     scheduleEvent("insert-audio")
+  }
+
+  /** Insert a list block after the current cursor/selection. */
+  private fun insertList(type: String) {
+    replaceSelection("\n")
+    val index = input.text.take(input.selectionStart).count { it == '\n' }
+    if (index !in 0..blocks.size) return
+    blocks.getOrNull(index)?.let {
+      it.type = type
+      it.checked = false
+      it.color = null
+      it.toggle = false
+      it.collapsed = false
+      it.marks.clear()
+    } ?: return
+    replaceNativeTextAndSelect(index)
+    scheduleEvent("insert-$type")
   }
 
   /** Insert an unchecked to-do block after the current cursor/selection. */
@@ -1737,7 +1948,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     block.color = null
     block.toggle = false
     block.collapsed = false
-    blocks.add(index + 1, ProofBlock(newId(), "text", ""))
+    blocks.add(index + 1, EditorBlock(newId(), "text", ""))
     replaceNativeTextAndSelect(index + 1)
     scheduleEvent("shortcut-divider")
     return true
@@ -1771,8 +1982,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     val next = blocks.getOrNull(index + 1)
     if (next?.type == block.type && next.depth == block.depth) {
       blocks.removeAt(index)
-      blocks.add(index, ProofBlock(newId(), "text", "", depth = block.depth))
-      blocks.add(index + 1, ProofBlock(newId(), "text", "", depth = block.depth))
+      blocks.add(index, EditorBlock(newId(), "text", "", depth = block.depth))
+      blocks.add(index + 1, EditorBlock(newId(), "text", "", depth = block.depth))
       replaceNativeTextAndSelect(index)
       scheduleEvent("list-break")
       return true
@@ -1803,7 +2014,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
 
     val continuedType = if (block.type == "bulleted_list_item" || block.type == "numbered_list_item"
       || block.type == "to_do") block.type else "text"
-    blocks.add(index + 2, ProofBlock(newId(), continuedType, "", depth = block.depth))
+    blocks.add(index + 2, EditorBlock(newId(), continuedType, "", depth = block.depth))
     replaceNativeTextAndSelect(index + 2)
     scheduleEvent("divider-split")
     return true
@@ -1824,14 +2035,14 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     if (offset != 0) return false
     val atomicIndex = index - 1
     val atomic = blocks.getOrNull(atomicIndex) ?: return false
-    if (atomic.type !in proofAtomicBlockTypes) return false
+    if (atomic.type !in editorAtomicBlockTypes) return false
     val beforeIndex = atomicIndex - 1
     val before = blocks.getOrNull(beforeIndex) ?: return false
     val current = blocks[index]
-    if (before.type !in proofMergeableBlockTypes || current.type !in proofMergeableBlockTypes) return false
+    if (before.type !in editorMergeableBlockTypes || current.type !in editorMergeableBlockTypes) return false
 
     val joinOffset = before.text.length
-    before.marks.addAll(current.marks.map { ProofMark(it.kind, it.start + joinOffset, it.end + joinOffset, it.url) })
+    before.marks.addAll(current.marks.map { EditorMark(it.kind, it.start + joinOffset, it.end + joinOffset, it.url) })
     before.text += current.text
     blocks.removeAt(index)
     blocks.removeAt(atomicIndex)
@@ -1853,7 +2064,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     val index = blockIndexById(id) ?: return
     val target = blocks[index]
     val insertAt = if (before) index else index + 1
-    blocks.add(insertAt, ProofBlock(newId(), "text", "", depth = target.depth))
+    blocks.add(insertAt, EditorBlock(newId(), "text", "", depth = target.depth))
     replaceNativeTextAndSelect(insertAt)
     scheduleEvent(if (before) "insert-block-above" else "insert-block-below")
   }
@@ -1873,7 +2084,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     val index = blockIndexById(id) ?: return
     if (blocks[index].type == "audio" && audioPlayerBlockId == blocks[index].id) releaseAudioPlayer()
     blocks.removeAt(index)
-    if (blocks.isEmpty()) blocks.add(ProofBlock(newId(), "text", ""))
+    if (blocks.isEmpty()) blocks.add(EditorBlock(newId(), "text", ""))
     replaceNativeTextAndSelect(index.coerceAtMost(blocks.lastIndex))
     scheduleEvent("delete-block")
   }
@@ -1896,7 +2107,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     duration: Double?,
     mimeType: String?,
     fileName: String?,
-    fileSize: Double?
+    fileSize: Double?,
+    waveform: List<Float>?
   ) {
     val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
     val index = blockIndexById(id) ?: return
@@ -1908,6 +2120,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     block.mimeType = mimeType?.takeIf { it.isNotBlank() }
     block.fileName = fileName?.takeIf { it.isNotBlank() }
     block.fileSize = fileSize?.takeIf { it.isFinite() && it >= 0 }
+    block.waveform = waveform
     styleBlocks()
     invalidate()
     scheduleEvent("replace-audio")
@@ -1965,14 +2178,17 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         if (marks.length() > 0) item.put("marks", marks)
         if (block.type == "to_do") item.put("checked", block.checked)
         if (block.type == "column_list") item.put("columnCount", (block.columnCount ?: 2).coerceIn(2, 5))
-        if (block.type == "link_to_page" || block.type == "image" || block.type == "audio" || block.type == "video") {
+        if (block.type == "link_to_page" || block.type == "image" || block.type == "audio" || block.type == "video" || block.type == "file") {
           block.url?.let { item.put("url", it) }
         }
-        if (block.type == "audio") {
+        if (block.type == "audio" || block.type == "file") {
           block.duration?.let { item.put("duration", it) }
           block.mimeType?.let { item.put("mimeType", it) }
           block.fileName?.let { item.put("fileName", it) }
           block.fileSize?.let { item.put("fileSize", it) }
+        }
+        if (block.type == "audio") {
+          block.waveform?.let { item.put("waveform", JSONArray(it)) }
         }
         if (block.type == "link_to_page" || block.type == "callout") {
           block.icon?.let { item.put("icon", it) }
@@ -2008,20 +2224,25 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           val block = data.getJSONObject(index)
           val type = block.getString("type")
           val text = block.getString("text")
-          require(type in proofValidBlockTypes && !text.contains('\n'))
-          val color = if (block.has("color")) block.getString("color").takeIf { it in proofValidColors } else null
+          require(type in editorValidBlockTypes && !text.contains('\n'))
+          val color = if (block.has("color")) block.getString("color").takeIf { it in editorValidColors } else null
           val url = if (block.has("url")) block.getString("url") else null
           val duration = if (block.has("duration")) block.getDouble("duration") else null
           val mimeType = if (block.has("mimeType")) block.getString("mimeType") else null
           val fileName = if (block.has("fileName")) block.getString("fileName") else null
           val fileSize = if (block.has("fileSize")) block.getDouble("fileSize") else null
+          val waveform = if (block.has("waveform")) {
+            (0 until block.getJSONArray("waveform").length()).mapNotNull { index ->
+              block.getJSONArray("waveform").optDouble(index).toFloat().takeIf { it.isFinite() }
+            }.map { it.coerceIn(0f, 1f) }.take(AUDIO_WAVEFORM_BAR_COUNT).takeIf { it.isNotEmpty() }
+          } else null
           val icon = if (block.has("icon")) block.getString("icon") else null
           val columnCount = if (block.has("columnCount")) block.getInt("columnCount") else null
           require(columnCount?.let { type == "column_list" && it in 2..5 } ?: true)
           require((type != "link_to_page" && type != "image" && type != "audio" && type != "video") || !url.isNullOrBlank())
           require(type != "audio" || (duration == null || duration.isFinite() && duration >= 0)
             && (fileSize == null || fileSize.isFinite() && fileSize >= 0))
-          val marks = mutableListOf<ProofMark>()
+          val marks = mutableListOf<EditorMark>()
           block.optJSONArray("marks")?.let { markData ->
             for (markIndex in 0 until markData.length()) {
               val mark = markData.getJSONObject(markIndex)
@@ -2032,10 +2253,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
               require(kind in listOf("bold", "italic", "strikethrough", "underline", "code")
                 || (kind == "link" && !markUrl.isNullOrBlank()))
               require(markStart >= 0 && markEnd > markStart && markEnd <= text.length)
-              marks.add(ProofMark(kind, markStart, markEnd, markUrl))
+              marks.add(EditorMark(kind, markStart, markEnd, markUrl))
             }
           }
-          ProofPasteBlock(
+          EditorPasteBlock(
             type,
             text,
             color,
@@ -2047,7 +2268,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             duration,
             mimeType,
             fileName,
-            fileSize
+            fileSize,
+            waveform
           )
         }
         val start = minOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
@@ -2066,6 +2288,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             blocks[firstBlock + index].mimeType = part.mimeType
             blocks[firstBlock + index].fileName = part.fileName
             blocks[firstBlock + index].fileSize = part.fileSize
+            blocks[firstBlock + index].waveform = part.waveform
             blocks[firstBlock + index].marks.clear()
             blocks[firstBlock + index].marks.addAll(part.marks)
           }
@@ -2099,7 +2322,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     val firstRemoved = range.first
     blocks.subList(range.first, range.last + 1).clear()
     if (blocks.isEmpty()) {
-      blocks.add(ProofBlock(newId(), "text", ""))
+      blocks.add(EditorBlock(newId(), "text", ""))
     }
 
     val nextIndex = firstRemoved.coerceAtMost(blocks.lastIndex)
@@ -2195,7 +2418,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val block = blocks.getOrNull(index) ?: continue
       if (block.type == "divider" || block.type == "table_of_contents" || block.type == "column_list"
         || block.type == "link_to_page"
-        || block.type !in proofValidBlockTypes || block.color == color) continue
+        || block.type !in editorValidBlockTypes || block.color == color) continue
       block.color = color
       changed = true
     }
@@ -2209,10 +2432,21 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   private fun applyBlockColor(id: String, color: String?) {
     val block = blocks.firstOrNull { it.id == id } ?: return
     if (block.type == "divider" || block.type == "table_of_contents" || block.type == "column_list"
-      || block.type == "link_to_page" || block.type !in proofValidBlockTypes || block.color == color) return
+      || block.type == "link_to_page" || block.type !in editorValidBlockTypes || block.color == color) return
     block.color = color
     styleBlocks()
     scheduleEvent("color")
+  }
+
+  /** Apply an emoji icon to one callout, used by the callout emoji picker. */
+  private fun applyBlockIcon(id: String?, icon: String?) {
+    val block = blocks.firstOrNull { it.id == id } ?: return
+    val nextIcon = icon?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    if (block.type != "callout" || block.icon == nextIcon) return
+    block.icon = nextIcon
+    styleBlocks()
+    invalidate()
+    scheduleEvent("icon")
   }
 
   private fun offsetOf(index: Int): Int {
@@ -2247,6 +2481,14 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     onContentSize(mapOf("height" to heightDp))
   }
 
+  private fun shouldShowEmptyTodoPlaceholder(index: Int, block: EditorBlock): Boolean {
+    if (input.selectionStart != input.selectionEnd || block.type != "to_do" || block.text.isNotEmpty()) {
+      return false
+    }
+    val cursor = input.selectionStart.coerceIn(0, input.text.length)
+    return input.text.take(cursor).count { it == '\n' } == index
+  }
+
   private fun styleBlocks() {
     val editable = input.text
     editable.getSpans(0, editable.length, RelativeSizeSpan::class.java).forEach { editable.removeSpan(it) }
@@ -2254,8 +2496,9 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     editable.getSpans(0, editable.length, LeadingMarginSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, BlockPaddingSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, DividerSpan::class.java).forEach { editable.removeSpan(it) }
-    editable.getSpans(0, editable.length, ProofImageSpan::class.java).forEach { editable.removeSpan(it) }
-    editable.getSpans(0, editable.length, ProofVideoSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, EditorImageSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, EditorVideoSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, EditorFileSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TableOfContentsSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ColumnsSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, EmptyBlockPlaceholderSpan::class.java).forEach { editable.removeSpan(it) }
@@ -2269,7 +2512,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     editable.getSpans(0, editable.length, UnderlineSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, StrikethroughSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TypefaceSpan::class.java).forEach { editable.removeSpan(it) }
-    editable.getSpans(0, editable.length, ProofInlineMarkSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, EditorInlineMarkSpan::class.java).forEach { editable.removeSpan(it) }
     var start = 0
     var collapsedDepth: Int? = null
     var numberedListNumber = 0
@@ -2292,10 +2535,18 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       }
       val previous = blocks.getOrNull(index - 1)
       if (!collapsed && block.text.isEmpty() && block.type == "text" &&
-        previous?.toggle == true && proofHeadingLevel(previous.type) != null &&
+        previous?.toggle == true && editorHeadingLevel(previous.type) != null &&
         block.depth == previous.depth + 1 && emptyTogglePlaceholder.isNotEmpty()) {
         editable.setSpan(
           EmptyBlockPlaceholderSpan(emptyTogglePlaceholder),
+          start,
+          end,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+      }
+      if (shouldShowEmptyTodoPlaceholder(index, block)) {
+        editable.setSpan(
+          EmptyBlockPlaceholderSpan(DEFAULT_EMPTY_TODO_PLACEHOLDER),
           start,
           end,
           Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -2308,10 +2559,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         val next = blocks.getOrNull(index + 1)
         val blockPaddingTop = when {
           block.type == "callout" -> CALLOUT_BLOCK_PADDING_DP
-          proofHeadingLevel(block.type) == 1 -> 32
-          proofHeadingLevel(block.type) == 2 -> 28
-          proofHeadingLevel(block.type) == 3 -> 24
-          proofHeadingLevel(block.type) == 4 -> 20
+          editorHeadingLevel(block.type) == 1 -> 32
+          editorHeadingLevel(block.type) == 2 -> 28
+          editorHeadingLevel(block.type) == 3 -> 24
+          editorHeadingLevel(block.type) == 4 -> 20
           isListItem && previous?.type == block.type -> 4
           else -> 8
         }
@@ -2352,11 +2603,12 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           )
         }
         if (block.type == "callout") {
-          // The callout's background box is painted in ProofInput.onDraw, not as a span here --
+          // The callout's background box is painted in EditorInput.onDraw, not as a span here --
           // see the comment above CalloutIconSpan's declaration for why.
           editable.setSpan(
             CalloutIconSpan(
-              ((CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP + CALLOUT_ICON_WIDTH_DP)
+              ((CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP + CALLOUT_ICON_WIDTH_DP
+                + CALLOUT_ICON_GAP_DP)
                 * resources.displayMetrics.density).toInt().coerceAtLeast(1),
               block.icon ?: DEFAULT_CALLOUT_ICON,
               ((CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP)
@@ -2368,7 +2620,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           )
         }
         if (block.type == "quote") {
-          val barColor = block.color?.let { proofTextColors[it] } ?: proofQuoteBarColor(dark)
+          val barColor = block.color?.let { editorTextColors[it] } ?: editorQuoteBarColor(dark)
           editable.setSpan(
             QuoteBorderSpan(
               (QUOTE_TEXT_INDENT_DP * resources.displayMetrics.density).toInt().coerceAtLeast(1),
@@ -2383,7 +2635,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         if (block.type == "image") {
           block.url?.let { url ->
             editable.setSpan(
-              ProofImageSpan(input, url, imageMaxWidth),
+              EditorImageSpan(input, url, imageMaxWidth),
               start,
               end,
               Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -2393,7 +2645,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         if (block.type == "video") {
           block.url?.let { url ->
             editable.setSpan(
-              ProofVideoSpan(input, url, imageMaxWidth),
+              EditorVideoSpan(input, url, imageMaxWidth),
               start,
               end,
               Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -2403,7 +2655,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         if (block.type == "audio") {
           block.url?.let {
             editable.setSpan(
-              ProofAudioSpan(input, block.fileName ?: "Audio", block.duration, dark, {
+              EditorAudioSpan(input, block.fileName ?: "Audio", block.duration, audioWaveform(block), dark, {
                 if (audioPlayerBlockId == block.id) {
                   runCatching { (audioPlayer?.currentPosition ?: 0) / 1000.0 }.getOrDefault(0.0)
                 } else 0.0
@@ -2416,20 +2668,28 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             )
           }
         }
+        if (block.type == "file") {
+          editable.setSpan(
+            EditorFileSpan(input, block.fileName, block.fileSize, dark),
+            start,
+            end,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+          )
+        }
         if (block.type == "to_do") {
           editable.setSpan(
             TodoCheckboxSpan(
               (input.textSize * TODO_CHECKBOX_WIDTH_SCALE).toInt().coerceAtLeast(1),
               block.checked,
-              proofAccentColor(dark),
-              proofCheckboxBorderColor(dark)
+              editorAccentColor(dark),
+              editorCheckboxBorderColor(dark)
             ),
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
           )
         }
-        if (block.toggle && proofHeadingLevel(block.type) != null) {
+        if (block.toggle && editorHeadingLevel(block.type) != null) {
           editable.setSpan(
             ToggleButtonSpan(
               (input.textSize * TOGGLE_BUTTON_WIDTH_SCALE).toInt().coerceAtLeast(1),
@@ -2454,29 +2714,29 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           val margin = (block.depth * 32 * resources.displayMetrics.density).toInt()
           editable.setSpan(LeadingMarginSpan.Standard(margin), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        proofHeadingLevel(block.type)?.let { level ->
+        editorHeadingLevel(block.type)?.let { level ->
           editable.setSpan(RelativeSizeSpan(headingScale.getValue(level)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           editable.setSpan(StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         block.color?.let { color ->
-          // A callout's `_bg` color instead tints the box ProofInput.onDraw paints for it.
+          // A callout's `_bg` color instead tints the box EditorInput.onDraw paints for it.
           if (block.type != "callout") {
-            proofBackgroundColors[color]?.let { editable.setSpan(BackgroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            editorBackgroundColors[color]?.let { editable.setSpan(BackgroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
           }
-          proofTextColors[color]?.let { editable.setSpan(ForegroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+          editorTextColors[color]?.let { editable.setSpan(ForegroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
         }
         block.marks.forEach { mark ->
           val markStart = (start + mark.start).coerceIn(start, end)
           val markEnd = (start + mark.end).coerceIn(markStart, end)
           if (markStart >= markEnd) return@forEach
-          editable.setSpan(ProofInlineMarkSpan(mark.kind, mark.url), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(EditorInlineMarkSpan(mark.kind, mark.url), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           when (mark.kind) {
             "bold" -> editable.setSpan(StyleSpan(Typeface.BOLD), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "italic" -> editable.setSpan(StyleSpan(Typeface.ITALIC), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "underline" -> editable.setSpan(UnderlineSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "strikethrough" -> editable.setSpan(StrikethroughSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "link" -> {
-              editable.setSpan(ForegroundColorSpan(proofAccentColor(dark)), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              editable.setSpan(ForegroundColorSpan(editorAccentColor(dark)), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
               editable.setSpan(UnderlineSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             "code" -> {
@@ -2487,7 +2747,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           }
         }
         if (block.type == "to_do" && block.checked) {
-          editable.setSpan(ForegroundColorSpan(proofMutedColor(dark)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(ForegroundColorSpan(editorMutedColor(dark)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           editable.setSpan(StrikethroughSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
       }
@@ -2501,7 +2761,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   private fun captureInlineMarks() {
     blocks.forEach { it.marks.clear() }
     val editable = input.text
-    editable.getSpans(0, editable.length, ProofInlineMarkSpan::class.java).forEach { span ->
+    editable.getSpans(0, editable.length, EditorInlineMarkSpan::class.java).forEach { span ->
       val globalStart = editable.getSpanStart(span)
       val globalEnd = editable.getSpanEnd(span)
       if (globalStart < 0 || globalEnd <= globalStart) return@forEach
@@ -2511,10 +2771,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         .toString().lastIndexOf('\n') + 1
       val localStart = (globalStart - blockStart).coerceIn(0, block.text.length)
       val localEnd = (globalEnd - blockStart).coerceIn(localStart, block.text.length)
-      if (localStart < localEnd) block.marks.add(ProofMark(span.kind, localStart, localEnd, span.url))
+      if (localStart < localEnd) block.marks.add(EditorMark(span.kind, localStart, localEnd, span.url))
     }
     blocks.forEach { block ->
-      block.marks.sortWith(compareBy<ProofMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+      block.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
     }
   }
 
@@ -2540,13 +2800,14 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     }
   }
 
-  private inner class ProofInput(context: Context) : EditText(context) {
+  private inner class EditorInput(context: Context) : EditText(context) {
     private var pressedToggleBlock = -1
     private var pressedTodoBlock = -1
     private var pressedPageReferenceBlock = -1
     private var pressedDividerBlock = -1
     private var pressedImageBlock = -1
     private var pressedAudioBlock = -1
+    private var pressedFileBlock = -1
     private var pressStartX = 0f
     private var pressStartY = 0f
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -2561,7 +2822,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           val offset = selectionStart.takeIf { it >= 0 } ?: return super.draw(canvas)
           val line = textLayout.getLineForOffset(offset)
           val blockIndex = text.take(textLayout.getLineStart(line)).count { it == '\n' }
-          val scale = blocks.getOrNull(blockIndex)?.type?.let(::proofHeadingLevel)
+          val scale = blocks.getOrNull(blockIndex)?.type?.let(::editorHeadingLevel)
             ?.let(headingScale::get) ?: 1f
           val glyphPaint = Paint(paint).apply { textSize *= scale }
           val metrics = glyphPaint.fontMetricsInt
@@ -2604,12 +2865,12 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           val top = textLayout.getLineTop(firstLine) + topOffset + outerPadding
           val bottom = textLayout.getLineBottom(lastLine) + topOffset - outerPadding
           val rect = RectF(left, top, right, bottom)
-          val isForegroundColor = block.color?.let { it in proofTextColors } == true
+          val isForegroundColor = block.color?.let { it in editorTextColors } == true
           fillPaint.color = when {
-            block.color?.let { proofBackgroundColors[it] } != null ->
-              proofBackgroundColors.getValue(block.color!!)
+            block.color?.let { editorBackgroundColors[it] } != null ->
+              editorBackgroundColors.getValue(block.color!!)
             isForegroundColor -> if (dark) Color.rgb(0x19, 0x19, 0x19) else Color.WHITE
-            else -> proofCalloutDefaultBackground(dark)
+            else -> editorCalloutDefaultBackground(dark)
           }
           canvas.drawRoundRect(rect, radius, radius, fillPaint)
           if (isForegroundColor) {
@@ -2623,7 +2884,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
       super.onSizeChanged(w, h, oldw, oldh)
-      if (w != oldw && blocks.any { it.type == "image" || it.type == "audio" || it.type == "video" }) {
+      if (w != oldw && blocks.any { it.type == "image" || it.type == "audio" || it.type == "video" || it.type == "file" }) {
         post {
           styleBlocks()
           invalidate()
@@ -2639,7 +2900,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val lineStart = textLayout.getLineStart(line)
       val blockIndex = text.take(lineStart).count { it == '\n' }
       val block = blocks.getOrNull(blockIndex) ?: return null
-      if (!block.toggle || proofHeadingLevel(block.type) == null) return null
+      if (!block.toggle || editorHeadingLevel(block.type) == null) return null
       val textStart = textLayout.getPrimaryHorizontal(lineStart)
       val buttonWidth = textSize * TOGGLE_BUTTON_WIDTH_SCALE
       return if (event.x in (textStart - buttonWidth)..textStart) blockIndex else null
@@ -2715,10 +2976,22 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       return if (block.type == "audio") blockIndex else null
     }
 
+    /** A file card is selectable across its whole line and opens the block-actions sheet. */
+    private fun fileBlockAt(event: MotionEvent): Int? {
+      val textLayout = layout ?: return null
+      if (textLayout.height == 0) return null
+      val lineY = (event.y - totalPaddingTop).toInt().coerceIn(0, textLayout.height - 1)
+      val line = textLayout.getLineForVertical(lineY)
+      val lineStart = textLayout.getLineStart(line)
+      val blockIndex = text.take(lineStart).count { it == '\n' }
+      val block = blocks.getOrNull(blockIndex) ?: return null
+      return if (block.type == "file") blockIndex else null
+    }
+
     /** True once any tap-region has been armed by a preceding [MotionEvent.ACTION_DOWN]. */
     private fun hasPressedBlock() = pressedToggleBlock >= 0 || pressedTodoBlock >= 0 ||
       pressedPageReferenceBlock >= 0 || pressedDividerBlock >= 0 || pressedImageBlock >= 0 ||
-      pressedAudioBlock >= 0
+      pressedAudioBlock >= 0 || pressedFileBlock >= 0
 
     /** Disarms every tap-region, e.g. once a gesture turns out to be a scroll, not a tap. */
     private fun clearPressedBlocks() {
@@ -2728,6 +3001,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       pressedDividerBlock = -1
       pressedImageBlock = -1
       pressedAudioBlock = -1
+      pressedFileBlock = -1
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -2737,6 +3011,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val dividerBlock = dividerBlockAt(event)
       val imageBlock = imageBlockAt(event)
       val audioBlock = audioBlockAt(event)
+      val fileBlock = fileBlockAt(event)
+      val pressedSpecialBlock = hasPressedBlock()
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
           pressStartX = event.x
@@ -2747,12 +3023,14 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           pressedDividerBlock = dividerBlock ?: -1
           pressedImageBlock = imageBlock ?: -1
           pressedAudioBlock = audioBlock ?: -1
+          pressedFileBlock = fileBlock ?: -1
           if (pressedToggleBlock >= 0) return true
           if (pressedTodoBlock >= 0) return true
           if (pressedPageReferenceBlock >= 0) return true
           if (pressedDividerBlock >= 0) return true
           if (pressedImageBlock >= 0) return true
           if (pressedAudioBlock >= 0) return true
+          if (pressedFileBlock >= 0) return true
         }
         // A tap-region stays armed through ACTION_DOWN's early return above, so a swipe that
         // starts on one (a divider or image commonly fills most of the visible width/height)
@@ -2772,12 +3050,14 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           val pressedDivider = pressedDividerBlock
           val pressedImage = pressedImageBlock
           val pressedAudio = pressedAudioBlock
+          val pressedFile = pressedFileBlock
           pressedToggleBlock = -1
           pressedTodoBlock = -1
           pressedPageReferenceBlock = -1
           pressedDividerBlock = -1
           pressedImageBlock = -1
           pressedAudioBlock = -1
+          pressedFileBlock = -1
           if (pressed >= 0 && toggleBlock == pressed) {
             blocks[pressed].collapsed = !blocks[pressed].collapsed
             styleBlocks()
@@ -2828,12 +3108,25 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             performClick()
             return true
           }
+          if (pressedFile >= 0 && fileBlock == pressedFile) {
+            val block = blocks[pressedFile]
+            onBlockActionsPress(mapOf("id" to block.id, "type" to block.type))
+            performClick()
+            return true
+          }
         }
         MotionEvent.ACTION_CANCEL -> {
           clearPressedBlocks()
         }
       }
-      return super.onTouchEvent(event)
+      val handled = super.onTouchEvent(event)
+      /* A focused EditText does not receive another focus transition after the keyboard is
+       * dismissed. Re-tapping it can still move the cursor, but Android then leaves the IME
+       * hidden unless we explicitly request it for this ordinary text-editing path. */
+      if (event.actionMasked == MotionEvent.ACTION_UP && !pressedSpecialBlock && handled) {
+        requestKeyboard()
+      }
+      return handled
     }
 
     /**
@@ -2849,7 +3142,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val safeOffset = offset.coerceIn(0, text.length)
       val index = text.take(safeOffset).count { it == '\n' }.coerceIn(0, blocks.lastIndex)
       val block = blocks[index]
-      if (block.type != "image" && block.type != "audio" && block.type != "video") return null
+      if (block.type != "image" && block.type != "audio" && block.type != "video" && block.type != "file") return null
       val blockStart = offsetOf(index)
       val forward = safeOffset <= blockStart
       return when {
@@ -2863,6 +3156,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
 
     override fun onSelectionChanged(start: Int, end: Int) {
       super.onSelectionChanged(start, end)
+      if (!inputInitialized) return
       if (start == end) {
         val target = mediaBlockSkipTarget(start)
         if (target != null) {
@@ -2870,6 +3164,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           return
         }
       }
+      styleBlocks()
       scheduleEvent("selection")
     }
 
