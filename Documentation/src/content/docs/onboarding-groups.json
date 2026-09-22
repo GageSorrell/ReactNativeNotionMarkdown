@@ -1,0 +1,13 @@
+{
+  "v1": [
+    {
+      "label": "Getting Started",
+      "isOpenByDefault": true,
+      "items": [
+        "v1/onboarding/introduction",
+        "v1/onboarding/installation",
+        "v1/onboarding/quick-start"
+      ]
+    }
+  ]
+}

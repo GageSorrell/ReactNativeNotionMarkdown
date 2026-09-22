@@ -1,0 +1,9 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/navigation/NavigationLinks @file NavigationLinks.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import NavigationAnchor from "./NavigationAnchor.astro"
+import { getNavigationLinks, type NavigationActiveSlug } from "@/lib/navigation"
+interface Props { readonly activeSlug?: NavigationActiveSlug; readonly version?: string }
+const { activeSlug, version } = Astro.props
+const links = getNavigationLinks("desktop", "primary").map((link) => link.id === "docs" && version && link.kind === "internal" ? { ...link, href: `/docs/${version}` as `/${string}` } : link)
+---
+{links.map((link) => <NavigationAnchor link={link} active={link.id === activeSlug} class="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground" />)}

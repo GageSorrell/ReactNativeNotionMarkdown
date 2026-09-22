@@ -69,9 +69,23 @@ function Message({ text, theme, retry }: {
     readonly retry?: () => void
 })
 {
+    const rootStyle = useMemo(
+        () => ({ backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing }),
+        [ theme.spacing, theme.surface ]
+    );
+    const textStyle = useMemo(
+        () => ({ color: theme.muted, fontFamily: theme.fontFamily, fontSize: theme.fontSize }),
+        [ theme.fontFamily, theme.fontSize, theme.muted ]
+    );
+    const retryStyle = useMemo(() => ({ paddingVertical: 8 }), [ ]);
+    const retryTextStyle = useMemo(
+        () => ({ color: theme.accent, fontFamily: theme.fontFamily }),
+        [ theme.accent, theme.fontFamily ]
+    );
+
     return (
-        <View style={ { backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing } }>
-            <Text style={ { color: theme.muted, fontFamily: theme.fontFamily, fontSize: theme.fontSize } }>
+        <View style={ rootStyle }>
+            <Text style={ textStyle }>
                 { text }
             </Text>
             {
@@ -80,8 +94,8 @@ function Message({ text, theme, retry }: {
                         accessibilityLabel="Retry preview"
                         accessibilityRole="button"
                         onPress={ retry }
-                        style={ { paddingVertical: 8 } }>
-                        <Text style={ { color: theme.accent, fontFamily: theme.fontFamily } }>
+                        style={ retryStyle }>
+                        <Text style={ retryTextStyle }>
                             Retry
                         </Text>
                     </Pressable>
@@ -113,6 +127,16 @@ function AudioPreview({ url, theme, onUnavailable }: {
         }
     }, [ status.error, onUnavailable ]);
 
+    const rootStyle = useMemo(
+        () => ({ backgroundColor: theme.surface, padding: theme.spacing }),
+        [ theme.spacing, theme.surface ]
+    );
+    const textStyle = useMemo(() => ({
+        color: theme.foreground,
+        fontFamily: theme.fontFamily,
+        fontSize: theme.fontSize
+    }), [ theme.fontFamily, theme.fontSize, theme.foreground ]);
+
     if (status.error)
     {
         return (
@@ -127,12 +151,8 @@ function AudioPreview({ url, theme, onUnavailable }: {
             accessibilityLabel={ status.playing ? "Pause audio" : "Play audio" }
             accessibilityRole="button"
             onPress={ () => status.playing ? player.pause() : player.play() }
-            style={ { backgroundColor: theme.surface, padding: theme.spacing } }>
-            <Text style={ {
-                color: theme.foreground,
-                fontFamily: theme.fontFamily,
-                fontSize: theme.fontSize
-            } }>
+            style={ rootStyle }>
+            <Text style={ textStyle }>
                 { status.playing ? "Pause" : "Play" } audio · { Math.floor(status.currentTime) }s /{ " " }
                 { Math.floor(status.duration) }s
             </Text>
@@ -149,6 +169,7 @@ function AudioPreview({ url, theme, onUnavailable }: {
 function VideoPreview({ url, onUnavailable }: { readonly url: string; readonly onUnavailable: () => void })
 {
     const player = useVideoPlayer({ uri: url });
+    const videoStyle = useMemo(() => ({ height: 230, width: "100%" as const }), [ ]);
 
     useEffect(() =>
     {
@@ -168,7 +189,7 @@ function VideoPreview({ url, onUnavailable }: { readonly url: string; readonly o
         <VideoView
             nativeControls
             player={ player }
-            style={ { height: 230, width: "100%" } }
+            style={ videoStyle }
         />
     );
 }
@@ -279,21 +300,54 @@ export function NotionMediaView({
     const heading = kind === "pdf"
         ? "PDF"
         : kind.slice(0, 1).toUpperCase() + kind.slice(1);
+    const rootStyle = useMemo(() => ({ marginVertical: 6 }), [ ]);
+    const loadStyle = useMemo(
+        () => ({ backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing }),
+        [ theme.spacing, theme.surface ]
+    );
+    const loadTextStyle = useMemo(() => ({
+        color: theme.accent,
+        fontFamily: theme.fontFamily,
+        fontSize: theme.fontSize
+    }), [ theme.accent, theme.fontFamily, theme.fontSize ]);
+    const imageStyle = useMemo(
+        () => ({ backgroundColor: theme.surface, height: 240, width: "100%" as const }),
+        [ theme.surface ]
+    );
+    const pdfStyle = useMemo(
+        () => ({ backgroundColor: theme.surface, height: 360, width: "100%" as const }),
+        [ theme.surface ]
+    );
+    const fileStyle = useMemo(
+        () => ({ backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing }),
+        [ theme.spacing, theme.surface ]
+    );
+    const fileTextStyle = useMemo(() => ({
+        color: theme.accent,
+        fontFamily: theme.fontFamily,
+        fontSize: theme.fontSize
+    }), [ theme.accent, theme.fontFamily, theme.fontSize ]);
+    const closeStyle = useMemo(() => ({ paddingVertical: 8 }), [ ]);
+    const closeTextStyle = useMemo(
+        () => ({ color: theme.muted, fontFamily: theme.fontFamily }),
+        [ theme.fontFamily, theme.muted ]
+    );
+    const loadingTextStyle = closeTextStyle;
+    const captionTextStyle = useMemo(
+        () => ({ color: theme.muted, fontSize: theme.fontSize * 0.88 }),
+        [ theme.fontSize, theme.muted ]
+    );
 
     return (
         <View
-            style={ { marginVertical: 6 } }
+            style={ rootStyle }
             testID={ `media-${block.id}` }>
             {!active && (
                 <Pressable accessibilityLabel={ `Load ${heading} preview` }
                     accessibilityRole="button"
                     onPress={ () => setOpenedKey(activeKey) }
-                    style={ { backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing } }>
-                    <Text style={ {
-                        color: theme.accent,
-                        fontFamily: theme.fontFamily,
-                        fontSize: theme.fontSize
-                    } }>
+                    style={ loadStyle }>
+                    <Text style={ loadTextStyle }>
                         Load { heading } preview
                     </Text>
                 </Pressable>
@@ -323,7 +377,7 @@ export function NotionMediaView({
                         onLoad={ () => setResult({ key: requestKey, loaded: true, url }) }
                         resizeMode="contain"
                         source={ { uri: url } }
-                        style={ { width: "100%", height: 240, backgroundColor: theme.surface } }
+                        style={ imageStyle }
                     />
                 )
             }
@@ -333,7 +387,7 @@ export function NotionMediaView({
                         onError={ () => failed("PDF unavailable") }
                         onLoadComplete={ () => setResult({ key: requestKey, url, loaded: true }) }
                         source={ { cache: true, uri: url } }
-                        style={ { backgroundColor: theme.surface, height: 360, width: "100%" } }
+                        style={ pdfStyle }
                     />
                 )
             }
@@ -360,12 +414,8 @@ export function NotionMediaView({
                         accessibilityLabel="Open file"
                         accessibilityRole="link"
                         onPress={ () => onOpenUrl?.(url) }
-                        style={ { backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing } }>
-                        <Text style={ {
-                            color: theme.accent,
-                            fontFamily: theme.fontFamily,
-                            fontSize: theme.fontSize
-                        } }>
+                        style={ fileStyle }>
+                        <Text style={ fileTextStyle }>
                             Open file
                         </Text>
                     </Pressable>
@@ -377,8 +427,8 @@ export function NotionMediaView({
                         accessibilityLabel={ `Close ${ heading } preview` }
                         accessibilityRole="button"
                         onPress={ () => setOpenedKey(undefined) }
-                        style={ { paddingVertical: 8 } }>
-                        <Text style={ { color: theme.muted, fontFamily: theme.fontFamily } }>
+                        style={ closeStyle }>
+                        <Text style={ closeTextStyle }>
                             Close preview
                         </Text>
                     </Pressable>
@@ -386,7 +436,7 @@ export function NotionMediaView({
             }
             {
                 active && url && !loaded && !error && (kind === "image" || kind === "pdf") && (
-                    <Text style={ { color: theme.muted, fontFamily: theme.fontFamily } }>
+                    <Text style={ loadingTextStyle }>
                         Loading…
                     </Text>
                 )
@@ -397,7 +447,7 @@ export function NotionMediaView({
                         dark={ dark }
                         items={ source.caption }
                         onOpenUrl={ onOpenUrl }
-                        textStyle={ { color: theme.muted, fontSize: theme.fontSize * 0.88 } }
+                        textStyle={ captionTextStyle }
                         theme={ theme }
                     />
                 )

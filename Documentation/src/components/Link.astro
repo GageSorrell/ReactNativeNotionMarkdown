@@ -1,0 +1,13 @@
+---
+/**
+ * @module @react-native-notion-markdown/documentation/components/Link
+ * @file Link.astro
+ * @author Gage Sorrell <gage@sorrell.sh>
+ * @copyright (c) 2026 Gage Sorrell
+ * @license MIT
+ */
+import type { HTMLAttributes } from "astro/types"
+interface Props extends HTMLAttributes<"a"> { readonly href: string }
+const { href, ...props } = Astro.props
+---
+<a href={href} {...href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {}} {...props}><slot /></a>

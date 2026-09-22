@@ -1,0 +1,20 @@
+{
+  "name": "@react-native-notion-markdown/start-emulator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Starts (or reuses) the configured Android emulator, waits for it to finish booting, and opens the debug app onto it if it isn't already in the foreground.",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "effect": "4.0.0-rc.115",
+    "@effect/platform-node": "4.0.0-rc.115"
+  },
+  "author": {
+    "email": "gage@sorrell.sh",
+    "name": "Gage Sorrell",
+    "url": "https://sorrell.sh"
+  },
+  "license": "MIT"
+}

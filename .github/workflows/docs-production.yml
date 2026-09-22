@@ -1,0 +1,69 @@
+name: Deploy documentation
+
+on:
+  push:
+    branches: [Master]
+  workflow_dispatch:
+    inputs:
+      snapshot_tag:
+        description: Optional exact api-reference-<sha256> release tag. Omit to use the latest valid snapshot.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Resolve snapshot
+        id: snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.snapshot_tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then TAG="$INPUT_TAG"; else TAG=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '[.[] | select(.tag_name | startswith("api-reference-"))] | sort_by(.created_at) | last | .tag_name'); fi
+          test -n "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - run: npm run build --workspace @react-native-notion-markdown/api-reference
+      - run: node Script/ApiReference/dist/cli.js snapshot restore --version v1 --tag "${{ steps.snapshot.outputs.tag }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: npm run build:snapshot --workspace Documentation
+      - run: npm run verify --workspace Documentation
+      - run: npx vercel@59.25.0 pull --yes --environment=production --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      - run: npx vercel@59.25.0 build --prod --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      - name: Deploy and smoke-test
+        id: deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          DEPLOYMENT=$(npx vercel@59.25.0 deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN" | tail -n 1)
+          echo "url=$DEPLOYMENT" >> "$GITHUB_OUTPUT"
+          curl --fail --silent --show-error "$DEPLOYMENT/docs/v1/api" >/dev/null
+          curl --fail --silent --show-error "$DEPLOYMENT/og/v1/api.png" >/dev/null
+          curl --fail --silent --show-error "$DEPLOYMENT/pagefind/pagefind.js" >/dev/null
+      - run: npx vercel@59.25.0 promote "${{ steps.deployment.outputs.url }}" --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

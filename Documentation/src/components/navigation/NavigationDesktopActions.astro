@@ -1,0 +1,9 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/navigation/NavigationDesktopActions @file NavigationDesktopActions.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import { CodeXml, Package } from "@lucide/astro"
+import SearchTriggerIsland from "./SearchTriggerIsland"
+import ThemeToggle from "@/components/ui/ThemeToggle"
+interface Props { readonly showThemeToggle?: boolean }
+const { showThemeToggle = true } = Astro.props
+---
+<div class="flex items-center gap-3"><SearchTriggerIsland client:only="react" /><a href="https://github.com/GageSorrell/ReactNativeNotionMarkdown" target="_blank" rel="noopener noreferrer" aria-label="GitHub" class="text-muted-foreground hover:text-foreground"><CodeXml size={18} /></a><a href="https://www.npmjs.com/package/react-native-notion-markdown" target="_blank" rel="noopener noreferrer" aria-label="npm" class="text-muted-foreground hover:text-foreground"><Package size={18} /></a>{showThemeToggle && <ThemeToggle client:load />}</div>

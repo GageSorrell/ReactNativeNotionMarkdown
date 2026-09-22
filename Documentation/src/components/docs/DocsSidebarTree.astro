@@ -1,0 +1,12 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/docs/DocsSidebarTree @file DocsSidebarTree.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import type { CollectionEntry } from "astro:content"
+import type { DocsSidebarItem } from "@/lib/docs-sections"
+import SidebarGroup from "@/components/ui/sidebar/SidebarGroup.astro"
+import SidebarLink from "@/components/ui/sidebar/SidebarLink.astro"
+interface Props { readonly items: ReadonlyArray<DocsSidebarItem>; readonly currentId: string }
+const { items, currentId } = Astro.props
+const label = (entry: CollectionEntry<"docs">) => entry.data.sidebar?.label ?? entry.data.title
+const href = (entry: CollectionEntry<"docs">) => `/docs/${entry.id.replace(/\/index$/, "")}`
+---
+<ul class="flex flex-col gap-1">{items.map((item) => item.kind === "entry" ? <li><SidebarLink href={href(item.entry)} active={item.entry.id === currentId} class="px-2 py-2 text-sm font-semibold">{label(item.entry)}</SidebarLink></li> : <li><SidebarGroup label={item.label} open={item.open}>{item.entries.map((entry) => <li><SidebarLink href={href(entry)} active={entry.id === currentId} class="py-1.5 pl-3 text-sm">{label(entry)}</SidebarLink></li>)}</SidebarGroup></li>)}</ul>

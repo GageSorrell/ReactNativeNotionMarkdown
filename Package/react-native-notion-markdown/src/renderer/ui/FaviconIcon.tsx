@@ -13,7 +13,7 @@
 
 import { Image, Text, View } from "react-native";
 import type { NotionReferenceIconComponent } from "./types.ts";
-import { createElement, useEffect, useState } from "react";
+import { createElement, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 
 interface FaviconIconProps
@@ -134,6 +134,9 @@ export function FaviconIcon({
     const [ favicon, setFavicon ] = useState<{ readonly url: string; readonly value?: string }>();
     const [ failedUrl, setFailedUrl ] = useState<string>();
     const LucideDocument = getDocumentIcon();
+    const imageStyle = useMemo(() => ({ height: size, width: size }), [ size ]);
+    const textFallbackStyle = useMemo(() => ({ color, fontSize: size }), [ color, size ]);
+    const viewFallbackStyle = useMemo(() => ({ height: size, width: size }), [ size ]);
 
     useEffect(() =>
     {
@@ -155,7 +158,7 @@ export function FaviconIcon({
             accessibilityLabel="Web page favicon"
             onError={ () => setFailedUrl(url) }
             source={ { uri: favicon.value } }
-            style={ { height: size, width: size } }
+            style={ imageStyle }
         />;
     }
 
@@ -170,6 +173,6 @@ export function FaviconIcon({
     }
 
     return textFallback !== undefined
-        ? <Text style={ { color, fontSize: size } }>{ textFallback }</Text>
-        : <View style={ { height: size, width: size } } />;
+        ? <Text style={ textFallbackStyle }>{ textFallback }</Text>
+        : <View style={ viewFallbackStyle } />;
 }

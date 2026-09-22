@@ -1,0 +1,13 @@
+---
+import SidebarGroup from "@/components/ui/sidebar/SidebarGroup.astro"
+import SidebarLink from "@/components/ui/sidebar/SidebarLink.astro"
+interface Props { readonly version: string; readonly packageSlug: string; readonly packageName: string; readonly modules: ReadonlyArray<{ readonly slug: string; readonly label: string; readonly href: string }>; readonly currentSlug?: string }
+const { version, packageSlug, packageName, modules, currentSlug } = Astro.props
+---
+<nav aria-label="API reference navigation" class="flex flex-col gap-2">
+  <SidebarLink href={`/docs/${version}/api`} active={!currentSlug} class="px-2 py-2 text-sm font-semibold">References</SidebarLink>
+  <SidebarGroup label={packageName} open>
+    <li><SidebarLink href={`/docs/${version}/api/${packageSlug}`} active={!currentSlug} class="py-1.5 pl-3 text-sm">Overview</SidebarLink></li>
+    {modules.map((module) => <li><SidebarLink href={module.href} active={module.slug === currentSlug} class="py-1.5 pl-3 text-sm">{module.label}</SidebarLink></li>)}
+  </SidebarGroup>
+</nav>

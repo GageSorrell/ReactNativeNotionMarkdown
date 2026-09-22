@@ -1,0 +1,33 @@
+---
+/**
+ * @module @react-native-notion-markdown/documentation/layouts/DocShell
+ * @file DocShell.astro
+ * @author Gage Sorrell <gage@sorrell.sh>
+ * @copyright (c) 2026 Gage Sorrell
+ * @license MIT
+ */
+import DocsNavigation from "@/components/navigation/DocsNavigation.astro"
+import Footer from "@/components/Footer.astro"
+import SidebarScrollMemory from "@/components/ui/sidebar/SidebarScrollMemory.astro"
+import BaseLayout from "@/layouts/BaseLayout.astro"
+import { PAGE_TITLE_ID } from "@/lib/constants/skip-link"
+import type { DocsNavSection } from "@/lib/docs-sections"
+
+interface Props { readonly title?: string; readonly description?: string; readonly version?: string; readonly section?: DocsNavSection; readonly ogImage?: string; readonly pageType?: string }
+const { title, description, version, section = "guides", ogImage, pageType } = Astro.props
+const hasSidebar = Astro.slots.has("sidebar")
+const hasToc = Astro.slots.has("toc")
+---
+<BaseLayout {...title ? { title } : {}} {...description ? { description } : {}} {...ogImage ? { ogImage } : {}} {...pageType ? { pageType } : {}}>
+  <DocsNavigation section={section} version={version} />
+  <div class="relative w-full">
+    <slot name="mobile-nav" />
+    <div class:list={["mx-auto grid w-full max-w-352 grid-cols-1", hasToc ? "lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_240px]" : "lg:grid-cols-[240px_1fr]"]}>
+      {hasSidebar && <aside class="hidden border-r border-border lg:block"><div data-doc-sidebar-rail class="sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto px-4 py-8"><slot name="sidebar" /></div></aside>}
+      <main id={PAGE_TITLE_ID} class="min-w-0 px-6 py-10 lg:px-12 lg:py-16"><slot /></main>
+      {hasToc && <aside class="hidden border-l border-border xl:block"><div class="sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto px-5 py-10"><slot name="toc" /></div></aside>}
+    </div>
+    <Footer />
+  </div>
+  {hasSidebar && <SidebarScrollMemory storageKey="docs-sidebar-scroll" />}
+</BaseLayout>

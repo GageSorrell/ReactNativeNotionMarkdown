@@ -14,7 +14,7 @@ import * as ImagePicker from "expo-image-picker";
 import { CameraIcon, GalleryIcon } from "./mediaIcons.tsx";
 import { CopyActionIcon, TrashActionIcon } from "./actionIcons.tsx";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import type { NotionEditorComponents, NotionEditorIconProps } from "./NotionEditor.tsx";
+import type { NotionEditorAudioAction, NotionEditorComponents, NotionEditorIconProps } from "./NotionEditor.tsx";
 import { createElement, type ComponentType } from "react";
 import type { NotionMarkdownColor } from "../../document/types.ts";
 import { useCallback, useMemo, useState } from "react";
@@ -41,6 +41,8 @@ export interface ActionsBottomSheetProps
         readonly insertAbove: string;
         readonly insertBelow: string;
         readonly openGallery: string;
+        readonly chooseAudio: string;
+        readonly recordAudio: string;
         readonly takePicture: string;
         readonly title: string;
     };
@@ -50,12 +52,16 @@ export interface ActionsBottomSheetProps
     readonly onColor?: (color: NotionMarkdownColor | undefined) => void;
     /** Called with the picked asset's local URI once a replacement image is chosen. */
     readonly onReplaceImage?: (url: string) => void | Promise<void>;
+    /** Opens the shared audio workflow in replacement mode. */
+    readonly onReplaceAudio?: (action: NotionEditorAudioAction) => void;
     /** Hidden for block types (the divider) that can't take content above themselves. */
     readonly showInsertAbove: boolean;
     /** Callout actions use the Notion-specific color/icon layout. */
     readonly showCalloutActions?: boolean;
     /** Shown only for the image block -- offers to replace its source via gallery or camera. */
     readonly showReplaceImage: boolean;
+    /** Shown only for audio blocks. */
+    readonly showReplaceAudio?: boolean;
 }
 
 interface ActionOptionProps
@@ -154,6 +160,7 @@ function ActionOption({ color, icon: Icon, label, onPress }: ActionOptionProps)
             ? { backgroundColor: `${ color }12` }
             : undefined
     ], [ color ]);
+    const labelStyle = useMemo(() => [ styles.optionLabel, { color } ], [ color ]);
 
     return <Pressable accessibilityLabel={ label }
         accessibilityRole="button"
@@ -166,7 +173,7 @@ function ActionOption({ color, icon: Icon, label, onPress }: ActionOptionProps)
                 size={ 20 }
                 strokeWidth={ 1.75 } />
         }
-        <Text style={ [ styles.optionLabel, { color } ] }>{ label }</Text>
+        <Text style={ labelStyle }>{ label }</Text>
     </Pressable>;
 }
 
@@ -205,6 +212,7 @@ const calloutBackgroundColors: ReadonlyArray<CalloutColorOption> =
         { color: "red_bg", hex: "#D44C47", label: "red" }
     ];
 
+/** Render one selectable callout foreground/background color. */
 function ColorOption({
     dark,
     option,
@@ -223,20 +231,29 @@ function ColorOption({
     const swatchBackground = option.color?.endsWith("_bg") === true
         ? `${ swatch }38`
         : swatch;
+    const swatchStyle = useMemo(() => [
+        styles.colorSwatch,
+        { backgroundColor: swatchBackground, borderColor: option.hex ?? muted }
+    ], [ muted, option.hex, swatchBackground ]);
+    const swatchTextStyle = useMemo(
+        () => [ styles.colorSwatchText, { color: option.hex ?? foreground } ],
+        [ foreground, option.hex ]
+    );
+    const labelStyle = useMemo(
+        () => [ styles.colorOptionLabel, { color: foreground } ],
+        [ foreground ]
+    );
 
     return <Pressable accessibilityLabel={ option.color === undefined ? defaultLabel : option.label }
         accessibilityRole="button"
         onPress={ onPress }
         style={ styles.colorOption }>
-        <View style={ [
-            styles.colorSwatch,
-            { backgroundColor: swatchBackground, borderColor: option.hex ?? muted }
-        ] }>
-            <Text style={ [ styles.colorSwatchText, { color: option.hex ?? foreground } ] }>
+        <View style={ swatchStyle }>
+            <Text style={ swatchTextStyle }>
                 { option.color === undefined ? "A" : "A" }
             </Text>
         </View>
-        <Text style={ [ styles.colorOptionLabel, { color: foreground } ] }>
+        <Text style={ labelStyle }>
             { option.color === undefined ? defaultLabel : option.label }
         </Text>
     </Pressable>;
@@ -252,9 +269,11 @@ export function ActionsBottomSheet({
     onDismiss,
     onColor,
     onReplaceImage,
+    onReplaceAudio,
     showInsertAbove,
     showCalloutActions = false,
-    showReplaceImage
+    showReplaceImage,
+    showReplaceAudio = false
 }: ActionsBottomSheetProps)
 {
     const [ choosingColor, setChoosingColor ] = useState(false);
@@ -294,6 +313,19 @@ export function ActionsBottomSheet({
         background: calloutBackgroundColors,
         text: calloutTextColors
     }), [ ]);
+    const scrimStyle = useMemo(() => [ styles.scrim, { backgroundColor: scrim } ], [ scrim ]);
+    const sheetStyle = useMemo(() => [ styles.sheet, { backgroundColor: surface } ], [ surface ]);
+    const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
+    const sectionTitleStyle = useMemo(() => [ styles.sectionTitle, { color: muted } ], [ muted ]);
+    const blockNameLabelStyle = useMemo(
+        () => [ styles.blockNameLabel, { color: muted } ],
+        [ muted ]
+    );
+    const optionsStyle = useMemo(() => [
+        styles.options,
+        { backgroundColor: optionSurface, borderColor: divider }
+    ], [ divider, optionSurface ]);
+    const dividerStyle = useMemo(() => [ styles.divider, { backgroundColor: divider } ], [ divider ]);
 
     return <Modal
         animationType="slide"
@@ -307,9 +339,9 @@ export function ActionsBottomSheet({
                 accessibilityLabel="Dismiss actions"
                 accessibilityRole="button"
                 onPress={ onDismiss }
-                style={ [ styles.scrim, { backgroundColor: scrim } ] } />
+                style={ scrimStyle } />
             <View accessibilityViewIsModal
-                style={ [ styles.sheet, { backgroundColor: surface } ] }>
+                style={ sheetStyle }>
                 <View style={ styles.content }>
                     <View style={ styles.header }>
                         {
@@ -328,14 +360,14 @@ export function ActionsBottomSheet({
                             </Pressable>
                         }
                         <Text accessibilityRole="header"
-                            style={ [ styles.title, { color: foreground } ] }>
+                            style={ titleStyle }>
                             { choosingColor ? labels.chooseColor : labels.title }
                         </Text>
                     </View>
                     {
                         choosingColor
                             ? <View style={ styles.colorContent }>
-                                <Text style={ [ styles.sectionTitle, { color: muted } ] }>
+                                <Text style={ sectionTitleStyle }>
                                     { labels.text }
                                 </Text>
                                 <View style={ styles.colorGrid }>
@@ -347,7 +379,7 @@ export function ActionsBottomSheet({
                                             onPress={ () => handleColor(option.color) }
                                             option={ option } />) }
                                 </View>
-                                <Text style={ [ styles.sectionTitle, { color: muted } ] }>
+                                <Text style={ sectionTitleStyle }>
                                     { labels.background }
                                 </Text>
                                 <View style={ styles.colorGrid }>
@@ -361,18 +393,15 @@ export function ActionsBottomSheet({
                                 </View>
                             </View>
                             : <>
-                                <Text style={ [ styles.blockNameLabel, { color: muted } ] }>{ blockName }</Text>
+                                <Text style={ blockNameLabelStyle }>{ blockName }</Text>
                                 {
-                                    showCalloutActions && <View style={ [
-                                        styles.options,
-                                        { backgroundColor: optionSurface, borderColor: divider }
-                                    ] }>
+                                    showCalloutActions && <View style={ optionsStyle }>
                                         <ActionOption
                                             color={ muted }
                                             icon={ getActionIcon("color", components) }
                                             label={ labels.color }
                                             onPress={ () => setChoosingColor(true) } />
-                                        <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                                        <View style={ dividerStyle } />
                                         <ActionOption
                                             color={ muted }
                                             icon={ getActionIcon("edit", components) }
@@ -380,10 +409,7 @@ export function ActionsBottomSheet({
                                             onPress={ () => { } } />
                                     </View> }
                                 { showCalloutActions && <View style={ styles.groupGap } /> }
-                                <View style={ [
-                                    styles.options,
-                                    { backgroundColor: optionSurface, borderColor: divider }
-                                ] }>
+                                <View style={ optionsStyle }>
                                     {
                                         showInsertAbove && <ActionOption
                                             color={ muted }
@@ -392,7 +418,7 @@ export function ActionsBottomSheet({
                                     }
                                     {
                                         showInsertAbove
-                                            && <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                                            && <View style={ dividerStyle } />
                                     }
                                     <ActionOption
                                         color={ muted }
@@ -402,16 +428,13 @@ export function ActionsBottomSheet({
                                 {
                                     showReplaceImage && <>
                                         <View style={ styles.groupGap } />
-                                        <View style={ [
-                                            styles.options,
-                                            { backgroundColor: optionSurface, borderColor: divider }
-                                        ] }>
+                                        <View style={ optionsStyle }>
                                             <ActionOption
                                                 color={ muted }
                                                 icon={ getActionIcon("gallery", components) }
                                                 label={ labels.openGallery }
                                                 onPress={ () => void handleReplace("gallery") } />
-                                            <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                                            <View style={ dividerStyle } />
                                             <ActionOption
                                                 color={ muted }
                                                 icon={ getActionIcon("picture", components) }
@@ -420,11 +443,24 @@ export function ActionsBottomSheet({
                                         </View>
                                     </>
                                 }
+                                {
+                                    showReplaceAudio && <>
+                                        <View style={ styles.groupGap } />
+                                        <View style={ optionsStyle }>
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.chooseAudio }
+                                                onPress={ () => onReplaceAudio?.("picked") } />
+                                            <View style={ dividerStyle } />
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.recordAudio }
+                                                onPress={ () => onReplaceAudio?.("recorded") } />
+                                        </View>
+                                    </>
+                                }
                                 <View style={ styles.groupGap } />
-                                <View style={ [
-                                    styles.options,
-                                    { backgroundColor: optionSurface, borderColor: divider }
-                                ] }>
+                                <View style={ optionsStyle }>
                                     {
                                         !showCalloutActions && <>
                                             <ActionOption
@@ -432,7 +468,7 @@ export function ActionsBottomSheet({
                                                 icon={ getActionIcon("copy", components) }
                                                 label={ labels.duplicate }
                                                 onPress={ () => onAction("duplicate") } />
-                                            <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                                            <View style={ dividerStyle } />
                                         </>
                                     }
                                     <ActionOption

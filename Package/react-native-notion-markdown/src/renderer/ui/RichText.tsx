@@ -144,12 +144,94 @@ function RichItem({
 
     const resolved = state?.key === requestKey ? state.value : undefined;
 
+    const lineBreakStyle = useMemo(() => ({ height: 1, width: "100%" as const }), [ ]);
+    const containerStyle = useMemo(
+        () => ({ alignItems: "center" as const, flexDirection: "row" as const, flexShrink: 1 }),
+        [ ]
+    );
+
+    const annotationColor = typeof annotation.color === "string" ? annotation.color : undefined;
+    const annotationCode = annotation.code === true;
+    const annotationItalic = annotation.italic === true;
+    const annotationBold = annotation.bold === true;
+    const annotationUnderline = annotation.underline === true;
+    const annotationStrikethrough = annotation.strikethrough === true;
+    const destination = resolved?.url ?? url;
+    const baseFontSize = textStyle?.fontSize ?? theme.fontSize;
+
+    const display = metadata.citationUrl
+        ? `↗ ${ text || metadata.citationUrl }`
+        : metadata.emojiName
+            ? (text || `:${ metadata.emojiName }:`)
+            : (resolved?.label ?? text);
+
+    // The renderer metadata is a mutable record by design; memoize against its scalar snapshots.
+    /* eslint-disable react-hooks/preserve-manual-memoization */
+    const richTextStyle = useMemo(() =>
+    {
+        const styleBackgroundColor = (
+            annotationColor !== undefined &&
+            (annotationColor.endsWith("_bg") || annotationColor.endsWith("_background"))
+        )
+            ? notionColor(annotationColor, dark)
+            : undefined;
+        const styleForeground = annotationColor !== undefined && styleBackgroundColor === undefined
+            ? notionColor(annotationColor, dark)
+            : undefined;
+        const styleDestination = resolved?.url ?? url;
+        const styleBaseFontSize = textStyle?.fontSize ?? theme.fontSize;
+
+        return {
+            backgroundColor: annotationCode ? theme.inlineCodeBackground : styleBackgroundColor,
+            borderRadius: annotationCode ? 4 : 0,
+            color: styleDestination
+                ? theme.accent
+                : annotationCode
+                    ? theme.inlineCodeForeground
+                    : (styleForeground ?? textStyle?.color ?? theme.foreground),
+            fontFamily: annotationCode ? "monospace" : textStyle?.fontFamily ?? theme.fontFamily,
+            fontSize: annotationCode ? styleBaseFontSize - 2 : styleBaseFontSize,
+            fontStyle: annotationItalic ? "italic" as const : "normal" as const,
+            fontWeight: annotationBold ? "bold" as const : textStyle?.fontWeight ?? "normal" as const,
+            lineHeight: textStyle?.lineHeight,
+            padding: annotationCode ? 4 : 0,
+            textDecorationLine: [
+                annotationUnderline || styleDestination ? "underline" : "",
+                annotationStrikethrough || textStyle?.strikethrough ? "line-through" : ""
+            ].filter(Boolean)
+                .join(" ") as "none" | "underline" | "line-through" | "underline line-through"
+        };
+    }, [
+        annotationBold,
+        annotationCode,
+        annotationColor,
+        annotationItalic,
+        annotationStrikethrough,
+        annotationUnderline,
+        dark,
+        resolved?.url,
+        textStyle?.color,
+        textStyle?.fontFamily,
+        textStyle?.fontSize,
+        textStyle?.fontWeight,
+        textStyle?.lineHeight,
+        textStyle?.strikethrough,
+        theme.accent,
+        theme.fontFamily,
+        theme.fontSize,
+        theme.foreground,
+        theme.inlineCodeBackground,
+        theme.inlineCodeForeground,
+        url
+    ]);
+    /* eslint-enable react-hooks/preserve-manual-memoization */
+
     if (text === "\n")
     {
         return (
             <View
                 accessibilityLabel="Line break"
-                style={ { height: 1, width: "100%" } }
+                style={ lineBreakStyle }
             />
         );
     }
@@ -163,28 +245,8 @@ function RichItem({
             />
         );
     }
-    const backgroundColor = (
-        typeof annotation.color === "string" &&
-        (annotation.color.endsWith("_bg") || annotation.color.endsWith("_background"))
-    )
-        ? notionColor(annotation.color, dark)
-        : undefined;
-
-    const foreground = typeof annotation.color === "string" && backgroundColor === undefined
-        ? notionColor(annotation.color, dark)
-        : undefined;
-
-    const destination = resolved?.url ?? url;
-    const baseFontSize = textStyle?.fontSize ?? theme.fontSize;
-
-    const display = metadata.citationUrl
-        ? `↗ ${ text || metadata.citationUrl }`
-        : metadata.emojiName
-            ? (text || `:${ metadata.emojiName }:`)
-            : (resolved?.label ?? text);
-
     return (
-        <View style={ { alignItems: "center", flexDirection: "row", flexShrink: 1 } }>
+        <View style={ containerStyle }>
             {
                 linkUrl !== undefined && <FaviconIcon
                     color={ theme.accent }
@@ -197,26 +259,7 @@ function RichItem({
             <Text
                 accessibilityRole={ destination && onOpenUrl ? "link" : undefined }
                 onPress={ destination && onOpenUrl ? () => onOpenUrl(destination) : undefined }
-                style={ {
-                    backgroundColor: annotation.code ? theme.inlineCodeBackground : backgroundColor,
-                    borderRadius: annotation.code ? 4 : 0,
-                    color: destination
-                        ? theme.accent
-                        : annotation.code
-                            ? theme.inlineCodeForeground
-                            : (foreground ?? textStyle?.color ?? theme.foreground),
-                    fontFamily: annotation.code ? "monospace" : textStyle?.fontFamily ?? theme.fontFamily,
-                    fontSize: annotation.code ? baseFontSize - 2 : baseFontSize,
-                    fontStyle: annotation.italic ? "italic" : "normal",
-                    fontWeight: annotation.bold ? "bold" : textStyle?.fontWeight ?? "normal",
-                    lineHeight: textStyle?.lineHeight,
-                    padding: annotation.code ? 4 : 0,
-                    textDecorationLine: [
-                        annotation.underline || destination ? "underline" : "",
-                        annotation.strikethrough || textStyle?.strikethrough ? "line-through" : ""
-                    ].filter(Boolean)
-                        .join(" ") as "none" | "underline" | "line-through" | "underline line-through"
-                } }>
+                style={ richTextStyle }>
                 { display }
             </Text>
         </View>

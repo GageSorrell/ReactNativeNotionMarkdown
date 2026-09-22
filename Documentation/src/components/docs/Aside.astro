@@ -1,0 +1,17 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/docs/Aside @file Aside.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import { Info, Lightbulb, TriangleAlert, OctagonAlert } from "@lucide/astro"
+interface Props { readonly type?: "note" | "tip" | "caution" | "danger"; readonly title?: string }
+const { type = "note", title } = Astro.props
+const icons = { note: Info, tip: Lightbulb, caution: TriangleAlert, danger: OctagonAlert }
+const labels = { note: "Note", tip: "Tip", caution: "Caution", danger: "Danger" }
+const Icon = icons[type]
+---
+<aside class={`aside aside--${type}`} aria-label={title ?? labels[type]}><p class="aside-title"><Icon size={16} aria-hidden="true" />{title ?? labels[type]}</p><div class="aside-content"><slot /></div></aside>
+<style>
+  .aside { margin: 1.5rem 0; border-radius: .5rem; padding: 1rem 1.1rem .8rem; background: var(--muted); border: 1px solid var(--border); }
+  .aside-title { display:flex; align-items:center; gap:.5rem; margin:0; font-weight:650; }
+  .aside-content :global(> :first-child) { margin-top:.7rem; }
+  .aside-content :global(> :last-child) { margin-bottom:0; }
+  .aside--note .aside-title { color:#2563eb } .aside--tip .aside-title { color:#059669 } .aside--caution .aside-title { color:#d97706 } .aside--danger .aside-title { color:#dc2626 }
+</style>

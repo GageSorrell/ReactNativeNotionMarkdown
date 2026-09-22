@@ -43,6 +43,7 @@ import {
 } from "react-native";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
+import { AudioBottomSheet } from "./AudioBottomSheet.tsx";
 import type { ComponentType } from "react";
 import type { EditorMessageId } from "./messages.ts";
 import type { LayoutChangeEvent } from "react-native";
@@ -73,6 +74,8 @@ export type NotionEditorButton =
     | "eraseFormatting"
     | "link"
     | "speech"
+    | "record"
+    | "stop"
     | "filePicker"
     | "turnInto"
     | "undo"
@@ -84,6 +87,7 @@ export type NotionEditorButton =
     | "moveDown"
     | "back"
     | "close"
+    | "cancel"
     | "copy"
     | "cut"
     | "paste"
@@ -94,6 +98,10 @@ export type NotionEditorButton =
     | "divider"
     | "tableOfContents"
     | "columns"
+    | "columns2"
+    | "columns3"
+    | "columns4"
+    | "columns5"
     | "toDo"
     | "callout"
     | "quote"
@@ -155,6 +163,28 @@ export interface NotionEditorMediaSelection
     readonly action: NotionEditorMediaAction;
     readonly assets?: ReadonlyArray<NotionEditorMediaAsset>;
     readonly canceled: boolean;
+}
+
+/** The two sources supported by the built-in audio workflow. */
+export type NotionEditorAudioAction = "picked" | "recorded";
+
+/** A portable audio asset returned by the document picker or recorder. */
+export interface NotionEditorAudioAsset
+{
+    readonly duration?: number;
+    readonly fileName?: string;
+    readonly fileSize?: number;
+    readonly mimeType?: string;
+    readonly uri: string;
+}
+
+/** Result delivered after audio insertion or replacement completes. */
+export interface NotionEditorAudioSelection
+{
+    readonly action: NotionEditorAudioAction;
+    readonly asset?: NotionEditorAudioAsset;
+    readonly canceled: boolean;
+    readonly error?: string;
 }
 
 /**
@@ -330,7 +360,8 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
     readonly onCommand?: (
         Action: ProofCommand["action"],
         Extra?: Pick<ProofCommand,
-            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label" | "blockId">
+            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label" | "blockId"
+            | "duration" | "mimeType" | "fileName" | "fileSize">
     ) => void;
 
     /** Optional icon overrides for the editor UI. */
@@ -342,6 +373,9 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
      */
     readonly onInsertMedia?: () => void | Promise<void>;
 
+    /** Replaces the built-in audio sheet opened by the existing `speech` toolbar button. */
+    readonly onInsertAudio?: () => void | Promise<void>;
+
     /** Alias for {@link onInsertMedia}, named after the built-in `filePicker` button id. */
     readonly onFilePicker?: () => void | Promise<void>;
 
@@ -351,6 +385,11 @@ export interface NotionEditorProps extends Omit<NativeProofEditorProps, "command
      */
     readonly onMediaSelected?: (
         Selection: NotionEditorMediaSelection
+    ) => void | Promise<void>;
+
+    /** Observes picked, recorded, cancelled, and failed audio selections. */
+    readonly onAudioSelected?: (
+        Selection: NotionEditorAudioSelection
     ) => void | Promise<void>;
 
     /** Requests that the dependent create a page reference for the current selection. */
@@ -435,7 +474,17 @@ function getButtonIcon(
     components: NotionEditorComponents | undefined
 ): ComponentType<NotionEditorIconProps> | undefined
 {
-    return button === undefined ? undefined : components?.[button];
+    if (button === undefined || components === undefined)
+    {
+        return undefined;
+    }
+
+    /* Keep the original `columns` override working for hosts that have not yet added the
+       count-specific icons. */
+    return components[ button ]
+        ?? (button === "columns2" || button === "columns3" || button === "columns4" || button === "columns5"
+            ? components.columns
+            : undefined);
 }
 
 /**
@@ -575,6 +624,15 @@ const proofColorOptions: ReadonlyArray<ProofColorOption> =
 const proofTurnIntoTypes: ReadonlyArray<ProofBlock["type"]> =
     [ "text", "heading_1", "heading_2", "heading_3", "heading_4" ];
 
+const proofColumnButtons: Readonly<Record<ProofColumnCount, Extract<NotionEditorButton,
+    "columns2" | "columns3" | "columns4" | "columns5">>> =
+    {
+        2: "columns2",
+        3: "columns3",
+        4: "columns4",
+        5: "columns5"
+    };
+
 /** Message id naming each block type, for the actions sheet's section-title label. */
 const proofBlockNameMessageIds: Readonly<Record<ProofBlock["type"], EditorMessageId>> =
     {
@@ -587,6 +645,7 @@ const proofBlockNameMessageIds: Readonly<Record<ProofBlock["type"], EditorMessag
         heading_3: "blockName.heading3",
         heading_4: "blockName.heading4",
         image: "blockName.image",
+        audio: "blockName.audio",
         link_to_page: "blockName.linkToPage",
         numbered_list_item: "blockName.numberedListItem",
         quote: "blockName.quote",
@@ -824,6 +883,8 @@ export function NotionEditor({
     onEdit,
     onFilePicker,
     onInsertMedia,
+    onInsertAudio,
+    onAudioSelected,
     onMediaSelected,
     onOpenPageReference,
     emptyTogglePlaceholder: suppliedEmptyTogglePlaceholder,
@@ -842,6 +903,9 @@ export function NotionEditor({
     const [ row, setRow ] = useState<ToolbarRow>("main");
     const [ openPanel, setOpenPanel ] = useState<OpenPanel>(NoPanelOpen);
     const [ mediaSheetVisible, setMediaSheetVisible ] = useState(false);
+    const [ audioSheetVisible, setAudioSheetVisible ] = useState(false);
+    const [ audioSheetInitialAction, setAudioSheetInitialAction ] = useState<NotionEditorAudioAction>();
+    const [ audioReplacementBlockId, setAudioReplacementBlockId ] = useState<string>();
     const [ linkSheetVisible, setLinkSheetVisible ] = useState(false);
     const [ linkRequest, setLinkRequest ] = useState<NotionEditorLinkSelection>();
     const [ blockActionsRequest, setBlockActionsRequest ] = useState<NotionEditorBlockActionsSelection>();
@@ -1111,7 +1175,8 @@ export function NotionEditor({
     const send = useCallback((
         action: ProofCommand["action"],
         extra?: Pick<ProofCommand,
-            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label" | "blockId">
+            "level" | "color" | "type" | "toggle" | "mark" | "columnCount" | "url" | "label" | "blockId"
+            | "duration" | "mimeType" | "fileName" | "fileSize">
     ) =>
     {
         if (onCommand !== undefined)
@@ -1136,11 +1201,11 @@ export function NotionEditor({
        panels opened by future state transitions and closes the focus/IME race on Android. */
     useEffect(() =>
     {
-        if (panelOpen || mediaSheetVisible)
+        if (panelOpen || mediaSheetVisible || audioSheetVisible)
         {
             send("dismiss");
         }
-    }, [ mediaSheetVisible, panelOpen, send ]);
+    }, [ audioSheetVisible, mediaSheetVisible, panelOpen, send ]);
 
     const receiveEdit = useCallback(({ nativeEvent }: { nativeEvent: ProofEvent }) =>
     {
@@ -1255,6 +1320,20 @@ export function NotionEditor({
     }, [ blockActionsRequest, send ]);
     const handleReplaceImage = useCallback((blockId: string, url: string) =>
         send("replaceImage", { blockId, url }), [ send ]);
+    const handleReplaceAudio = useCallback((action: NotionEditorAudioAction) =>
+    {
+        const blockId = blockActionsRequest?.blockId;
+        if (blockId === undefined)
+        {
+            send("focus");
+            return;
+        }
+        setBlockActionsRequest(undefined);
+        setAudioReplacementBlockId(blockId);
+        setAudioSheetInitialAction(action);
+        setAudioSheetVisible(true);
+        send("dismiss");
+    }, [ blockActionsRequest, send ]);
     const handleCalloutColor = useCallback((color: NotionMarkdownColor | undefined) =>
     {
         const blockId = blockActionsRequest?.blockId;
@@ -1290,9 +1369,29 @@ export function NotionEditor({
         setMediaSheetVisible(true);
         send("dismiss");
     }, [ onFilePicker, onInsertMedia, send ]);
+    const handleInsertAudio = useCallback(() =>
+    {
+        if (onInsertAudio !== undefined)
+        {
+            send("dismiss");
+            void onInsertAudio();
+            return;
+        }
+        setAudioReplacementBlockId(undefined);
+        setAudioSheetInitialAction(undefined);
+        setAudioSheetVisible(true);
+        send("dismiss");
+    }, [ onInsertAudio, send ]);
     const handleMediaSheetDismiss = useCallback(() =>
     {
         setMediaSheetVisible(false);
+        send("focus");
+    }, [ send ]);
+    const handleAudioSheetDismiss = useCallback(() =>
+    {
+        setAudioSheetVisible(false);
+        setAudioSheetInitialAction(undefined);
+        setAudioReplacementBlockId(undefined);
         send("focus");
     }, [ send ]);
     const handleLinkResult = useCallback((result: NotionEditorLinkResult | null | undefined) =>
@@ -1450,7 +1549,6 @@ export function NotionEditor({
         setOpenPanel({ kind: "color" });
         send("dismiss");
     }, [ canColorSelection, send ]);
-    const handleNoop = useCallback(() => { }, [ ]);
     const handleFormat = useCallback((mark: ProofTextMarkKind) => () =>
         send("format", { mark }), [ send ]);
     const handleEraseFormatting = useCallback(() => send("clearFormat"), [ send ]);
@@ -1540,6 +1638,28 @@ export function NotionEditor({
         }
         await onMediaSelected?.(selection);
     }, [ onMediaSelected, send ]);
+    const handleAudioSelected = useCallback(async (selection: NotionEditorAudioSelection) =>
+    {
+        if (!selection.canceled && selection.error === undefined && selection.asset !== undefined)
+        {
+            const extra = {
+                duration: selection.asset.duration,
+                fileName: selection.asset.fileName,
+                fileSize: selection.asset.fileSize,
+                mimeType: selection.asset.mimeType,
+                url: selection.asset.uri
+            };
+            if (audioReplacementBlockId !== undefined)
+            {
+                send("replaceAudio", { ...extra, blockId: audioReplacementBlockId });
+            }
+            else
+            {
+                send("insertAudio", extra);
+            }
+        }
+        await onAudioSelected?.(selection);
+    }, [ audioReplacementBlockId, onAudioSelected, send ]);
     const handleToggleHeading1 = useCallback(
         () => send("heading", { level: 1, toggle: true }), [ send ]
     );
@@ -1618,6 +1738,24 @@ export function NotionEditor({
         takePicture: t("mediaSheet.takePicture"),
         title: t("mediaSheet.title")
     }), [ t ]);
+    const audioLabels = useMemo(() => ({
+        cancel: t("audioSheet.cancel"),
+        chooseFile: t("audioSheet.chooseFile"),
+        confirm: t("audioSheet.confirm"),
+        error: t("audioSheet.error"),
+        noAudio: t("audioSheet.noAudio"),
+        pause: t("audioSheet.pause"),
+        play: t("audioSheet.play"),
+        permissionDenied: t("audioSheet.permissionDenied"),
+        preparing: t("audioSheet.preparing"),
+        preview: t("audioSheet.preview"),
+        record: t("audioSheet.record"),
+        recording: t("audioSheet.recording"),
+        replace: t("audioSheet.replace"),
+        start: t("audioSheet.start"),
+        stop: t("audioSheet.stop"),
+        title: t("audioSheet.title")
+    }), [ t ]);
     const linkLabels = useMemo(() => ({
         apply: t("linkSheet.apply"),
         cancel: t("linkSheet.cancel"),
@@ -1638,6 +1776,8 @@ export function NotionEditor({
         /* Reuses the insert-media sheet's own labels -- replacing an image performs the exact
            same gallery/camera pick as inserting one. */
         openGallery: t("mediaSheet.openGallery"),
+        chooseAudio: t("audioSheet.chooseFile"),
+        recordAudio: t("audioSheet.record"),
         takePicture: t("mediaSheet.takePicture"),
         text: t("actionsSheet.text"),
         title: t("actionsSheet.title")
@@ -1768,7 +1908,7 @@ export function NotionEditor({
                                             components={ components }
                                             key="speech"
                                             label={ t("toolbar.speech") }
-                                            onPress={ handleNoop } />;
+                                            onPress={ handleInsertAudio } />;
                                         case "filePicker": return <ActionButton button="filePicker"
                                             color={ iconColor }
                                             components={ components }
@@ -1978,7 +2118,7 @@ export function NotionEditor({
                                     onPress={ handleTableOfContents } />
                                 { ([ 2, 3, 4, 5 ] as const).map((columnCount: ProofColumnCount) =>
                                     <BlockOption background={ cardBackground }
-                                        button="columns"
+                                        button={ proofColumnButtons[ columnCount ] }
                                         color={ iconColor }
                                         components={ components }
                                         grid
@@ -2195,6 +2335,15 @@ export function NotionEditor({
                     onSelected={ handleMediaSelected } />
             }
             {
+                audioSheetVisible && <AudioBottomSheet
+                    components={ components }
+                    initialAction={ audioSheetInitialAction }
+                    labels={ audioLabels }
+                    onDismiss={ handleAudioSheetDismiss }
+                    onSelected={ handleAudioSelected }
+                    replacement={ audioReplacementBlockId !== undefined } />
+            }
+            {
                 linkSheetVisible && linkRequest !== undefined && <LinkBottomSheet
                     dark={ dark }
                     initialLabel={ linkRequest.label }
@@ -2215,9 +2364,11 @@ export function NotionEditor({
                         onDismiss={ handleBlockActionsDismiss }
                         onReplaceImage={ (url: string) =>
                             handleReplaceImage(blockActionsRequest.blockId, url) }
+                        onReplaceAudio={ handleReplaceAudio }
                         showInsertAbove={ blockActionsRequest.blockType !== "divider" }
                         showCalloutActions={ blockActionsRequest.blockType === "callout" }
-                        showReplaceImage={ blockActionsRequest.blockType === "image" } />
+                        showReplaceImage={ blockActionsRequest.blockType === "image" }
+                        showReplaceAudio={ blockActionsRequest.blockType === "audio" } />
             }
         </View>
     );

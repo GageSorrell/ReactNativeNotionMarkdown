@@ -1,0 +1,33 @@
+---
+import { getCollection } from "astro:content"
+import ApiDeclaration from "@/components/api/ApiDeclaration.astro"
+import ApiReferenceSidebar from "@/components/api/ApiReferenceSidebar.astro"
+import ApiSelectors from "@/components/api/ApiSelectors.astro"
+import TableOfContents from "@/components/ui/toc/TableOfContents.astro"
+import DocShell from "@/layouts/DocShell.astro"
+import { apiDeclarationGroups, apiDeclarationToc } from "@/lib/api-reference"
+export const prerender = true
+export async function getStaticPaths() {
+  const entries = await getCollection("apiReference")
+  return entries.filter((entry) => entry.data.kind === "module").map((entry) => ({ params: { version: entry.data.version, package: entry.data.packageSlug, module: entry.data.moduleSlug }, props: { entry } }))
+}
+const { entry } = Astro.props
+const modules = entry.data.modules ?? []
+const declarations = entry.data.declarations ?? []
+const groups = apiDeclarationGroups(declarations)
+const tocItems = apiDeclarationToc(declarations)
+---
+<DocShell title={`${entry.data.title} API`} description={entry.data.description} version={entry.data.version} section="references" ogImage={`/og/${entry.data.version}/api/${entry.data.packageSlug}/${entry.data.moduleSlug}.png`}>
+  <ApiSelectors slot="mobile-nav" version={entry.data.version} packageSlug={entry.data.packageSlug} packageName={entry.data.packageName} modules={modules} currentSlug={entry.data.moduleSlug} />
+  <nav slot="sidebar" aria-label="API reference navigation"><ApiReferenceSidebar version={entry.data.version} packageSlug={entry.data.packageSlug} packageName={entry.data.packageName} modules={modules} currentSlug={entry.data.moduleSlug} /></nav>
+  <article data-pagefind-body class="prose max-w-none">
+    <span class="hidden" data-pagefind-filter="content_type:reference" data-pagefind-meta="content_type">reference</span><span class="hidden" data-pagefind-filter={`version:${entry.data.version}`} data-pagefind-meta="version">{entry.data.version}</span><span class="hidden" data-pagefind-filter={`package:${entry.data.packageName}`} data-pagefind-meta="package">{entry.data.packageName}</span><span class="hidden" data-pagefind-filter={`module:${entry.data.label}`} data-pagefind-meta="module">{entry.data.label}</span>
+    <p class="font-mono text-sm text-muted-foreground"><a href={`/docs/${entry.data.version}/api`}>References</a> / <a href={`/docs/${entry.data.version}/api/${entry.data.packageSlug}`}>{entry.data.packageName}</a> / {entry.data.label}</p>
+    <h1>{entry.data.title}</h1>
+    <p>{entry.data.description}</p>
+    <div class="not-prose my-6 flex flex-wrap items-center gap-3 text-sm"><code class="rounded-md bg-muted px-2 py-1">{entry.data.exportPath}</code><a class="underline underline-offset-4" href={`${entry.data.repository}/tree/${entry.data.sourceRevision}/${entry.data.sourceFile}`} target="_blank" rel="noopener noreferrer">Browse source</a></div>
+    {groups.map((group) => <section><h2>{group.category}</h2>{group.declarations.map((declaration) => <ApiDeclaration declaration={declaration} repository={entry.data.repository} revision={entry.data.sourceRevision} symbolLinks={entry.data.symbolLinks} />)}</section>)}
+    {declarations.length === 0 && <p class="rounded-lg border border-border bg-muted p-4">No public declarations were found in this module.</p>}
+  </article>
+  {tocItems.length > 0 && <TableOfContents slot="toc" items={tocItems} />}
+</DocShell>

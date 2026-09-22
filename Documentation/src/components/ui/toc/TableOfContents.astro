@@ -1,0 +1,14 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/ui/toc/TableOfContents @file TableOfContents.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import TocLink from "./TocLink.astro"
+export type TocItem = { readonly id: string; readonly label: string; readonly indent?: boolean; readonly class?: string }
+interface Props { readonly items: readonly TocItem[]; readonly class?: string }
+const { items, class: className } = Astro.props
+---
+{items.length > 0 && <nav aria-label="On this page" class={className}><p class="mb-4 text-sm font-semibold">On this page</p><div class="mb-5 h-px bg-border"></div><ul class="flex flex-col gap-3">{items.map((item) => <li><TocLink {...item} /></li>)}</ul></nav>}
+<script>
+  const links = [...document.querySelectorAll<HTMLAnchorElement>("[data-toc-link]")]
+  const targets = links.map((link) => ({ link, heading: document.getElementById(link.dataset.tocLink ?? "") })).filter((item): item is { link: HTMLAnchorElement; heading: HTMLElement } => item.heading instanceof HTMLElement)
+  const update = () => { let active = targets[0]; for (const item of targets) { if (item.heading.getBoundingClientRect().top <= window.innerHeight * .45) active = item } targets.forEach((item) => item.link.toggleAttribute("aria-current", item === active)) }
+  if (targets.length) { window.addEventListener("scroll", update, { passive: true }); update() }
+</script>

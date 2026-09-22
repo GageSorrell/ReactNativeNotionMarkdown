@@ -27,7 +27,7 @@ import {
     useColorScheme
 } from "react-native";
 import type { NotionEditorLinkResult } from "./NotionEditor.tsx";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 interface LinkBottomSheetProps
 {
@@ -90,6 +90,16 @@ export function LinkBottomSheet({
     const [ url, setUrl ] = useState(initialUrl ?? "");
     const [ label, setLabel ] = useState(initialLabel);
     const normalizedUrl = normalizeUrl(url);
+    const scrimStyle = useMemo(() => [ styles.scrim, { backgroundColor: scrim } ], [ scrim ]);
+    const sheetStyle = useMemo(() => [ styles.sheet, { backgroundColor: surface } ], [ surface ]);
+    const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
+    const fieldLabelStyle = useMemo(() => [ styles.fieldLabel, { color: muted } ], [ muted ]);
+    const inputStyle = useMemo(() => [ styles.input, {
+        backgroundColor: fieldSurface, borderColor: border, color: foreground
+    } ], [ border, fieldSurface, foreground ]);
+    const cancelTextStyle = useMemo(() => [ styles.actionText, { color: muted } ], [ muted ]);
+    const applyButtonStyle = useMemo(() => [ styles.action, { backgroundColor: accent } ], [ accent ]);
+    const applyTextStyle = useMemo(() => [ styles.actionText, styles.applyText ], [ ]);
 
     return <Modal
         animationType="slide"
@@ -104,12 +114,12 @@ export function LinkBottomSheet({
                 accessibilityLabel={ labels.cancel }
                 accessibilityRole="button"
                 onPress={ onDismiss }
-                style={ [ styles.scrim, { backgroundColor: scrim } ] } />
+                style={ scrimStyle } />
             <View accessibilityViewIsModal
-                style={ [ styles.sheet, { backgroundColor: surface } ] }>
+                style={ sheetStyle }>
                 <Text accessibilityRole="header"
-                    style={ [ styles.title, { color: foreground } ] }>{ labels.title }</Text>
-                <Text style={ [ styles.fieldLabel, { color: muted } ] }>{ labels.url }</Text>
+                    style={ titleStyle }>{ labels.title }</Text>
+                <Text style={ fieldLabelStyle }>{ labels.url }</Text>
                 <TextInput
                     autoCapitalize="none"
                     autoCorrect={ false }
@@ -118,33 +128,29 @@ export function LinkBottomSheet({
                     onChangeText={ setUrl }
                     placeholder="https://example.com"
                     placeholderTextColor={ muted }
-                    style={ [ styles.input, {
-                        backgroundColor: fieldSurface, borderColor: border, color: foreground
-                    } ] }
+                    style={ inputStyle }
                     value={ url }
                 />
-                <Text style={ [ styles.fieldLabel, { color: muted } ] }>{ labels.label }</Text>
+                <Text style={ fieldLabelStyle }>{ labels.label }</Text>
                 <TextInput
                     onChangeText={ setLabel }
                     placeholder={ labels.label }
                     placeholderTextColor={ muted }
-                    style={ [ styles.input, {
-                        backgroundColor: fieldSurface, borderColor: border, color: foreground
-                    } ] }
+                    style={ inputStyle }
                     value={ label }
                 />
                 <View style={ styles.actions }>
                     <Pressable accessibilityRole="button"
                         onPress={ onDismiss }
                         style={ styles.action }>
-                        <Text style={ [ styles.actionText, { color: muted } ] }>{ labels.cancel }</Text>
+                        <Text style={ cancelTextStyle }>{ labels.cancel }</Text>
                     </Pressable>
                     <Pressable accessibilityRole="button"
                         disabled={ normalizedUrl === undefined || label.trim().length === 0 }
                         onPress={ () => normalizedUrl !== undefined
                             && onSubmit({ label: label.trim(), url: normalizedUrl }) }
-                        style={ [ styles.action, { backgroundColor: accent } ] }>
-                        <Text style={ [ styles.actionText, styles.applyText ] }>{ labels.apply }</Text>
+                        style={ applyButtonStyle }>
+                        <Text style={ applyTextStyle }>{ labels.apply }</Text>
                     </Pressable>
                 </View>
             </View>

@@ -7,6 +7,7 @@ Intermediate
 !.env.example
 
 NotionKit
+EffectDocs
 
 Application/Mobile/.agent-device/
 Application/android/
@@ -28,3 +29,9 @@ next-env.d.ts
 Tasks.md
 
 .vercel
+
+Documentation/.data/
+Documentation/dist/
+Documentation/.astro/
+Script/ApiReference/dist/
+Script/ApiReference/.cache/

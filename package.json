@@ -34,6 +34,10 @@
     "./Package/*",
     "./Script/*"
   ],
+  "scripts": {
+    "docs:build": "npm run build --workspace Documentation",
+    "docs:check": "npm run typecheck --workspace Documentation && npm run lint --workspace Documentation && npm run build --workspace Documentation"
+  },
   "overrides": {
     "uniffi-bindgen-react-native": "0.31.0-2",
     "react-native-reanimated": "4.5.1",

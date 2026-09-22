@@ -38,11 +38,17 @@ export interface ProofBlock
         | "table_of_contents"
         | "column_list"
         | "image"
+        | "audio"
         | "video"
         | "link_to_page";
     readonly text: string;
     /** URL opened when the page reference is tapped. */
     readonly url?: string;
+    /** Optional media metadata retained for audio blocks. */
+    readonly duration?: number;
+    readonly mimeType?: string;
+    readonly fileName?: string;
+    readonly fileSize?: number;
     /** Optional icon: a page icon for `link_to_page`, or a callout's emoji. */
     readonly icon?: string;
     readonly color?: NotionMarkdownColor;
@@ -143,6 +149,7 @@ export type Action =
     | "moveBlockUp"
     | "moveBlockDown"
     | "insertImage"
+    | "insertAudio"
     | "insertVideo"
     | "callout"
     | "quote"
@@ -152,7 +159,8 @@ export type Action =
     | "insertBelow"
     | "duplicateBlock"
     | "deleteBlock"
-    | "replaceImage";
+    | "replaceImage"
+    | "replaceAudio";
 
 /**
  * A uniquely identified command sent to the native editor coordinator.
@@ -196,6 +204,12 @@ export interface ProofCommand
      * block (e.g. a divider or an image) that never receives the text cursor.
      */
     readonly blockId?: string;
+
+    /** Audio metadata for an `insertAudio` or `replaceAudio` action. */
+    readonly duration?: number;
+    readonly mimeType?: string;
+    readonly fileName?: string;
+    readonly fileSize?: number;
 };
 
 /**
@@ -242,7 +256,7 @@ const validProofBlockTypes: ReadonlyArray<ProofBlock[ "type" ]> =
     [
         "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
         "numbered_list_item", "divider",
-        "to_do", "callout", "quote", "table_of_contents", "column_list", "image", "video",
+        "to_do", "callout", "quote", "table_of_contents", "column_list", "image", "audio", "video",
         "link_to_page"
     ];
 
@@ -288,12 +302,16 @@ export function AcceptProofEvent(current: ProofSnapshot, event: ProofEvent): Pro
         (Block.checked !== undefined && Block.type !== "to_do") ||
         (Block.columnCount !== undefined && (Block.type !== "column_list"
             || ![ 2, 3, 4, 5 ].includes(Block.columnCount))) ||
-        (Block.url !== undefined && ((Block.type !== "link_to_page" && Block.type !== "image" && Block.type !== "video") || typeof Block.url !== "string")) ||
+        (Block.url !== undefined && ((Block.type !== "link_to_page" && Block.type !== "image" && Block.type !== "audio" && Block.type !== "video") || typeof Block.url !== "string")) ||
         (Block.icon !== undefined && (
             !(Block.type === "link_to_page" || Block.type === "callout") ||
             typeof Block.icon !== "string"
         )) ||
-        ((Block.type === "link_to_page" || Block.type === "image" || Block.type === "video") && typeof Block.url !== "string") ||
+        ((Block.type === "link_to_page" || Block.type === "image" || Block.type === "audio" || Block.type === "video") && (typeof Block.url !== "string" || Block.url.trim().length === 0)) ||
+        (Block.duration !== undefined && (Block.type !== "audio" || !Number.isFinite(Block.duration) || Block.duration < 0)) ||
+        (Block.mimeType !== undefined && (Block.type !== "audio" || typeof Block.mimeType !== "string")) ||
+        (Block.fileName !== undefined && (Block.type !== "audio" || typeof Block.fileName !== "string")) ||
+        (Block.fileSize !== undefined && (Block.type !== "audio" || !Number.isFinite(Block.fileSize) || Block.fileSize < 0)) ||
         (Block.color !== undefined && !validProofColors.includes(Block.color)) ||
         (Block.marks !== undefined && Block.marks.some((mark: ProofTextMark) =>
             mark.start < 0 || mark.end <= mark.start || mark.end > Block.text.length ||
@@ -338,6 +356,10 @@ export function AcceptProofEvent(current: ProofSnapshot, event: ProofEvent): Pro
                 && previous.checked === block.checked
                 && previous.columnCount === block.columnCount
                 && previous.url === block.url
+                && previous.duration === block.duration
+                && previous.mimeType === block.mimeType
+                && previous.fileName === block.fileName
+                && previous.fileSize === block.fileSize
                 && previous.icon === block.icon
                 && marksEqual
                 ? previous

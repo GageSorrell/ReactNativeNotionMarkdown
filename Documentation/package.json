@@ -1,0 +1,61 @@
+{
+  "name": "@react-native-notion-markdown/documentation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Documentation site for react-native-notion-markdown.",
+  "author": {
+    "email": "gage@sorrell.sh",
+    "name": "Gage Sorrell",
+    "url": "https://sorrell.sh"
+  },
+  "license": "MIT",
+  "scripts": {
+    "dev": "astro dev",
+    "api:generate": "npm run build --workspace @react-native-notion-markdown/api-reference && node ../Script/ApiReference/dist/cli.js generate --version v1",
+    "api:validate": "npm run build --workspace @react-native-notion-markdown/api-reference && node ../Script/ApiReference/dist/cli.js validate --version v1",
+    "api:snapshot": "npm run build --workspace @react-native-notion-markdown/api-reference && node ../Script/ApiReference/dist/cli.js snapshot",
+    "prebuild": "npm run api:generate",
+    "build": "astro build",
+    "build:snapshot": "astro build && npm run search:index",
+    "verify": "node scripts/verify-build.mjs",
+    "postbuild": "npm run search:index",
+    "search:index": "pagefind --site dist",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "astro": "7.3.3",
+    "@astrojs/mdx": "8.0.1",
+    "@astrojs/markdown-remark": "7.3.1",
+    "@astrojs/react": "6.0.6",
+    "@tailwindcss/vite": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "astro-expressive-code": "0.44.2",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.7.0",
+    "@lucide/astro": "1.47.0",
+    "lucide-react": "1.47.0",
+    "@fontsource/inter": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@types/hast": "3.0.5",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "typescript": "6.0.3",
+    "pagefind": "1.5.2",
+    "@resvg/resvg-js": "2.6.2",
+    "rehype-raw": "7.0.0",
+    "rehype-stringify": "10.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-rehype": "11.1.2",
+    "tar": "7.4.3",
+    "typedoc": "0.28.20"
+  }
+}

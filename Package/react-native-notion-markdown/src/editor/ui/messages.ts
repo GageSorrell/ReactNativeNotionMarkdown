@@ -51,6 +51,22 @@ export type EditorMessageId =
     | "mediaSheet.openGallery"
     | "mediaSheet.takePicture"
     | "mediaSheet.captureVideo"
+    | "audioSheet.title"
+    | "audioSheet.chooseFile"
+    | "audioSheet.record"
+    | "audioSheet.cancel"
+    | "audioSheet.confirm"
+    | "audioSheet.start"
+    | "audioSheet.stop"
+    | "audioSheet.preview"
+    | "audioSheet.play"
+    | "audioSheet.pause"
+    | "audioSheet.recording"
+    | "audioSheet.permissionDenied"
+    | "audioSheet.error"
+    | "audioSheet.preparing"
+    | "audioSheet.noAudio"
+    | "audioSheet.replace"
     | "linkSheet.title"
     | "linkSheet.url"
     | "linkSheet.label"
@@ -82,6 +98,7 @@ export type EditorMessageId =
     | "blockName.columnList"
     | "blockName.image"
     | "blockName.video"
+    | "blockName.audio"
     | "blockName.linkToPage"
     | "insertPanel.title"
     | "insertPanel.callout"
@@ -301,6 +318,12 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Block-actions sheet section label naming a video block",
             id: "blockName.video"
         },
+        "blockName.audio":
+        {
+            defaultMessage: "Audio",
+            description: "Block-actions sheet section label naming an audio block",
+            id: "blockName.audio"
+        },
         "colorPanel.background":
         {
             defaultMessage: "Background color",
@@ -505,6 +528,102 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Header title of the insert-media bottom sheet",
             id: "mediaSheet.title"
         },
+        "audioSheet.cancel":
+        {
+            defaultMessage: "Cancel",
+            description: "Cancels audio picking or recording",
+            id: "audioSheet.cancel"
+        },
+        "audioSheet.chooseFile":
+        {
+            defaultMessage: "Choose audio file",
+            description: "Opens the system audio file picker",
+            id: "audioSheet.chooseFile"
+        },
+        "audioSheet.confirm":
+        {
+            defaultMessage: "Insert audio",
+            description: "Confirms the selected or recorded audio",
+            id: "audioSheet.confirm"
+        },
+        "audioSheet.error":
+        {
+            defaultMessage: "Audio could not be prepared. Try again.",
+            description: "Recoverable audio workflow error",
+            id: "audioSheet.error"
+        },
+        "audioSheet.noAudio":
+        {
+            defaultMessage: "Audio",
+            description: "Fallback name for an audio block without a filename",
+            id: "audioSheet.noAudio"
+        },
+        "audioSheet.permissionDenied":
+        {
+            defaultMessage: "Microphone permission is required to record audio.",
+            description: "Explains why recording could not start",
+            id: "audioSheet.permissionDenied"
+        },
+        "audioSheet.pause":
+        {
+            defaultMessage: "Pause",
+            description: "Pauses the audio confirmation preview",
+            id: "audioSheet.pause"
+        },
+        "audioSheet.play":
+        {
+            defaultMessage: "Play",
+            description: "Plays the audio confirmation preview",
+            id: "audioSheet.play"
+        },
+        "audioSheet.preparing":
+        {
+            defaultMessage: "Preparing recorder…",
+            description: "Recorder preparation state",
+            id: "audioSheet.preparing"
+        },
+        "audioSheet.preview":
+        {
+            defaultMessage: "Preview",
+            description: "Audio confirmation preview label",
+            id: "audioSheet.preview"
+        },
+        "audioSheet.record":
+        {
+            defaultMessage: "Record audio",
+            description: "Starts the microphone recording workflow",
+            id: "audioSheet.record"
+        },
+        "audioSheet.recording":
+        {
+            defaultMessage: "Recording",
+            description: "Recording waveform accessibility label",
+            id: "audioSheet.recording"
+        },
+        "audioSheet.replace":
+        {
+            defaultMessage: "Replace audio",
+            description: "Confirms replacing an existing audio block",
+            id: "audioSheet.replace"
+        },
+        "audioSheet.start":
+        {
+            defaultMessage: "Start recording",
+            description: "Starts an audio recording",
+            id: "audioSheet.start"
+        },
+        "audioSheet.stop":
+        {
+            defaultMessage: "Stop recording",
+            description: "Stops an audio recording",
+            id: "audioSheet.stop"
+        },
+        "audioSheet.title":
+        {
+            defaultMessage: "Insert audio",
+            description: "Header title of the audio bottom sheet",
+            id: "audioSheet.title"
+        },
         "toolbar.back":
         {
             defaultMessage: "Back",
@@ -642,8 +761,8 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
         },
         "toolbar.speech":
         {
-            defaultMessage: "Dictate",
-            description: "Starts voice dictation into the current block (not yet implemented)",
+            defaultMessage: "Insert audio",
+            description: "Opens the audio insertion workflow",
             id: "toolbar.speech"
         },
         "toolbar.strikethrough":

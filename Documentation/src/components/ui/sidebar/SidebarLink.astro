@@ -1,0 +1,6 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/ui/sidebar/SidebarLink @file SidebarLink.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+interface Props { readonly href: string; readonly active?: boolean; readonly class?: string }
+const { href, active = false, class: className } = Astro.props
+---
+<a href={href} aria-current={active ? "page" : undefined} class:list={["block rounded-md text-navigation-foreground transition-colors hover:bg-muted hover:text-foreground aria-[current=page]:bg-accent aria-[current=page]:font-semibold aria-[current=page]:text-foreground", className]}><slot /></a>

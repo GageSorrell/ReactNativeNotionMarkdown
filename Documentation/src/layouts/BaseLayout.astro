@@ -1,0 +1,48 @@
+---
+/**
+ * @module @react-native-notion-markdown/documentation/layouts/BaseLayout
+ * @file BaseLayout.astro
+ * @author Gage Sorrell <gage@sorrell.sh>
+ * @copyright (c) 2026 Gage Sorrell
+ * @license MIT
+ */
+import "../styles/global.css"
+import SkipLink from "@/components/SkipLink.astro"
+
+interface Props { readonly title?: string; readonly description?: string; readonly forceDark?: boolean; readonly ogImage?: string; readonly pageType?: string }
+const { title = "react-native-notion-markdown docs", description = "Documentation for react-native-notion-markdown.", forceDark = false, ogImage = "/og/docs.png", pageType = "website" } = Astro.props
+const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin)
+---
+<!doctype html>
+<html lang="en" class:list={{ dark: forceDark }} data-force-dark={forceDark ? "true" : undefined}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta property="og:type" content={pageType} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={new URL(ogImage, canonical).toString()} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={new URL(ogImage, canonical).toString()} />
+    <meta name="color-scheme" content={forceDark ? "dark" : "light dark"} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <script is:inline>
+      ;(() => {
+        const stored = localStorage.getItem("theme")
+        const dark = stored === "dark" || (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+        document.documentElement.classList.toggle("dark", dark)
+        document.documentElement.dataset.theme = dark ? "dark" : "light"
+      })()
+    </script>
+  </head>
+  <body class="min-h-screen bg-background text-foreground antialiased">
+    <SkipLink />
+    <slot />
+  </body>
+</html>

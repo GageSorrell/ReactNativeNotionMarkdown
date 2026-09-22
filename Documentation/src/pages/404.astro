@@ -1,0 +1,7 @@
+---
+/** @module @react-native-notion-markdown/documentation/pages/404 @file 404.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import { ArrowLeft, BookOpen } from "@lucide/astro"
+import BaseLayout from "@/layouts/BaseLayout.astro"
+import { PAGE_TITLE_ID } from "@/lib/constants/skip-link"
+---
+<BaseLayout title="404 · Page not found" description="The requested documentation page could not be found."><main id={PAGE_TITLE_ID} data-pagefind-ignore class="flex min-h-screen flex-col items-center justify-center px-6 text-center"><p class="font-mono text-sm text-muted-foreground">404</p><h1 class="mt-3 text-3xl font-semibold">Page not found</h1><p class="mt-3 text-muted-foreground">That documentation page does not exist.</p><div class="mt-8 flex gap-3"><a href="/docs/v1/onboarding/introduction" class="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm text-background"><BookOpen size={16} />Read the docs</a><a href="/" class="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm"><ArrowLeft size={16} />Go home</a></div></main></BaseLayout>

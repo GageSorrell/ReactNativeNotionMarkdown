@@ -1,0 +1,41 @@
+name: Publish API reference snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full lowercase v1 source commit that is an ancestor of Origin/Master.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate source commit
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          test "${SOURCE_COMMIT}" = "${SOURCE_COMMIT,,}"
+          [[ "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
+          git fetch origin Master --depth=1
+          git merge-base --is-ancestor "${SOURCE_COMMIT}" origin/Master
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: git checkout "${{ inputs.source_commit }}"
+      - run: npm ci
+      - run: npm run build --workspace @react-native-notion-markdown/api-reference
+      - run: node Script/ApiReference/dist/cli.js generate --version v1 --source-ref "${{ inputs.source_commit }}"
+      - run: node Script/ApiReference/dist/cli.js validate --version v1
+      - name: Publish non-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node Script/ApiReference/dist/cli.js snapshot publish --version v1

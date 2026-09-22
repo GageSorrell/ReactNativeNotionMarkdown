@@ -1,0 +1,16 @@
+---
+title: Document model
+description: Work with the platform-independent representation behind parsing and rendering.
+sidebar:
+  order: 4
+---
+
+The document model is the stable boundary between markdown input and application UI. It represents blocks and inline content as typed data that can be inspected, transformed, and serialized.
+
+## Format reference
+
+The repository's [Notion markdown specification](https://github.com/GageSorrell/ReactNativeNotionMarkdown/blob/main/Local/NotionMarkdownSpec.md) is the source of truth for supported syntax. Keep the format spec separate from renderer details so the model remains useful to other tools.
+
+## Platform independence
+
+The `./document` entry point has no React or React Native dependency. Use it in tests, content pipelines, and server-side preparation.

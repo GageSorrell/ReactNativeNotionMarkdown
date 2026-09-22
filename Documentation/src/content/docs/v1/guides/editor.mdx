@@ -1,0 +1,17 @@
+---
+title: Editor
+description: Build editing workflows with the document model and editor exports.
+sidebar:
+  order: 3
+---
+
+The editor builds on the same document representation as the renderer. This allows a document to move between viewing and editing without a second data format.
+
+## Editing loop
+
+- Load or create a document.
+- Apply focused edits through editor commands.
+- Render the current state for feedback.
+- Serialize the final document for persistence.
+
+The editor UI exports are intentionally separate so teams can replace controls while keeping the underlying model and commands.

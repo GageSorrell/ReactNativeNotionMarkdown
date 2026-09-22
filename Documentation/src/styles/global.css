@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-navigation-heading: var(--foreground);
+  --color-navigation-foreground: var(--muted-foreground);
+}
+
+:root {
+  --background: oklch(0.99 0.002 286);
+  --foreground: oklch(0.20 0.02 260);
+  --muted: oklch(0.96 0.004 286);
+  --muted-foreground: oklch(0.48 0.02 260);
+  --border: oklch(0.89 0.01 260);
+  --border-strong: oklch(0.76 0.02 260);
+  --accent: oklch(0.93 0.02 250);
+  --sticky-header-height: 4rem;
+}
+
+.dark {
+  --background: oklch(0.16 0.015 260);
+  --foreground: oklch(0.95 0.005 286);
+  --muted: oklch(0.22 0.015 260);
+  --muted-foreground: oklch(0.72 0.015 260);
+  --border: oklch(0.29 0.018 260);
+  --border-strong: oklch(0.42 0.02 260);
+  --accent: oklch(0.28 0.025 250);
+}
+
+html { scroll-behavior: smooth; }
+body { min-width: 320px; font-family: var(--font-sans); }
+body[data-mobile-menu-open], html[data-mobile-menu-open] { overflow: hidden; }
+a { color: inherit; }
+::selection { background: oklch(0.82 0.08 250); color: oklch(0.18 0.02 260); }
+
+.prose { color: var(--foreground); font-size: 1.0625rem; line-height: 1.75; }
+.prose > :first-child { margin-top: 0; }
+.prose h1, .prose h2, .prose h3, .prose h4 { color: var(--foreground); font-weight: 650; letter-spacing: -0.025em; scroll-margin-top: 6rem; }
+.prose h1 { font-size: clamp(2rem, 4vw, 3rem); line-height: 1.1; margin: 0 0 1.5rem; }
+.prose h2 { font-size: 1.65rem; line-height: 1.2; margin: 2.8rem 0 1rem; }
+.prose h3 { font-size: 1.25rem; line-height: 1.3; margin: 2rem 0 0.75rem; }
+.prose p, .prose ul, .prose ol, .prose pre, .prose blockquote { margin: 1rem 0; }
+.prose ul { list-style: disc; padding-left: 1.5rem; }
+.prose ol { list-style: decimal; padding-left: 1.5rem; }
+.prose li + li { margin-top: 0.35rem; }
+.prose a:not(.heading-permalink) { color: oklch(0.45 0.12 250); text-decoration: underline; text-underline-offset: 3px; }
+.dark .prose a:not(.heading-permalink) { color: oklch(0.78 0.10 250); }
+.prose code { border-radius: 0.3rem; background: var(--muted); padding: 0.15rem 0.35rem; font-family: var(--font-mono); font-size: 0.88em; }
+.prose pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.65rem; background: #10151e; padding: 1rem 1.15rem; color: #e5e7eb; font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.6; }
+.prose pre code { background: transparent; padding: 0; }
+.prose blockquote { border-left: 3px solid var(--border-strong); padding-left: 1rem; color: var(--muted-foreground); }
+.heading-permalink { display: inline-flex; width: 1.25rem; margin-left: -1.55rem; margin-right: 0.3rem; color: var(--muted-foreground); opacity: 0; transition: opacity 150ms; vertical-align: middle; }
+.prose h1:hover .heading-permalink, .prose h2:hover .heading-permalink, .prose h3:hover .heading-permalink, .prose h4:hover .heading-permalink, .heading-permalink:focus { opacity: 1; }
+.heading-permalink svg { width: 1rem; height: 1rem; }
+
+@media (max-width: 720px) {
+  .heading-permalink { margin-left: -1.35rem; }
+}

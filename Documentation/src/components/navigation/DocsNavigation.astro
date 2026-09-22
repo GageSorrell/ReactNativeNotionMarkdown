@@ -1,0 +1,14 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/navigation/DocsNavigation @file DocsNavigation.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import { DOCS_VERSIONS, defaultDocsVersion } from "@/lib/versions"
+import NavigationLogo from "./NavigationLogo.astro"
+import NavigationDesktopActions from "./NavigationDesktopActions.astro"
+import NavigationMobileMenu from "./NavigationMobileMenu.astro"
+import SearchDialog from "./SearchDialog"
+import type { DocsNavSection } from "@/lib/docs-sections"
+interface Props { readonly section: DocsNavSection; readonly version?: string }
+const { section, version = defaultDocsVersion } = Astro.props
+const sectionLinks = [{ key: "onboarding", label: "Getting started", href: `/docs/${version}/onboarding/introduction` }, { key: "guides", label: "Guides", href: `/docs/${version}/guides/entry-points` }, { key: "references", label: "References", href: `/docs/${version}/api` }] as const
+---
+<header class="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur"><div class="mx-auto flex h-16 max-w-352 items-center px-4"><NavigationLogo /><div class="ml-8 hidden items-center gap-5 md:flex"><a href={`/docs/${version}/onboarding/introduction`} class="text-sm font-medium">Docs</a>{sectionLinks.map((link) => <a href={link.href} aria-current={section === link.key ? "page" : undefined} class:list={["text-sm text-muted-foreground hover:text-foreground", section === link.key && "font-semibold text-foreground"]}>{link.label}</a>)}<div class="flex gap-1 rounded-md border border-border bg-muted p-0.5">{DOCS_VERSIONS.map((item) => <a href={`/docs/${item.value}/onboarding/introduction`} aria-current={item.value === version ? "page" : undefined} class:list={["rounded px-2 py-1 font-mono text-xs", item.value === version ? "bg-background font-semibold" : "text-muted-foreground"]}>{item.label}</a>)}</div></div><div class="ml-auto hidden md:block"><NavigationDesktopActions /></div><NavigationMobileMenu /></div></header>
+<SearchDialog client:only="react" version={version} />

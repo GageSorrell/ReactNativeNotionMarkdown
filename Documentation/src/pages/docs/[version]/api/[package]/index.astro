@@ -1,0 +1,26 @@
+---
+import { getCollection } from "astro:content"
+import ApiReferenceSidebar from "@/components/api/ApiReferenceSidebar.astro"
+import ApiSelectors from "@/components/api/ApiSelectors.astro"
+import DocShell from "@/layouts/DocShell.astro"
+export const prerender = true
+export async function getStaticPaths() {
+  const entries = await getCollection("apiReference")
+  return entries.filter((entry) => entry.data.kind === "package").map((entry) => ({ params: { version: entry.data.version, package: entry.data.packageSlug }, props: { entry } }))
+}
+const { entry } = Astro.props
+const modules = entry.data.modules ?? []
+---
+<DocShell title={`${entry.data.title} API`} description={entry.data.description} version={entry.data.version} section="references" ogImage={`/og/${entry.data.version}/api/${entry.data.packageSlug}.png`}>
+  <ApiSelectors slot="mobile-nav" version={entry.data.version} packageSlug={entry.data.packageSlug} packageName={entry.data.packageName} modules={modules} />
+  <nav slot="sidebar" aria-label="API reference navigation"><ApiReferenceSidebar version={entry.data.version} packageSlug={entry.data.packageSlug} packageName={entry.data.packageName} modules={modules} /></nav>
+  <article data-pagefind-body class="prose max-w-none">
+    <span class="hidden" data-pagefind-filter="content_type:reference" data-pagefind-meta="content_type">reference</span><span class="hidden" data-pagefind-filter={`version:${entry.data.version}`} data-pagefind-meta="version">{entry.data.version}</span><span class="hidden" data-pagefind-filter={`package:${entry.data.packageName}`} data-pagefind-meta="package">{entry.data.packageName}</span>
+    <p class="font-mono text-sm text-muted-foreground"><a href={`/docs/${entry.data.version}/api`}>References</a> / {entry.data.packageName}</p>
+    <h1>{entry.data.title}</h1>
+    <p>{entry.data.description}</p>
+    <div class="not-prose my-8 flex flex-wrap gap-3"><a class="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted" href={entry.data.npm} target="_blank" rel="noopener noreferrer">View on npm</a><a class="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted" href={`${entry.data.repository}/tree/${entry.data.sourceRevision}/Package/react-native-notion-markdown`} target="_blank" rel="noopener noreferrer">View source</a></div>
+    <h2>Modules</h2>
+    <div class="not-prose grid gap-3 sm:grid-cols-2">{modules.map((module) => <a href={module.href} class="rounded-xl border border-border p-4 hover:border-border-strong hover:bg-muted"><span class="font-mono text-sm font-semibold">{module.label}</span><span class="mt-2 block text-sm text-muted-foreground">{module.slug === "index" ? "Package entry point" : `Export ./${module.label}`}</span></a>)}</div>
+  </article>
+</DocShell>

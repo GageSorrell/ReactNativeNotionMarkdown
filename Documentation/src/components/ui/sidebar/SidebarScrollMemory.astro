@@ -1,0 +1,9 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/ui/sidebar/SidebarScrollMemory @file SidebarScrollMemory.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+interface Props { readonly storageKey: string }
+const { storageKey } = Astro.props
+---
+<script is:inline define:vars={{ storageKey }}>
+  const rail = document.querySelector("[data-doc-sidebar-rail]")
+  if (rail) { const saved = sessionStorage.getItem(storageKey); if (saved) rail.scrollTop = Number(saved); const save = () => sessionStorage.setItem(storageKey, String(rail.scrollTop)); rail.addEventListener("scroll", save, { passive: true }); window.addEventListener("pagehide", save) }
+</script>

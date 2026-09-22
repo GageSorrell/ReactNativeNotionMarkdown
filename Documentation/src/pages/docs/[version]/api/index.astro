@@ -1,0 +1,25 @@
+---
+import { getCollection } from "astro:content"
+import ApiReferenceSidebar from "@/components/api/ApiReferenceSidebar.astro"
+import ApiSelectors from "@/components/api/ApiSelectors.astro"
+import DocShell from "@/layouts/DocShell.astro"
+export const prerender = true
+export async function getStaticPaths() {
+  const entries = await getCollection("apiReference")
+  return entries.filter((entry) => entry.data.kind === "landing").map((entry) => ({ params: { version: entry.data.version }, props: { entry } }))
+}
+const { entry } = Astro.props
+const modules = entry.data.modules ?? []
+---
+<DocShell title={`${entry.data.title} · ${entry.data.version}`} description={entry.data.description} version={entry.data.version} section="references" ogImage={`/og/${entry.data.version}/api.png`}>
+  <ApiSelectors slot="mobile-nav" version={entry.data.version} packageSlug={entry.data.packageSlug} packageName={entry.data.packageName} modules={modules} />
+  <nav slot="sidebar" aria-label="API reference navigation"><ApiReferenceSidebar version={entry.data.version} packageSlug={entry.data.packageSlug} packageName={entry.data.packageName} modules={modules} /></nav>
+  <article data-pagefind-body class="prose max-w-none">
+    <span class="hidden" data-pagefind-filter="content_type:reference" data-pagefind-meta="content_type">reference</span><span class="hidden" data-pagefind-filter={`version:${entry.data.version}`} data-pagefind-meta="version">{entry.data.version}</span>
+    <p class="font-mono text-sm text-muted-foreground">References / {entry.data.version}</p>
+    <h1>{entry.data.title}</h1>
+    <p>{entry.data.description}</p>
+    <h2>Packages</h2>
+    <div class="not-prose rounded-xl border border-border bg-muted/30 p-5"><a href={`/docs/${entry.data.version}/api/${entry.data.packageSlug}`} class="text-lg font-semibold underline underline-offset-4">{entry.data.packageName}</a><p class="mt-2 text-sm text-muted-foreground">{entry.data.group} · {modules.length} generated modules</p></div>
+  </article>
+</DocShell>

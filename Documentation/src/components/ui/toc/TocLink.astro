@@ -1,0 +1,6 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/ui/toc/TocLink @file TocLink.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+interface Props { readonly id: string; readonly label: string; readonly indent?: boolean; readonly class?: string }
+const { id, label, indent = false, class: className } = Astro.props
+---
+<a href={`#${id}`} data-toc-link={id} class:list={["block text-sm text-navigation-foreground transition-colors hover:text-foreground aria-[current=location]:font-semibold aria-[current=location]:text-foreground", indent && "pl-3", className]}>{label}</a>

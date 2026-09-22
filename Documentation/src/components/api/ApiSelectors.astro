@@ -1,0 +1,9 @@
+---
+interface Props { readonly version: string; readonly packageSlug: string; readonly packageName: string; readonly modules: ReadonlyArray<{ readonly slug: string; readonly label: string; readonly href: string }>; readonly currentSlug?: string }
+const { version, packageSlug, packageName, modules, currentSlug } = Astro.props
+---
+<div class="grid gap-2 rounded-lg border border-border bg-muted/40 p-3 lg:hidden">
+  <label class="grid gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Version<select class="rounded-md border border-border bg-background px-2 py-2 text-sm" onchange="if (this.value) window.location.href = this.value"><option value={`/docs/${version}/api/${packageSlug}`}>{version}</option></select></label>
+  <label class="grid gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Package<select class="rounded-md border border-border bg-background px-2 py-2 text-sm" onchange="if (this.value) window.location.href = this.value"><option value={`/docs/${version}/api/${packageSlug}`}>{packageName}</option></select></label>
+  <label class="grid gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Module<select class="rounded-md border border-border bg-background px-2 py-2 text-sm" onchange="if (this.value) window.location.href = this.value"><option value={`/docs/${version}/api/${packageSlug}`}>{currentSlug ? modules.find((module) => module.slug === currentSlug)?.label ?? "Overview" : "Overview"}</option>{modules.map((module) => <option value={module.href}>{module.label}</option>)}</select></label>
+</div>

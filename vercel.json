@@ -1,0 +1,7 @@
+{
+  "framework": "astro",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build:snapshot --workspace Documentation",
+  "outputDirectory": "Documentation/dist",
+  "cleanUrls": true
+}

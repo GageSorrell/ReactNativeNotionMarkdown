@@ -1,0 +1,47 @@
+name: Roll back documentation
+
+on:
+  workflow_dispatch:
+    inputs:
+      website_commit:
+        description: Full website commit, which must be an ancestor of Origin/Master.
+        required: true
+        type: string
+      snapshot_tag:
+        description: Exact api-reference-<sha256> release tag to restore.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.website_commit }}
+          fetch-depth: 0
+      - run: git fetch origin Master --depth=1 && git merge-base --is-ancestor "${{ inputs.website_commit }}" origin/Master
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @react-native-notion-markdown/api-reference
+      - run: node Script/ApiReference/dist/cli.js snapshot restore --version v1 --tag "${{ inputs.snapshot_tag }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: npm run build:snapshot --workspace Documentation && npm run verify --workspace Documentation
+      - name: Deploy and promote
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npx vercel@59.25.0 pull --yes --environment=production --token "$VERCEL_TOKEN"
+          npx vercel@59.25.0 build --prod --token "$VERCEL_TOKEN"
+          DEPLOYMENT=$(npx vercel@59.25.0 deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN" | tail -n 1)
+          curl --fail --silent --show-error "$DEPLOYMENT/docs/v1/api" >/dev/null
+          npx vercel@59.25.0 promote "$DEPLOYMENT" --token "$VERCEL_TOKEN"

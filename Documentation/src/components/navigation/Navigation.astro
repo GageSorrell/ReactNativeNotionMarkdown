@@ -1,0 +1,10 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/navigation/Navigation @file Navigation.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import NavigationLogo from "./NavigationLogo.astro"
+import NavigationLinks from "./NavigationLinks.astro"
+import NavigationDesktopActions from "./NavigationDesktopActions.astro"
+import NavigationMobileMenu from "./NavigationMobileMenu.astro"
+interface Props { readonly activeSlug?: "docs"; readonly version?: string }
+const { activeSlug, version } = Astro.props
+---
+<header class="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur"><div class="mx-auto flex h-16 max-w-352 items-center px-4"><NavigationLogo /><nav class="ml-8 hidden items-center gap-6 md:flex"><NavigationLinks activeSlug={activeSlug} version={version} /></nav><div class="ml-auto hidden md:block"><NavigationDesktopActions /></div><NavigationMobileMenu /></div></header>

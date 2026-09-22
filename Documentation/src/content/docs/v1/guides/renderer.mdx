@@ -1,0 +1,24 @@
+---
+title: Renderer
+description: Render structured Notion-style markdown in a React Native surface.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+The renderer consumes the document model and maps blocks, inline marks, links, and media to React Native components.
+
+## Rendering flow
+
+1. Parse the markdown into the document model.
+2. Resolve blocks and inline content.
+3. Render the model with the default components or your own overrides.
+
+<Aside type="tip" title="Keep parsing separate">
+  Parse content before the render boundary when you need caching, validation, or server-side preparation.
+</Aside>
+
+## Custom components
+
+Start with the default renderer and replace only the block or mark components that need application-specific behavior. Keep custom components focused on presentation so the document engine remains reusable.

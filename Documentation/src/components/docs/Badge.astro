@@ -1,0 +1,7 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/docs/Badge @file Badge.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+interface Props { readonly text: string; readonly variant?: "note" | "tip" | "danger" | "caution" | "success" | "default"; readonly size?: "small" | "medium" | "large" }
+const { text, variant = "default", size = "small" } = Astro.props
+---
+<span class={`badge badge--${variant} badge--${size}`}>{text}</span>
+<style>.badge{display:inline-block;border:1px solid var(--border);border-radius:.3rem;font-weight:600;line-height:1;white-space:nowrap}.badge--small{font-size:.75rem;padding:.25rem .5rem}.badge--medium{font-size:.875rem;padding:.3rem .65rem}.badge--large{font-size:1rem;padding:.35rem .75rem}.badge--note{color:#1d4ed8;background:#dbeafe}.badge--tip{color:#047857;background:#d1fae5}.badge--danger{color:#b91c1c;background:#fee2e2}.badge--caution{color:#b45309;background:#fef3c7}.badge--success{color:#15803d;background:#dcfce7}.badge--default{color:var(--foreground);background:var(--muted)}.dark .badge--note{color:#bfdbfe;background:#1e3a8a}.dark .badge--tip{color:#a7f3d0;background:#064e3b}.dark .badge--danger{color:#fecaca;background:#7f1d1d}.dark .badge--caution{color:#fde68a;background:#78350f}.dark .badge--success{color:#bbf7d0;background:#14532d}</style>

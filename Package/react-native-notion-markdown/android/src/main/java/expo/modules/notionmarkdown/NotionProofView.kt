@@ -14,9 +14,13 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.DrawableWrapper
+import android.media.AudioAttributes
 import android.net.Uri
 import android.media.MediaMetadataRetriever
+import android.media.MediaPlayer
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.InputType
 import android.text.Spanned
@@ -91,7 +95,7 @@ private val proofBackgroundColors: Map<String, Int> = mapOf(
 
 private val proofValidBlockTypes = listOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
-  "numbered_list_item", "to_do", "callout", "quote", "divider", "table_of_contents", "column_list", "image", "video",
+  "numbered_list_item", "to_do", "callout", "quote", "divider", "table_of_contents", "column_list", "image", "audio", "video",
   "link_to_page"
 )
 private val proofValidColors = proofTextColors.keys + proofBackgroundColors.keys
@@ -104,7 +108,7 @@ private val proofMergeableBlockTypes = setOf(
 )
 
 /** Block types with no navigable text of their own -- see [NotionProofView.handleAtomicBlockBackspace]. */
-private val proofAtomicBlockTypes = setOf("divider", "image", "video")
+private val proofAtomicBlockTypes = setOf("divider", "image", "audio", "video")
 
 /** A checked to-do's checkbox fill and its unchecked border, matching the renderer's theme accent. */
 private fun proofAccentColor(dark: Boolean) = if (dark) Color.rgb(0x81, 0xB8, 0xE7) else Color.rgb(0x2F, 0x6E, 0xAB)
@@ -159,7 +163,11 @@ private data class ProofBlock(
   var checked: Boolean = false,
   var url: String? = null,
   var icon: String? = null,
-  var columnCount: Int? = null
+  var columnCount: Int? = null,
+  var duration: Double? = null,
+  var mimeType: String? = null,
+  var fileName: String? = null,
+  var fileSize: Double? = null
 ) {
   fun payload(): Map<String, Any?> {
     val base = mutableMapOf<String, Any?>("id" to id, "type" to type, "text" to text)
@@ -169,8 +177,14 @@ private data class ProofBlock(
     if (toggle && collapsed) base["collapsed"] = true
     if (type == "to_do") base["checked"] = checked
     if (type == "column_list") base["columnCount"] = (columnCount ?: 2).coerceIn(2, 5)
-    if (type == "link_to_page" || type == "image" || type == "video") {
+    if (type == "link_to_page" || type == "image" || type == "audio" || type == "video") {
       url?.let { base["url"] = it }
+    }
+    if (type == "audio") {
+      duration?.let { base["duration"] = it }
+      mimeType?.let { base["mimeType"] = it }
+      fileName?.let { base["fileName"] = it }
+      fileSize?.let { base["fileSize"] = it }
     }
     if (type == "link_to_page" || type == "callout") {
       icon?.let { base["icon"] = it }
@@ -204,7 +218,11 @@ private data class ProofPasteBlock(
   val checked: Boolean = false,
   val url: String? = null,
   val icon: String? = null,
-  val columnCount: Int? = null
+  val columnCount: Int? = null,
+  val duration: Double? = null,
+  val mimeType: String? = null,
+  val fileName: String? = null,
+  val fileSize: Double? = null
 )
 
 /** Marker span used to preserve inline marks while Android adjusts ranges during text edits. */
@@ -272,7 +290,7 @@ private class BlockPaddingSpan(
 
 /** Keeps non-rendering blocks measurable while Android applies spans to their caret lines. */
 private fun ProofBlock.nativeText(): String = when {
-  type == "image" || type == "video" -> MEDIA_TEXT
+  type == "image" || type == "audio" || type == "video" -> MEDIA_TEXT
   text.isEmpty() -> EMPTY_BLOCK_TEXT
   else -> text
 }
@@ -491,6 +509,93 @@ private class ProofVideoSpan(
     paint.style = previousStyle
     paint.color = previousColor
     paint.alpha = previousAlpha
+  }
+}
+
+/** Draws a compact, atomic audio card. Playback is owned by [NotionProofView] so every audio
+ * block in one editor shares one player and tapping the card can distinguish play from select. */
+private class ProofAudioSpan(
+  private val input: EditText,
+  private val label: String,
+  private val durationSeconds: Double?,
+  private val dark: Boolean,
+  private val currentTimeSeconds: () -> Double,
+  private val playing: () -> Boolean
+) : ReplacementSpan() {
+  private val density = input.resources.displayMetrics.density
+  private val cardHeight = (72 * density).roundToInt().coerceAtLeast(1)
+
+  private fun targetWidth(): Int = (input.width - input.paddingLeft - input.paddingRight).coerceAtLeast(1)
+
+  override fun getSize(
+    paint: Paint,
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    fm: Paint.FontMetricsInt?
+  ): Int {
+    fm?.let {
+      it.top = -cardHeight
+      it.ascent = -cardHeight
+      it.descent = 0
+      it.bottom = 0
+    }
+    return targetWidth()
+  }
+
+  override fun draw(
+    canvas: Canvas,
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    x: Float,
+    top: Int,
+    y: Int,
+    bottom: Int,
+    paint: Paint
+  ) {
+    val width = targetWidth().toFloat()
+    val rect = RectF(x, (y - cardHeight).toFloat(), x + width, y.toFloat())
+    val previousColor = paint.color
+    val previousStyle = paint.style
+    paint.style = Paint.Style.FILL
+    paint.color = if (dark) Color.rgb(45, 54, 59) else Color.rgb(240, 246, 248)
+    canvas.drawRoundRect(rect, 12 * density, 12 * density, paint)
+    paint.color = if (dark) Color.rgb(142, 193, 219) else Color.rgb(51, 126, 169)
+    val centerY = rect.centerY()
+    val iconX = rect.left + 26 * density
+    canvas.drawCircle(iconX, centerY, 15 * density, paint)
+    paint.color = Color.WHITE
+    if (playing()) {
+      canvas.drawRoundRect(iconX - 6 * density, centerY - 6 * density,
+        iconX - 1 * density, centerY + 6 * density, 1 * density, 1 * density, paint)
+      canvas.drawRoundRect(iconX + 1 * density, centerY - 6 * density,
+        iconX + 6 * density, centerY + 6 * density, 1 * density, 1 * density, paint)
+    } else {
+      val triangle = Path().apply {
+        moveTo(iconX - 3 * density, centerY - 6 * density)
+        lineTo(iconX + 6 * density, centerY)
+        lineTo(iconX - 3 * density, centerY + 6 * density)
+        close()
+      }
+      canvas.drawPath(triangle, paint)
+    }
+    paint.color = if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+    paint.textSize = 16 * density
+    canvas.drawText(label.ifBlank { "Audio" }.take(42), rect.left + 52 * density, centerY - 2 * density, paint)
+    paint.textSize = 12 * density
+    paint.alpha = 175
+    val duration = durationSeconds?.takeIf { it.isFinite() && it >= 0 }?.let { formatAudioTime(it) } ?: "Audio"
+    val current = currentTimeSeconds().coerceAtLeast(0.0).coerceAtMost(durationSeconds ?: Double.MAX_VALUE)
+    canvas.drawText("${formatAudioTime(current)} / $duration", rect.left + 52 * density, centerY + 18 * density, paint)
+    paint.alpha = 255
+    paint.color = previousColor
+    paint.style = previousStyle
+  }
+
+  private fun formatAudioTime(seconds: Double): String {
+    val total = seconds.roundToInt().coerceAtLeast(0)
+    return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
   }
 }
 
@@ -916,6 +1021,19 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   private var keyboardRequestPending = false
   private var keyboardShowAttempts = 0
   private val showKeyboardRunnable = Runnable { showKeyboardWhenReady() }
+  private var audioPlayer: MediaPlayer? = null
+  private var audioPlayerBlockId: String? = null
+  private var audioPlayerPrepared = false
+  private var audioPlayerPlaying = false
+  private val audioProgressHandler = Handler(Looper.getMainLooper())
+  private val audioProgressRunnable = object : Runnable {
+    override fun run() {
+      if (audioPlayerPlaying) {
+        input.invalidate()
+        audioProgressHandler.postDelayed(this, 250)
+      }
+    }
+  }
 
   init {
     input.gravity = Gravity.TOP or Gravity.START
@@ -1001,6 +1119,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val collapsed = (block["collapsed"] as? Boolean) == true && toggle
       val checked = (block["checked"] as? Boolean) == true && type == "to_do"
       val url = block["url"] as? String
+      val duration = (block["duration"] as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0 }
+      val mimeType = block["mimeType"] as? String
+      val fileName = block["fileName"] as? String
+      val fileSize = (block["fileSize"] as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0 }
       val icon = block["icon"] as? String
       val marks = mutableListOf<ProofMark>()
       (block["marks"] as? List<*>)?.forEach { rawMark ->
@@ -1017,8 +1139,8 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       }
       val columnCount = (block["columnCount"] as? Number)?.toInt()?.takeIf { it in 2..5 }
       if (text.contains('\n') || type !in proofValidBlockTypes
-        || ((type == "link_to_page" || type == "image" || type == "video") && url.isNullOrBlank())) null
-      else ProofBlock(id, type, text, color, depth, toggle, collapsed, marks, checked, url, icon, columnCount)
+        || ((type == "link_to_page" || type == "image" || type == "audio" || type == "video") && url.isNullOrBlank())) null
+      else ProofBlock(id, type, text, color, depth, toggle, collapsed, marks, checked, url, icon, columnCount, duration, mimeType, fileName, fileSize)
     }
     if (nextBlocks.isEmpty() || nextBlocks.size != supplied.size || nextBlocks.map { it.id }.distinct().size != nextBlocks.size) return
     applying = true
@@ -1026,6 +1148,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     revision = (value["revision"] as? Number)?.toInt() ?: 0
     blocks.clear()
     blocks.addAll(nextBlocks)
+    releaseAudioPlayer()
     BaseInputConnection.removeComposingSpans(input.text)
     input.setText(blocks.nativeText())
     input.setSelection(0)
@@ -1077,7 +1200,89 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     keyboardRequestPending = false
     keyboardShowAttempts = 0
     input.removeCallbacks(showKeyboardRunnable)
+    releaseAudioPlayer()
     super.onDetachedFromWindow()
+  }
+
+  private fun releaseAudioPlayer() {
+    audioProgressHandler.removeCallbacks(audioProgressRunnable)
+    audioPlayer?.runCatching { stop() }
+    audioPlayer?.release()
+    audioPlayer = null
+    audioPlayerBlockId = null
+    audioPlayerPrepared = false
+    audioPlayerPlaying = false
+  }
+
+  private fun refreshAudioBlock() {
+    input.post {
+      input.requestLayout()
+      input.invalidate()
+    }
+  }
+
+  private fun toggleAudio(block: ProofBlock) {
+    val url = block.url ?: return
+    if (audioPlayerBlockId == block.id && audioPlayer != null) {
+      if (!audioPlayerPrepared) return
+      runCatching {
+        if (audioPlayerPlaying) {
+          audioPlayer?.pause()
+          audioPlayerPlaying = false
+        } else {
+          audioPlayer?.start()
+          audioPlayerPlaying = true
+        }
+      }.onFailure {
+        releaseAudioPlayer()
+      }
+      refreshAudioBlock()
+      if (audioPlayerPlaying) audioProgressHandler.post(audioProgressRunnable)
+      else audioProgressHandler.removeCallbacks(audioProgressRunnable)
+      return
+    }
+    releaseAudioPlayer()
+    val player = MediaPlayer()
+    audioPlayer = player
+    audioPlayerBlockId = block.id
+    player.setAudioAttributes(
+      AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+        .build()
+    )
+    player.setOnPreparedListener {
+      if (audioPlayer !== it || audioPlayerBlockId != block.id) return@setOnPreparedListener
+      audioPlayerPrepared = true
+      runCatching {
+        it.start()
+        audioPlayerPlaying = true
+      }.onFailure {
+        releaseAudioPlayer()
+      }
+      refreshAudioBlock()
+      if (audioPlayerPlaying) audioProgressHandler.post(audioProgressRunnable)
+    }
+    player.setOnCompletionListener {
+      audioPlayerPlaying = false
+      refreshAudioBlock()
+      audioProgressHandler.removeCallbacks(audioProgressRunnable)
+    }
+    player.setOnErrorListener { _, _, _ ->
+      releaseAudioPlayer()
+      true
+    }
+    runCatching {
+      val uri = Uri.parse(url)
+      if (uri.scheme == "file" && uri.path != null) {
+        player.setDataSource(uri.path!!)
+      } else {
+        player.setDataSource(context, uri)
+      }
+      player.prepareAsync()
+    }.onFailure {
+      releaseAudioPlayer()
+    }
   }
 
   fun setDark(dark: Boolean) {
@@ -1099,7 +1304,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
 
   fun setImageMaxWidth(value: Int?) {
     imageMaxWidth = value?.takeIf { it > 0 } ?: 960
-    if (blocks.any { it.type == "image" || it.type == "video" }) styleBlocks()
+    if (blocks.any { it.type == "image" || it.type == "audio" || it.type == "video" }) styleBlocks()
   }
 
   fun command(value: Map<String, Any?>) {
@@ -1126,6 +1331,13 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       "tableOfContents" -> insertTableOfContents()
       "columns" -> insertColumns((value["columnCount"] as? Number)?.toInt() ?: 2)
       "insertImage" -> insertMedia("image", value["url"] as? String)
+      "insertAudio" -> insertAudio(
+        value["url"] as? String,
+        (value["duration"] as? Number)?.toDouble(),
+        value["mimeType"] as? String,
+        value["fileName"] as? String,
+        (value["fileSize"] as? Number)?.toDouble()
+      )
       "insertVideo" -> insertMedia("video", value["url"] as? String)
       "toDo" -> insertToDo()
       "callout" -> insertCallout()
@@ -1183,6 +1395,14 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       "duplicateBlock" -> duplicateBlockById(value["blockId"] as? String)
       "deleteBlock" -> deleteBlockById(value["blockId"] as? String)
       "replaceImage" -> replaceImageById(value["blockId"] as? String, value["url"] as? String)
+      "replaceAudio" -> replaceAudioById(
+        value["blockId"] as? String,
+        value["url"] as? String,
+        (value["duration"] as? Number)?.toDouble(),
+        value["mimeType"] as? String,
+        value["fileName"] as? String,
+        (value["fileSize"] as? Number)?.toDouble()
+      )
       "softBreak" -> replaceSelection("\u2028")
       // Acceptance probe uses the actual EditText connection, not fabricated composing events.
       "compose" -> {
@@ -1425,7 +1645,28 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     if (index !in 0..blocks.size) return
     blocks.add(index, ProofBlock(newId(), type, "", url = url))
     replaceNativeTextAndSelect(index + 1)
-    scheduleEvent("insert-image")
+    scheduleEvent("insert-$type")
+  }
+
+  /** Insert an audio block after the current selection, retaining optional asset metadata. */
+  private fun insertAudio(
+    rawUrl: String?,
+    duration: Double?,
+    mimeType: String?,
+    fileName: String?,
+    fileSize: Double?
+  ) {
+    val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    replaceSelection("\n")
+    val index = input.text.take(input.selectionStart).count { it == '\n' }
+    if (index !in 0..blocks.size) return
+    blocks.add(index, ProofBlock(newId(), "audio", "", url = url,
+      duration = duration?.takeIf { it.isFinite() && it >= 0 },
+      mimeType = mimeType?.takeIf { it.isNotBlank() },
+      fileName = fileName?.takeIf { it.isNotBlank() },
+      fileSize = fileSize?.takeIf { it.isFinite() && it >= 0 }))
+    replaceNativeTextAndSelect(index + 1)
+    scheduleEvent("insert-audio")
   }
 
   /** Insert an unchecked to-do block after the current cursor/selection. */
@@ -1630,6 +1871,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
   /** Remove the identified block, matching `removeBlocks()`'s never-empty-document guarantee. */
   private fun deleteBlockById(id: String?) {
     val index = blockIndexById(id) ?: return
+    if (blocks[index].type == "audio" && audioPlayerBlockId == blocks[index].id) releaseAudioPlayer()
     blocks.removeAt(index)
     if (blocks.isEmpty()) blocks.add(ProofBlock(newId(), "text", ""))
     replaceNativeTextAndSelect(index.coerceAtMost(blocks.lastIndex))
@@ -1645,6 +1887,30 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     styleBlocks()
     invalidate()
     scheduleEvent("replace-image")
+  }
+
+  /** Swap an audio source in place while preserving its block id and position. */
+  private fun replaceAudioById(
+    id: String?,
+    rawUrl: String?,
+    duration: Double?,
+    mimeType: String?,
+    fileName: String?,
+    fileSize: Double?
+  ) {
+    val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    val index = blockIndexById(id) ?: return
+    val block = blocks[index]
+    if (block.type != "audio") return
+    if (audioPlayerBlockId == block.id) releaseAudioPlayer()
+    block.url = url
+    block.duration = duration?.takeIf { it.isFinite() && it >= 0 }
+    block.mimeType = mimeType?.takeIf { it.isNotBlank() }
+    block.fileName = fileName?.takeIf { it.isNotBlank() }
+    block.fileSize = fileSize?.takeIf { it.isFinite() && it >= 0 }
+    styleBlocks()
+    invalidate()
+    scheduleEvent("replace-audio")
   }
 
   private fun logicalSelectionPoint(position: Int): Pair<Int, Int> {
@@ -1699,8 +1965,14 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
         if (marks.length() > 0) item.put("marks", marks)
         if (block.type == "to_do") item.put("checked", block.checked)
         if (block.type == "column_list") item.put("columnCount", (block.columnCount ?: 2).coerceIn(2, 5))
-        if (block.type == "link_to_page" || block.type == "image" || block.type == "video") {
+        if (block.type == "link_to_page" || block.type == "image" || block.type == "audio" || block.type == "video") {
           block.url?.let { item.put("url", it) }
+        }
+        if (block.type == "audio") {
+          block.duration?.let { item.put("duration", it) }
+          block.mimeType?.let { item.put("mimeType", it) }
+          block.fileName?.let { item.put("fileName", it) }
+          block.fileSize?.let { item.put("fileSize", it) }
         }
         if (block.type == "link_to_page" || block.type == "callout") {
           block.icon?.let { item.put("icon", it) }
@@ -1739,10 +2011,16 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           require(type in proofValidBlockTypes && !text.contains('\n'))
           val color = if (block.has("color")) block.getString("color").takeIf { it in proofValidColors } else null
           val url = if (block.has("url")) block.getString("url") else null
+          val duration = if (block.has("duration")) block.getDouble("duration") else null
+          val mimeType = if (block.has("mimeType")) block.getString("mimeType") else null
+          val fileName = if (block.has("fileName")) block.getString("fileName") else null
+          val fileSize = if (block.has("fileSize")) block.getDouble("fileSize") else null
           val icon = if (block.has("icon")) block.getString("icon") else null
           val columnCount = if (block.has("columnCount")) block.getInt("columnCount") else null
           require(columnCount?.let { type == "column_list" && it in 2..5 } ?: true)
-          require((type != "link_to_page" && type != "image" && type != "video") || !url.isNullOrBlank())
+          require((type != "link_to_page" && type != "image" && type != "audio" && type != "video") || !url.isNullOrBlank())
+          require(type != "audio" || (duration == null || duration.isFinite() && duration >= 0)
+            && (fileSize == null || fileSize.isFinite() && fileSize >= 0))
           val marks = mutableListOf<ProofMark>()
           block.optJSONArray("marks")?.let { markData ->
             for (markIndex in 0 until markData.length()) {
@@ -1765,7 +2043,11 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             block.optBoolean("checked", false) && type == "to_do",
             url,
             icon,
-            columnCount
+            columnCount,
+            duration,
+            mimeType,
+            fileName,
+            fileSize
           )
         }
         val start = minOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
@@ -1780,6 +2062,10 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             blocks[firstBlock + index].url = part.url
             blocks[firstBlock + index].icon = part.icon
             blocks[firstBlock + index].columnCount = part.columnCount
+            blocks[firstBlock + index].duration = part.duration
+            blocks[firstBlock + index].mimeType = part.mimeType
+            blocks[firstBlock + index].fileName = part.fileName
+            blocks[firstBlock + index].fileSize = part.fileSize
             blocks[firstBlock + index].marks.clear()
             blocks[firstBlock + index].marks.addAll(part.marks)
           }
@@ -2114,6 +2400,22 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             )
           }
         }
+        if (block.type == "audio") {
+          block.url?.let {
+            editable.setSpan(
+              ProofAudioSpan(input, block.fileName ?: "Audio", block.duration, dark, {
+                if (audioPlayerBlockId == block.id) {
+                  runCatching { (audioPlayer?.currentPosition ?: 0) / 1000.0 }.getOrDefault(0.0)
+                } else 0.0
+              }, {
+                audioPlayerBlockId == block.id && audioPlayerPlaying
+              }),
+              start,
+              end,
+              Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+          }
+        }
         if (block.type == "to_do") {
           editable.setSpan(
             TodoCheckboxSpan(
@@ -2244,6 +2546,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
     private var pressedPageReferenceBlock = -1
     private var pressedDividerBlock = -1
     private var pressedImageBlock = -1
+    private var pressedAudioBlock = -1
     private var pressStartX = 0f
     private var pressStartY = 0f
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -2320,7 +2623,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
       super.onSizeChanged(w, h, oldw, oldh)
-      if (w != oldw && blocks.any { it.type == "image" || it.type == "video" }) {
+      if (w != oldw && blocks.any { it.type == "image" || it.type == "audio" || it.type == "video" }) {
         post {
           styleBlocks()
           invalidate()
@@ -2400,9 +2703,22 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       return if (block.type == "image") blockIndex else null
     }
 
+    /** An audio card is selectable across its whole line; its leading circle is playback. */
+    private fun audioBlockAt(event: MotionEvent): Int? {
+      val textLayout = layout ?: return null
+      if (textLayout.height == 0) return null
+      val lineY = (event.y - totalPaddingTop).toInt().coerceIn(0, textLayout.height - 1)
+      val line = textLayout.getLineForVertical(lineY)
+      val lineStart = textLayout.getLineStart(line)
+      val blockIndex = text.take(lineStart).count { it == '\n' }
+      val block = blocks.getOrNull(blockIndex) ?: return null
+      return if (block.type == "audio") blockIndex else null
+    }
+
     /** True once any tap-region has been armed by a preceding [MotionEvent.ACTION_DOWN]. */
     private fun hasPressedBlock() = pressedToggleBlock >= 0 || pressedTodoBlock >= 0 ||
-      pressedPageReferenceBlock >= 0 || pressedDividerBlock >= 0 || pressedImageBlock >= 0
+      pressedPageReferenceBlock >= 0 || pressedDividerBlock >= 0 || pressedImageBlock >= 0 ||
+      pressedAudioBlock >= 0
 
     /** Disarms every tap-region, e.g. once a gesture turns out to be a scroll, not a tap. */
     private fun clearPressedBlocks() {
@@ -2411,6 +2727,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       pressedPageReferenceBlock = -1
       pressedDividerBlock = -1
       pressedImageBlock = -1
+      pressedAudioBlock = -1
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -2419,6 +2736,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val pageReferenceBlock = pageReferenceBlockAt(event)
       val dividerBlock = dividerBlockAt(event)
       val imageBlock = imageBlockAt(event)
+      val audioBlock = audioBlockAt(event)
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
           pressStartX = event.x
@@ -2428,11 +2746,13 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           pressedPageReferenceBlock = pageReferenceBlock ?: -1
           pressedDividerBlock = dividerBlock ?: -1
           pressedImageBlock = imageBlock ?: -1
+          pressedAudioBlock = audioBlock ?: -1
           if (pressedToggleBlock >= 0) return true
           if (pressedTodoBlock >= 0) return true
           if (pressedPageReferenceBlock >= 0) return true
           if (pressedDividerBlock >= 0) return true
           if (pressedImageBlock >= 0) return true
+          if (pressedAudioBlock >= 0) return true
         }
         // A tap-region stays armed through ACTION_DOWN's early return above, so a swipe that
         // starts on one (a divider or image commonly fills most of the visible width/height)
@@ -2451,11 +2771,13 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
           val pressedPageReference = pressedPageReferenceBlock
           val pressedDivider = pressedDividerBlock
           val pressedImage = pressedImageBlock
+          val pressedAudio = pressedAudioBlock
           pressedToggleBlock = -1
           pressedTodoBlock = -1
           pressedPageReferenceBlock = -1
           pressedDividerBlock = -1
           pressedImageBlock = -1
+          pressedAudioBlock = -1
           if (pressed >= 0 && toggleBlock == pressed) {
             blocks[pressed].collapsed = !blocks[pressed].collapsed
             styleBlocks()
@@ -2496,6 +2818,16 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
             performClick()
             return true
           }
+          if (pressedAudio >= 0 && audioBlock == pressedAudio) {
+            val block = blocks[pressedAudio]
+            if (event.x <= input.paddingLeft + 72 * resources.displayMetrics.density) {
+              toggleAudio(block)
+            } else {
+              onBlockActionsPress(mapOf("id" to block.id, "type" to block.type))
+            }
+            performClick()
+            return true
+          }
         }
         MotionEvent.ACTION_CANCEL -> {
           clearPressedBlocks()
@@ -2517,7 +2849,7 @@ class NotionProofView(context: Context, appContext: AppContext) : ExpoView(conte
       val safeOffset = offset.coerceIn(0, text.length)
       val index = text.take(safeOffset).count { it == '\n' }.coerceIn(0, blocks.lastIndex)
       val block = blocks[index]
-      if (block.type != "image" && block.type != "video") return null
+      if (block.type != "image" && block.type != "audio" && block.type != "video") return null
       val blockStart = offsetOf(index)
       val forward = safeOffset <= blockStart
       return when {

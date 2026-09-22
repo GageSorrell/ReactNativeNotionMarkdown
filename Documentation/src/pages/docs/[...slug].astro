@@ -1,0 +1,27 @@
+---
+/** @module @react-native-notion-markdown/documentation/pages/docs/[...slug] @file [...slug].astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import { getCollection, render } from "astro:content"
+import { ChevronDown, Menu } from "@lucide/astro"
+import DocsSidebarTree from "@/components/docs/DocsSidebarTree.astro"
+import PrevNextNav from "@/components/ui/PrevNextNav.astro"
+import TableOfContents from "@/components/ui/toc/TableOfContents.astro"
+import DocShell from "@/layouts/DocShell.astro"
+import { buildDocsSidebar, docsNeighbors } from "@/lib/docs-sections"
+export const prerender = true
+export async function getStaticPaths() { const entries = await getCollection("docs"); return entries.map((entry) => ({ params: { slug: entry.id.replace(/\/index$/, "") }, props: { entry } })) }
+const { entry } = Astro.props
+const { Content, headings } = await render(entry)
+const version = entry.id.split("/")[0] ?? "v1"
+const { section, items } = await buildDocsSidebar(version, entry.id)
+const currentLabel = entry.data.sidebar?.label ?? entry.data.title
+const { prev, next } = docsNeighbors(items, entry.id)
+const docHref = (id: string) => `/docs/${id.replace(/\/index$/, "")}`
+const tocItems = headings.filter((heading) => heading.depth >= 2 && heading.depth <= 3).map((heading) => ({ id: heading.slug, label: heading.text, indent: heading.depth === 3 }))
+---
+<DocShell title={entry.data.title} description={entry.data.description} version={version} section={section}>
+  <div slot="mobile-nav" class="border-b border-border bg-background lg:hidden"><details><summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm"><Menu class="size-4" />Docs menu<span class="text-muted-foreground">/ {currentLabel}</span><ChevronDown class="ml-auto size-4" /></summary><nav class="border-t border-border px-4 py-4"><DocsSidebarTree items={items} currentId={entry.id} /></nav></details></div>
+  <nav slot="sidebar" aria-label="Documentation navigation"><DocsSidebarTree items={items} currentId={entry.id} /></nav>
+  <article data-pagefind-body data-pagefind-filter="content_type:documentation" class="prose max-w-none"><span class="hidden" data-pagefind-filter={`version:${version}`} data-pagefind-meta="version">{version}</span><span class="hidden" data-pagefind-meta="content_type">documentation</span><h1 data-pagefind-meta="title">{entry.data.title}</h1><Content /></article>
+  <PrevNextNav prev={prev ? { href: docHref(prev.id), label: prev.label } : null} next={next ? { href: docHref(next.id), label: next.label } : null} />
+  {tocItems.length > 0 && <TableOfContents slot="toc" items={tocItems} />}
+</DocShell>

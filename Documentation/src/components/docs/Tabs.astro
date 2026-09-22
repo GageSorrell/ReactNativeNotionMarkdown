@@ -1,0 +1,20 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/docs/Tabs @file Tabs.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+interface Props { readonly syncKey?: string }
+const { syncKey } = Astro.props
+---
+<docs-tabs data-sync-key={syncKey}><div class="docs-tabs-list" role="tablist"></div><div class="docs-tabs-panels"><slot /></div></docs-tabs>
+<script>
+  class DocsTabs extends HTMLElement {
+    connectedCallback() {
+      const list = this.querySelector<HTMLElement>("[role=tablist]")
+      const panels = [...this.querySelectorAll<HTMLElement>(":scope .docs-tab-panel")]
+      if (!list || panels.length === 0) return
+      panels.forEach((panel, index) => { const button = document.createElement("button"); button.type = "button"; button.textContent = panel.dataset.label ?? `Tab ${index + 1}`; button.setAttribute("role", "tab"); button.addEventListener("click", () => this.select(index)); list.append(button) })
+      this.select(0)
+    }
+    select(index: number) { const panels = [...this.querySelectorAll<HTMLElement>(":scope .docs-tab-panel")]; const buttons = [...this.querySelectorAll<HTMLButtonElement>("[role=tab]")]; buttons.forEach((button, i) => button.setAttribute("aria-selected", String(i === index))); panels.forEach((panel, i) => panel.toggleAttribute("data-active", i === index)) }
+  }
+  if (!customElements.get("docs-tabs")) customElements.define("docs-tabs", DocsTabs)
+</script>
+<style>.docs-tabs{margin:1.5rem 0}.docs-tabs-list{display:flex;gap:.25rem;border-bottom:1px solid var(--border);overflow:auto}.docs-tabs-list button{border:0;background:transparent;padding:.6rem .8rem;color:var(--muted-foreground);cursor:pointer}.docs-tabs-list button[aria-selected=true]{border-bottom:2px solid var(--foreground);color:var(--foreground);font-weight:600}.docs-tab-panel{display:none;padding-top:1rem}.docs-tab-panel[data-active]{display:block}</style>

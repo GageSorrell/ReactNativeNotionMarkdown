@@ -26,7 +26,7 @@ import type {
     NotionEditorMediaSelection
 } from "./NotionEditor.tsx";
 import type { ComponentType } from "react";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 /** Public props for the native insert-media sheet. */
 export interface MediaBottomSheetProps
@@ -122,6 +122,7 @@ function MediaOption({ action, color, icon: Icon, label, onPress }: MediaOptionP
             ? { backgroundColor: `${ color }12` }
             : undefined
     ], [ color ]);
+    const labelStyle = useMemo(() => [ styles.optionLabel, { color } ], [ color ]);
 
     return <Pressable accessibilityLabel={ label }
         accessibilityRole="button"
@@ -133,7 +134,7 @@ function MediaOption({ action, color, icon: Icon, label, onPress }: MediaOptionP
             size={ 20 }
             strokeWidth={ 1.75 }
         />
-        <Text style={ [ styles.optionLabel, { color } ] }>{ label }</Text>
+        <Text style={ labelStyle }>{ label }</Text>
     </Pressable>;
 }
 
@@ -186,6 +187,15 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
         await onSelected(normalizeSelection(action, result));
     }, [ onDismiss, onSelected ]);
 
+    const scrimStyle = useMemo(() => [ styles.scrim, { backgroundColor: scrim } ], [ scrim ]);
+    const sheetStyle = useMemo(() => [ styles.sheet, { backgroundColor: surface } ], [ surface ]);
+    const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
+    const optionsStyle = useMemo(() => [
+        styles.options,
+        { backgroundColor: optionSurface, borderColor: divider }
+    ], [ divider, optionSurface ]);
+    const dividerStyle = useMemo(() => [ styles.divider, { backgroundColor: divider } ], [ divider ]);
+
     return <Modal
         animationType="slide"
         navigationBarTranslucent
@@ -198,30 +208,27 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
                 accessibilityLabel="Dismiss insert media"
                 accessibilityRole="button"
                 onPress={ onDismiss }
-                style={ [ styles.scrim, { backgroundColor: scrim } ] } />
+                style={ scrimStyle } />
             <View accessibilityViewIsModal
-                style={ [ styles.sheet, { backgroundColor: surface } ] }>
+                style={ sheetStyle }>
                 <View style={ styles.content }>
                     <Text accessibilityRole="header"
-                        style={ [ styles.title, { color: foreground } ] }>
+                        style={ titleStyle }>
                         { labels.title }
                     </Text>
-                    <View style={ [
-                        styles.options,
-                        { backgroundColor: optionSurface, borderColor: divider }
-                    ] }>
+                    <View style={ optionsStyle }>
                         <MediaOption action="gallery"
                             color={ muted }
                             icon={ getMediaIcon("gallery", components) }
                             label={ labels.openGallery }
                             onPress={ handleAction } />
-                        <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                        <View style={ dividerStyle } />
                         <MediaOption action="picture"
                             color={ muted }
                             icon={ getMediaIcon("picture", components) }
                             label={ labels.takePicture }
                             onPress={ handleAction } />
-                        <View style={ [ styles.divider, { backgroundColor: divider } ] } />
+                        <View style={ dividerStyle } />
                         <MediaOption action="video"
                             color={ muted }
                             icon={ getMediaIcon("video", components) }

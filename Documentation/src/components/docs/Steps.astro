@@ -1,0 +1,5 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/docs/Steps @file Steps.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+---
+<div class="docs-steps"><slot /></div>
+<style>.docs-steps :global(ol){counter-reset:steps;list-style:none;padding:0}.docs-steps :global(li){counter-increment:steps;position:relative;padding:0 0 1.25rem 2.5rem}.docs-steps :global(li::before){content:counter(steps);position:absolute;left:0;top:0;width:1.6rem;height:1.6rem;border-radius:999px;background:#374151;color:#fff;text-align:center;line-height:1.6rem;font:600 .75rem/1.6rem var(--font-mono)}.docs-steps :global(li:not(:last-child)::after){content:"";position:absolute;left:.78rem;top:1.8rem;bottom:.2rem;width:1px;background:var(--border)}</style>

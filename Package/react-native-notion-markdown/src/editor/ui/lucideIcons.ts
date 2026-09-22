@@ -55,6 +55,7 @@ import {
     Repeat,
     Scissors,
     SeparatorHorizontal,
+    Square,
     SquarePlay,
     Strikethrough,
     TableOfContents,
@@ -63,10 +64,12 @@ import {
     Underline,
     Undo2
 } from "lucide-react-native";
-import type { NotionEditorComponents, NotionEditorIconProps } from "./NotionEditor.tsx";
+import { type ComponentType, createElement } from "react";
+import { Line, Rect, Svg } from "react-native-svg";
 import { StyleSheet, View } from "react-native";
-import type { ComponentType } from "react";
-import { createElement } from "react";
+// The type-only relative import is intentionally kept after the runtime dependencies.
+// eslint-disable-next-line sort-imports
+import { type NotionEditorComponents, type NotionEditorIconProps } from "./NotionEditor.tsx";
 
 const toggleHeadingIconStyles = StyleSheet.create({
     root:
@@ -116,6 +119,55 @@ const ToggleHeading2 = createToggleHeadingIcon(Heading2);
 const ToggleHeading3 = createToggleHeadingIcon(Heading3);
 const ToggleHeading4 = createToggleHeadingIcon(Heading4);
 
+/** Create a columns icon with a bar for each column, while retaining Lucide's rounded-square shape. */
+function createColumnsIcon(columnCount: 2 | 3 | 4 | 5): ComponentType<NotionEditorIconProps>
+{
+    const bars: Array<number> = Array.from(
+        { length: columnCount - 1 },
+        (_value: unknown, index: number): number =>
+            3 + (18 * (index + 1)) / columnCount
+    );
+
+    /** Render a count-specific columns icon. */
+    function ColumnsIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+    {
+        return createElement(
+            Svg,
+            { height: size, viewBox: "0 0 24 24", width: size },
+            [
+                createElement(Rect, {
+                    fill: "none",
+                    height: "18",
+                    key: "frame",
+                    rx: "2",
+                    stroke: color,
+                    strokeWidth,
+                    width: "18",
+                    x: "3",
+                    y: "3"
+                }),
+                ...bars.map((x: number, index: number) => createElement(Line, {
+                    key: index,
+                    stroke: color,
+                    strokeLinecap: "round",
+                    strokeWidth,
+                    x1: x,
+                    x2: x,
+                    y1: "6",
+                    y2: "18"
+                }))
+            ]
+        );
+    }
+
+    return ColumnsIcon;
+}
+
+const Columns2Icon = createColumnsIcon(2);
+const Columns3Icon = createColumnsIcon(3);
+const Columns4Icon = createColumnsIcon(4);
+const Columns5Icon = createColumnsIcon(5);
+
 export/**
        * Pass this to `NotionEditor`'s `components` prop for icon buttons instead of plain text labels.
        *
@@ -126,10 +178,15 @@ const notionEditorLucideIcons: NotionEditorComponents =
         back: ArrowLeft,
         bold: Bold,
         callout: MessageSquare,
+        cancel: CircleX,
         close: CircleX,
         code: Code2,
         color: Palette,
         columns: Columns2,
+        columns2: Columns2Icon,
+        columns3: Columns3Icon,
+        columns4: Columns4Icon,
+        columns5: Columns5Icon,
         copy: Copy,
         cut: Scissors,
         divider: SeparatorHorizontal,
@@ -148,18 +205,20 @@ const notionEditorLucideIcons: NotionEditorComponents =
         italic: Italic,
         link: Link2,
         linkToPage: Link2,
+        more: MoreHorizontal,
         moveDown: MoveDown,
         moveUp: MoveUp,
-        more: MoreHorizontal,
         outdent: IndentDecrease,
         paste: ClipboardPaste,
         picture: Camera,
         quote: Quote,
+        record: Mic,
         redo: Redo2,
         remove: Trash2,
         returnToKeyboard: Keyboard,
         speech: Mic,
         strikethrough: Strikethrough,
+        stop: Square,
         tableOfContents: TableOfContents,
         text: Type,
         toDo: ListChecks,

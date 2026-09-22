@@ -1,0 +1,7 @@
+---
+/** @module @react-native-notion-markdown/documentation/components/ui/sidebar/SidebarGroup @file SidebarGroup.astro @author Gage Sorrell <gage@sorrell.sh> @copyright (c) 2026 Gage Sorrell @license MIT */
+import { ChevronDown } from "@lucide/astro"
+interface Props { readonly label: string; readonly open?: boolean }
+const { label, open = false } = Astro.props
+---
+<details open={open} class="group"><summary class="flex cursor-pointer list-none items-center justify-between rounded px-2 py-2.5 text-sm font-semibold text-navigation-heading hover:bg-muted"><span>{label}</span><ChevronDown class="size-4 transition-transform group-open:rotate-180" /></summary><ul class="flex flex-col gap-1 pb-3"><slot /></ul></details>

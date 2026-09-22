@@ -7,11 +7,15 @@
 	"settings": {
 		"cSpell.words": [
 			"autocorrection",
+			"bindgen",
+			"datetimepicker",
+			"gagesorrell",
 			"hardbreak",
 			"Insertable",
 			"linkify",
 			"notionhq",
 			"notionmarkdown",
+			"notionmarkdownstorybook",
 			"ondevice",
 			"Pilcrow",
 			"Pressable",
@@ -22,6 +26,20 @@
 			"toggleable",
 			"uniffi",
 			"worklets"
+		]
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "Start Android Emulator & Launch App",
+				"type": "node",
+				"request": "launch",
+				"cwd": "${workspaceFolder}/Script/StartEmulator",
+				"program": "${workspaceFolder}/Script/StartEmulator/index.mjs",
+				"console": "integratedTerminal",
+				"internalConsoleOptions": "neverOpen"
+			}
 		]
 	}
 }

@@ -1,0 +1,20 @@
+---
+title: Package entry points
+description: Understand the public exports and when to use each one.
+sidebar:
+  order: 1
+---
+
+The package is organized around a pure document layer and React Native-facing layers.
+
+## Renderer
+
+Use the root export or `./renderer` when an application needs to display markdown content. `./renderer/ui` contains UI-level pieces that can be composed into a custom renderer.
+
+## Editor
+
+Use `./editor` for authoring flows and `./editor/ui` for editor controls. These layers can share the same document representation as the renderer.
+
+## Document and native layers
+
+`./document` is the platform-independent engine. `./native` contains platform adapters. Keeping these boundaries explicit makes it easier to test transformations outside a device runtime.

@@ -111,6 +111,31 @@ test('media proof blocks preserve image and video URLs', () => {
     assert.equal(invalid, initial);
   }
 });
+test('audio proof blocks preserve metadata and reject empty URLs', () => {
+  const initial = createProofDocument();
+  const audio = {
+    ...initial.blocks[0],
+    duration: 12.5,
+    fileName: 'memo.m4a',
+    fileSize: 4096,
+    mimeType: 'audio/mp4',
+    text: '',
+    type: 'audio',
+    url: 'file:///tmp/memo.m4a'
+  };
+  const accepted = acceptProofEvent(initial, { ...initial, blocks: [audio, ...initial.blocks.slice(1)], revision: 1 });
+  assert.equal(accepted.blocks[0].type, 'audio');
+  assert.equal(accepted.blocks[0].fileName, audio.fileName);
+  assert.equal(accepted.blocks[0].duration, audio.duration);
+  assert.equal(acceptProofEvent(initial, { ...initial, blocks: [{ ...audio, url: '' }, ...initial.blocks.slice(1)], revision: 1 }), initial);
+});
+test('audio Markdown preserves its URL and caption through a round trip', () => {
+  const source = '<audio src="file:///tmp/memo.m4a">Voice **memo**</audio>';
+  const parsed = parseNotionMarkdown(source);
+  assert.equal(parsed.document.blocks[0].type, 'audio');
+  assert.equal(parsed.document.blocks[0].audio.external.url, 'file:///tmp/memo.m4a');
+  assert.match(serializeNotionMarkdown(parsed.document), /<audio src="file:\/\/\/tmp\/memo\.m4a">Voice \*\*memo\*\*<\/audio>/);
+});
 test('proof link marks preserve URLs and reject malformed links', () => {
   const initial = createProofDocument();
   const linked = {

@@ -1,0 +1,20 @@
+---
+title: Quick start
+description: Render a first document and keep the content model separate from your UI.
+sidebar:
+  order: 3
+---
+
+After installing the package, give the renderer a markdown string or parsed document and place it in your screen.
+
+```tsx
+import { NotionMarkdown } from "react-native-notion-markdown"
+
+export function NotesScreen() {
+  return <NotionMarkdown markdown="# Hello\n\nA document rendered in React Native." />
+}
+```
+
+## Next steps
+
+Read about [entry points](/docs/v1/guides/entry-points) to choose the right import boundary, then explore [the renderer](/docs/v1/guides/renderer) or [the editor](/docs/v1/guides/editor).
