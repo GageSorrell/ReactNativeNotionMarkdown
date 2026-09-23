@@ -1,7 +1,7 @@
 /**
  *
  *
- * @module notion-markdown-storybook/Application/.rnstorybook/preview
+ * @module markdown-storybook/Application/.rnstorybook/preview
  *
  * @file      preview.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>

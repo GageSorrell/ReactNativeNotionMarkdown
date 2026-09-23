@@ -1,4 +1,4 @@
-appId: com.gagesorrell.notionmarkdown.storybook
+appId: com.gagesorrell.markdown.storybook
 ---
 - runFlow:
     file: ../_shared/open-story.yaml

@@ -1,4 +1,4 @@
-package expo.modules.notionmarkdown
+package expo.modules.markdown
 
 import android.content.Context
 import android.graphics.Canvas
@@ -16,7 +16,7 @@ private const val AUTO_SCROLL_ZONE_DP = 48f
 
 /**
  * Draws and drags the cross-field selection handles once the active selection spans more
- * than one [NotionTextFieldView]. Selection confined to one field keeps using that field's
+ * than one [MarkdownTextFieldView]. Selection confined to one field keeps using that field's
  * own native handles; this overlay only takes over for the multi-field case, matching "native
  * text handles within one field and coordinator-owned handles/highlights when selection
  * crosses fields" from the editing architecture.
@@ -25,7 +25,7 @@ private const val AUTO_SCROLL_ZONE_DP = 48f
  * list of fields. Actual scrolling stays with the RN-owned list: this view only requests it via
  * [onAutoScroll] while a handle is dragged near its top or bottom edge.
  */
-class NotionSelectionOverlayView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
+class MarkdownSelectionOverlayView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
   private val onSelectionChange by EventDispatcher()
   private val onAutoScroll by EventDispatcher()
@@ -59,11 +59,11 @@ class NotionSelectionOverlayView(context: Context, appContext: AppContext) : Exp
     invalidate()
   }
 
-  private fun fieldFor(point: Map<String, Any?>?): NotionTextFieldView? {
+  private fun fieldFor(point: Map<String, Any?>?): MarkdownTextFieldView? {
     val blockId = point?.get("blockId") as? String ?: return null
     val fieldName = point["field"] as? String ?: return null
     val index = (point["index"] as? Number)?.toInt()
-    return NotionEditorCoordinator.find(sessionId, blockId, fieldName, index)
+    return MarkdownEditorCoordinator.find(sessionId, blockId, fieldName, index)
   }
 
   private fun screenPointFor(point: Map<String, Any?>?): FloatArray? {
@@ -122,7 +122,7 @@ class NotionSelectionOverlayView(context: Context, appContext: AppContext) : Exp
         val handle = dragging ?: return false
         val screenX = event.x + origin[0]
         val screenY = event.y + origin[1]
-        val field = NotionEditorCoordinator.hitTest(sessionId, screenX, screenY) ?: return true
+        val field = MarkdownEditorCoordinator.hitTest(sessionId, screenX, screenY) ?: return true
         val offset = field.offsetForScreenPoint(screenX, screenY)
         val point = mutableMapOf<String, Any?>(
           "blockId" to field.blockIdValue(),

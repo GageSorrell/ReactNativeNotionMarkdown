@@ -1,4 +1,4 @@
-package expo.modules.notionmarkdown
+package expo.modules.markdown
 
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -15,7 +15,7 @@ import android.text.style.ReplacementSpan
  * [item] is the opaque rich-text payload the field received this atom with (a decoded JSON
  * object), carried verbatim so an untouched atom round-trips back to JS unchanged.
  */
-class NotionAtomSpan(
+class MarkdownAtomSpan(
   val atomKind: String,
   val label: String,
   val item: Map<String, Any?>?,

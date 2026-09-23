@@ -1,5 +1,5 @@
 /**
- * Public document contracts for Notion-enhanced Markdown.
+ * Public document contracts for Markdown-enhanced content.
  *
  * @module react-native-notion-markdown/document/types
  *
@@ -29,12 +29,12 @@ export/**
        * @category Constants
        * @since 1.0.0
        */
-const NOTION_MARKDOWN_METADATA = "__notion_markdown" as const;
+const MARKDOWN_MARKDOWN_METADATA = "__markdown_markdown" as const;
 
 /* eslint-enable @typescript-eslint/naming-convention */
 
 /** Colors accepted by the enhanced Markdown format. */
-export type NotionMarkdownColor =
+export type MarkdownColor =
     | "gray"
     | "brown"
     | "orange"
@@ -55,7 +55,7 @@ export type NotionMarkdownColor =
     | "red_bg";
 
 /** A source location in the original Markdown string. Lines and columns are one-based. */
-export interface NotionSourceLocation
+export interface MarkdownSourceLocation
 {
     readonly line: number;
     readonly column: number;
@@ -63,26 +63,26 @@ export interface NotionSourceLocation
 }
 
 /** A parser or conversion diagnostic. */
-export interface NotionDiagnostic
+export interface MarkdownDiagnostic
 {
     readonly severity: "error" | "warning";
     readonly message: string;
     readonly code: string;
-    readonly source?: NotionSourceLocation;
+    readonly source?: MarkdownSourceLocation;
     readonly details?: Readonly<Record<string, unknown>>;
 }
 
 /** Data retained for Markdown-only features and editor identity. */
-export interface NotionMarkdownMetadata
+export interface MarkdownMetadata
 {
-    /** Stable identity used by the editor, distinct from a remote Notion ID. */
+    /** Stable identity used by the editor, distinct from a remote Markdown ID. */
     readonly editorId?: string;
 
-    /** A remote Notion ID supplied during import. */
-    readonly notionId?: string;
+    /** A remote Markdown ID supplied during import. */
+    readonly markdownId?: string;
 
-    readonly source?: NotionSourceLocation;
-    readonly color?: NotionMarkdownColor;
+    readonly source?: MarkdownSourceLocation;
+    readonly color?: MarkdownColor;
     readonly toggle?: boolean;
     readonly referenceUrl?: string;
     readonly mention?:
@@ -100,31 +100,31 @@ export interface NotionMarkdownMetadata
         readonly fitPageWidth?: boolean;
         readonly headerRow?: boolean;
         readonly headerColumn?: boolean;
-        readonly columnColor?: NotionMarkdownColor;
-        readonly columnColors?: Array<NotionMarkdownColor | undefined>;
-        readonly rowColor?: NotionMarkdownColor;
-        readonly cellColor?: NotionMarkdownColor;
-        readonly cellColors?: Array<NotionMarkdownColor | undefined>;
+        readonly columnColor?: MarkdownColor;
+        readonly columnColors?: Array<MarkdownColor | undefined>;
+        readonly rowColor?: MarkdownColor;
+        readonly cellColor?: MarkdownColor;
+        readonly cellColors?: Array<MarkdownColor | undefined>;
     };
     readonly unresolved?: boolean;
     readonly [key: string]: unknown;
 }
 
 /** A rich-text item with an additive, namespaced metadata field. */
-export type NotionRichTextItem =
+export type MarkdownRichTextItem =
     (
         | SdkRichTextItemRequest
         | RichTextItemResponse
     ) &
     {
-        readonly [ NOTION_MARKDOWN_METADATA ]?: NotionMarkdownMetadata;
+        readonly [ MARKDOWN_MARKDOWN_METADATA ]?: MarkdownMetadata;
     };
 
 /** Rich text accepted by the document model. */
-export type NotionRichText = Array<NotionRichTextItem>;
+export type MarkdownRichText = Array<MarkdownRichTextItem>;
 
 /** Block names supported by the enhanced Markdown format. */
-export type NotionMarkdownBlockType =
+export type MarkdownBlockType =
     | "paragraph"
     | "heading_1"
     | "heading_2"
@@ -159,7 +159,7 @@ export type NotionMarkdownBlockType =
 type SdkRequestVariant<Type extends string> = Extract<BlockObjectRequest, { type?: Type; }>;
 
 /** The SDK payload for one block type, excluding the envelope and children. */
-export type SdkBlockPayload<Type extends NotionMarkdownBlockType> =
+export type SdkBlockPayload<Type extends MarkdownBlockType> =
     Type extends "synced_block_reference"
         ? {
             readonly synced_from: null;
@@ -171,37 +171,37 @@ export type SdkBlockPayload<Type extends NotionMarkdownBlockType> =
             : never;
 
 /** A recursive SDK-shaped document block with additive metadata. */
-type NotionBlockPayload<Type extends NotionMarkdownBlockType> =
+type MarkdownBlockPayload<Type extends MarkdownBlockType> =
     {
         readonly [ Key in Type ]: SdkBlockPayload<Key>;
     };
 
 /**
- * A recursive document block with a given Notion block type and additive metadata.
+ * A recursive document block with a given Markdown block type and additive metadata.
  *
  * @category Types
  * @since 1.0.0
  */
-export type NotionBlock<Type extends NotionMarkdownBlockType = NotionMarkdownBlockType> =
-    Type extends NotionMarkdownBlockType
+export type MarkdownBlock<Type extends MarkdownBlockType = MarkdownBlockType> =
+    Type extends MarkdownBlockType
         ? (
             {
                 readonly id: string;
                 readonly type: Type;
             } &
-            NotionBlockPayload<Type> &
+            MarkdownBlockPayload<Type> &
             {
-                readonly children?: Array<NotionBlock>;
-                readonly [NOTION_MARKDOWN_METADATA]?: NotionMarkdownMetadata;
+                readonly children?: Array<MarkdownBlock>;
+                readonly [MARKDOWN_MARKDOWN_METADATA]?: MarkdownMetadata;
             }
         )
         : never;
 
 /** A versioned, recursive document tree. */
-export interface NotionDocument
+export interface MarkdownDocument
 {
     readonly version: 1;
-    readonly blocks: Array<NotionBlock>;
+    readonly blocks: Array<MarkdownBlock>;
 }
 
 /**
@@ -210,32 +210,39 @@ export interface NotionDocument
  * @category Types
  * @since 1.0.0
  */
-export type NotionDocumentInput =
+export type MarkdownDocumentInput =
     | string
-    | NotionDocument;
+    | MarkdownDocument;
 
 /**
- * Options for parsing Notion-enhanced Markdown.
+ * Options for parsing Markdown-enhanced content.
  *
  * @category Interfaces
  * @since 1.0.0
  */
-export interface ParseNotionMarkdownOptions
+export interface ParseMarkdownOptions
 {
-    readonly idFactory?: (path: string, type: NotionMarkdownBlockType) => string;
-    readonly rules?: Array<NotionMarkdownParserRule>;
+    readonly idFactory?: (path: string, type: MarkdownBlockType) => string;
+    readonly rules?: Array<MarkdownParserRule>;
+}
+
+/** Options controlling canonical enhanced-Markdown serialization. */
+export interface SerializeMarkdownOptions
+{
+    /** Include Notion's optional `theme={null}` attribute on fenced code blocks. */
+    readonly includeCodeBlockThemeNull?: boolean;
 }
 
 /** An optional structural parser extension evaluated before built-in block rules. */
-export interface NotionMarkdownParserRule
+export interface MarkdownParserRule
 {
     readonly name: string;
     readonly test: (line: string) => boolean;
     readonly parse: (input: {
         readonly line: string;
         readonly path: string;
-        readonly source: NotionSourceLocation;
-    }) => NotionBlock | undefined;
+        readonly source: MarkdownSourceLocation;
+    }) => MarkdownBlock | undefined;
 }
 
 /**
@@ -244,69 +251,69 @@ export interface NotionMarkdownParserRule
  * @category Interfaces
  * @since 1.0.0
  */
-export interface ParseNotionMarkdownResult
+export interface ParseMarkdownResult
 {
-    readonly document: NotionDocument;
-    readonly diagnostics: Array<NotionDiagnostic>;
+    readonly document: MarkdownDocument;
+    readonly diagnostics: Array<MarkdownDiagnostic>;
 }
 
 /**
- * Options for importing blocks from the Notion SDK shape.
+ * Options for importing blocks from the Markdown SDK shape.
  *
  * @category Interfaces
  * @since 1.0.0
  */
-export interface FromNotionBlocksOptions
+export interface FromMarkdownBlocksOptions
 {
-    readonly idFactory?: (path: string, notionId?: string) => string;
+    readonly idFactory?: (path: string, markdownId?: string) => string;
 }
 
 /**
- * Document and diagnostics returned by a Notion block import.
+ * Document and diagnostics returned by a Markdown block import.
  *
  * @category Interfaces
  * @since 1.0.0
  */
-export interface FromNotionBlocksResult
+export interface FromMarkdownBlocksResult
 {
-    readonly document: NotionDocument;
-    readonly diagnostics: Array<NotionDiagnostic>;
+    readonly document: MarkdownDocument;
+    readonly diagnostics: Array<MarkdownDiagnostic>;
 }
 
 /**
- * Options for exporting document blocks to the Notion SDK shape.
+ * Options for exporting document blocks to the Markdown SDK shape.
  *
  * @category Interfaces
  * @since 1.0.0
  */
-export interface ToNotionBlocksOptions
+export interface ToMarkdownBlocksOptions
 {
-    /** When true, throw NotionConversionError if any block cannot be represented. */
+    /** When true, throw MarkdownConversionError if any block cannot be represented. */
     readonly strict?: boolean;
 }
 
 /**
- * SDK blocks and diagnostics returned by a Notion block export.
+ * SDK blocks and diagnostics returned by a Markdown block export.
  *
  * @category Interfaces
  * @since 1.0.0
  */
-export interface ToNotionBlocksResult
+export interface ToMarkdownBlocksResult
 {
     readonly blocks: Array<BlockObjectRequest>;
-    readonly diagnostics: Array<NotionDiagnostic>;
+    readonly diagnostics: Array<MarkdownDiagnostic>;
 }
 
 /** An SDK conversion failure that retains every diagnostic. */
-export class NotionConversionError extends Error
+export class MarkdownConversionError extends Error
 {
-    readonly diagnostics: Array<NotionDiagnostic>;
+    readonly diagnostics: Array<MarkdownDiagnostic>;
 
-    public constructor(diagnostics: Array<NotionDiagnostic>)
+    public constructor(diagnostics: Array<MarkdownDiagnostic>)
     {
-        super(diagnostics.map((diagnostic: NotionDiagnostic) =>
+        super(diagnostics.map((diagnostic: MarkdownDiagnostic) =>
             `${ diagnostic.code }: ${ diagnostic.message }`).join("; "));
-        this.name = "NotionConversionError";
+        this.name = "MarkdownConversionError";
         this.diagnostics = diagnostics;
     }
 }
@@ -317,7 +324,7 @@ export class NotionConversionError extends Error
  * @category Types
  * @since 1.0.0
  */
-export type NotionEditableField =
+export type MarkdownEditableField =
     | {
         readonly blockId: string;
         readonly field: "rich_text";
@@ -343,7 +350,7 @@ export type NotionEditableField =
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionSelectionPoint
+export interface MarkdownSelectionPoint
 {
     readonly blockId: string;
     readonly field:
@@ -362,10 +369,10 @@ export interface NotionSelectionPoint
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionSelection
+export interface MarkdownSelection
 {
-    readonly anchor: NotionSelectionPoint;
-    readonly focus: NotionSelectionPoint;
+    readonly anchor: MarkdownSelectionPoint;
+    readonly focus: MarkdownSelectionPoint;
 }
 
 /**
@@ -374,7 +381,7 @@ export interface NotionSelection
  * @category Types
  * @since 1.0.0
  */
-export type NotionTransactionOrigin =
+export type MarkdownTransactionOrigin =
     | "user"
     | "paste"
     | "history"
@@ -388,11 +395,11 @@ export type NotionTransactionOrigin =
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionTransaction
+export interface MarkdownTransaction
 {
-    readonly before: NotionDocument;
-    readonly after: NotionDocument;
-    readonly origin: NotionTransactionOrigin;
+    readonly before: MarkdownDocument;
+    readonly after: MarkdownDocument;
+    readonly origin: MarkdownTransactionOrigin;
     readonly revision: number;
 }
 
@@ -402,11 +409,11 @@ export interface NotionTransaction
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionEditorState
+export interface MarkdownEditorState
 {
-    readonly document: NotionDocument;
+    readonly document: MarkdownDocument;
     readonly revision: number;
-    readonly selection?: NotionSelection;
+    readonly selection?: MarkdownSelection;
     readonly canUndo: boolean;
     readonly canRedo: boolean;
 }
@@ -417,4 +424,4 @@ export interface NotionEditorState
  * @category Types
  * @since 1.0.0
  */
-export type NotionEditorListener = (state: NotionEditorState, transaction?: NotionTransaction) => void;
+export type MarkdownEditorListener = (state: MarkdownEditorState, transaction?: MarkdownTransaction) => void;

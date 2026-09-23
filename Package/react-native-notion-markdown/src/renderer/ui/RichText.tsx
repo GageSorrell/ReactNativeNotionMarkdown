@@ -9,18 +9,18 @@
  * @license   MIT
  */
 
-import type { NotionMarkdownMetadata, NotionRichText, NotionRichTextItem } from "../../document/types.ts";
+import type { MarkdownMetadata, MarkdownRichText, MarkdownRichTextItem } from "../../document/types.ts";
 import type {
-    NotionReferenceDisplay,
-    NotionReferenceIconComponent,
-    NotionReferenceRequest,
-    NotionRendererTheme
+    MarkdownReferenceDisplay,
+    MarkdownReferenceIconComponent,
+    MarkdownReferenceRequest,
+    MarkdownRendererTheme
 } from "./types.ts";
 import { Text, View, type ViewStyle } from "react-native";
-import { asRecord, getNotionMarkdownMetadata } from "../../internal.ts";
+import { asRecord, getMarkdownMetadata } from "../../internal.ts";
 import { useEffect, useMemo, useState } from "react";
-import { NotionMathView } from "./MathView.tsx";
-import { notionColor } from "./theme.ts";
+import { MarkdownMathView } from "./MathView.tsx";
+import { markdownColor } from "./theme.ts";
 import { FaviconIcon } from "./FaviconIcon.tsx";
 
 /**
@@ -29,14 +29,14 @@ import { FaviconIcon } from "./FaviconIcon.tsx";
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionRichTextViewProps
+export interface MarkdownRichTextViewProps
 {
-    readonly items?: ReadonlyArray<NotionRichText[number]>;
-    readonly linkFallbackIcon?: NotionReferenceIconComponent;
-    readonly theme: NotionRendererTheme;
+    readonly items?: ReadonlyArray<MarkdownRichText[number]>;
+    readonly linkFallbackIcon?: MarkdownReferenceIconComponent;
+    readonly theme: MarkdownRendererTheme;
     readonly dark: boolean;
     readonly onOpenUrl?: (url: string) => void;
-    readonly resolveReference?: (request: NotionReferenceRequest) => Promise<NotionReferenceDisplay | null>;
+    readonly resolveReference?: (request: MarkdownReferenceRequest) => Promise<MarkdownReferenceDisplay | null>;
     readonly textStyle?:
     {
         readonly fontFamily?: string;
@@ -60,7 +60,7 @@ export interface NotionRichTextViewProps
  * @category Functions
  * @since 1.0.0
  */
-function contentOf(item: NotionRichText[number], metadata: NotionMarkdownMetadata): string
+function contentOf(item: MarkdownRichText[number], metadata: MarkdownMetadata): string
 {
     const value = asRecord(item);
     const kind = String(value.type ?? "text");
@@ -99,10 +99,10 @@ function RichItem({
     resolveReference,
     linkFallbackIcon,
     textStyle
-}: NotionRichTextViewProps & { readonly item: NotionRichText[number]; })
+}: MarkdownRichTextViewProps & { readonly item: MarkdownRichText[number]; })
 {
     const value = asRecord(item);
-    const metadata = getNotionMarkdownMetadata(value);
+    const metadata = getMarkdownMetadata(value);
     const annotation = asRecord(value.annotations);
     const text = contentOf(item, metadata);
     const rawUrl = asRecord(asRecord(value.text).link).url;
@@ -113,7 +113,7 @@ function RichItem({
     const referenceUrl = request?.url;
     const label = request?.label;
     const requestKey = `${kind ?? ""}:${referenceUrl ?? ""}:${label ?? ""}`;
-    const [ state, setState ] = useState<{ key: string; value: NotionReferenceDisplay | null }>();
+    const [ state, setState ] = useState<{ key: string; value: MarkdownReferenceDisplay | null }>();
 
     useEffect(() =>
     {
@@ -124,7 +124,7 @@ function RichItem({
 
         let live = true;
         void resolveReference({ kind, label, url: referenceUrl })
-            .then((result: NotionReferenceDisplay | null) =>
+            .then((result: MarkdownReferenceDisplay | null) =>
             {
                 if (live) {setState({ key: requestKey, value: result });}
             })
@@ -173,10 +173,10 @@ function RichItem({
             annotationColor !== undefined &&
             (annotationColor.endsWith("_bg") || annotationColor.endsWith("_background"))
         )
-            ? notionColor(annotationColor, dark)
+            ? markdownColor(annotationColor, dark)
             : undefined;
         const styleForeground = annotationColor !== undefined && styleBackgroundColor === undefined
-            ? notionColor(annotationColor, dark)
+            ? markdownColor(annotationColor, dark)
             : undefined;
         const styleDestination = resolved?.url ?? url;
         const styleBaseFontSize = textStyle?.fontSize ?? theme.fontSize;
@@ -239,7 +239,7 @@ function RichItem({
     if (value.type === "equation")
     {
         return (
-            <NotionMathView
+            <MarkdownMathView
                 expression={ String(asRecord(value.equation).expression ?? "") }
                 theme={ theme }
             />
@@ -267,7 +267,7 @@ function RichItem({
 }
 
 /** Shared read-only rich-text presentation used by block views and future editor surfaces. */
-export function NotionRichTextView({
+export function MarkdownRichTextView({
     items,
     linkFallbackIcon,
     theme,
@@ -276,7 +276,7 @@ export function NotionRichTextView({
     resolveReference,
     textStyle,
     testID
-}: NotionRichTextViewProps)
+}: MarkdownRichTextViewProps)
 {
     const RootStyle = useMemo((): ViewStyle => ({
         alignItems: "flex-start",
@@ -290,7 +290,7 @@ export function NotionRichTextView({
             style={ RootStyle }
             testID={ testID }>
             {
-                (items ?? [ ]).map((item: NotionRichTextItem, index: number) => (
+                (items ?? [ ]).map((item: MarkdownRichTextItem, index: number) => (
                     <RichItem dark={ dark }
                         item={ item }
                         key={ index }

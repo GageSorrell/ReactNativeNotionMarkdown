@@ -1,7 +1,7 @@
 /**
- * @module react-native-notion-markdown/NotionMarkdownModule
+ * @module react-native-notion-markdown/MarkdownModule
  *
- * @file      NotionMarkdownModule.ts
+ * @file      MarkdownModule.ts
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
@@ -14,14 +14,14 @@ import { requireNativeModule } from "expo-modules-core";
  *
  * @since 1.0.0
  */
-export interface NotionMarkdownModule
+export interface MarkdownModule
 {
     hello(): string;
 }
 
 /**
- * The loaded native Notion Markdown module.
+ * The loaded native Markdown module.
  *
  * @since 1.0.0
  */
-export default requireNativeModule<NotionMarkdownModule>("NotionMarkdown");
+export default requireNativeModule<MarkdownModule>("Markdown");

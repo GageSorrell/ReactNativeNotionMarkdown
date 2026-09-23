@@ -17,7 +17,7 @@ const result = await build({
     stdin:
     {
         contents: `import mermaid from "mermaid";
-window.__renderNotionMermaid = async (source, id) => {
+window.__renderMarkdownMermaid = async (source, id) => {
   mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
   return (await mermaid.render(id, source)).svg;
 };`,

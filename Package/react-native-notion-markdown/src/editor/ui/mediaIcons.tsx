@@ -10,14 +10,14 @@
  */
 
 import { Circle, Path, Polygon, Rect, Svg } from "react-native-svg";
-import type { NotionEditorIconProps } from "./NotionEditor.tsx";
+import type { MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
 
 /**
  * Render the gallery icon.
  *
  * @since 1.0.0
  */
-export function GalleryIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function GalleryIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -44,7 +44,7 @@ export function GalleryIcon({ color, size, strokeWidth }: NotionEditorIconProps)
 }
 
 /** Render the camera icon. */
-export function CameraIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function CameraIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -64,7 +64,7 @@ export function CameraIcon({ color, size, strokeWidth }: NotionEditorIconProps)
 }
 
 /** Render the video-camera icon. */
-export function VideoIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function VideoIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"

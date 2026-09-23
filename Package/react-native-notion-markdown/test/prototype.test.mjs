@@ -4,13 +4,13 @@ import {
   createEditorDocument,
   acceptEditorEvent,
   editorPointAt,
-  parseNotionMarkdown,
-  serializeNotionMarkdown,
-  fromNotionBlocks,
-  toNotionBlocks,
-  notionSelectionPointAt,
-  getNotionEditableFields,
-  createNotionEditor
+  parseMarkdown,
+  serializeMarkdown,
+  fromMarkdownBlocks,
+  toMarkdownBlocks,
+  markdownSelectionPointAt,
+  getMarkdownEditableFields,
+  createMarkdownEditor
 } from 'react-native-notion-markdown/renderer';
 
 test('renderer entry loads without React Native; seed has three stable blocks', () => {
@@ -18,7 +18,45 @@ test('renderer entry loads without React Native; seed has three stable blocks', 
 });
 test('package root exposes the pure engine without loading Expo', async () => {
   const root = await import('react-native-notion-markdown');
-  assert.equal(typeof root.parseNotionMarkdown, 'function');
+  assert.equal(typeof root.parseMarkdown, 'function');
+});
+test('code fences tolerate Notion theme=null metadata for all language forms', () => {
+  const source = [
+    '```html theme={null}',
+    '<div>HTML</div>',
+    '```',
+    '',
+    '``` theme={null}',
+    'plain text',
+    '```'
+  ].join('\n');
+  const parsed = parseMarkdown(source);
+  assert.equal(parsed.diagnostics.length, 0);
+  assert.deepEqual(parsed.document.blocks.map((block) => block.code.language), [ 'html', 'plain text' ]);
+  assert.equal(serializeMarkdown(parsed.document), [
+    '```html',
+    '<div>HTML</div>',
+    '```',
+    '```plain text',
+    'plain text',
+    '```'
+  ].join('\n'));
+  assert.equal(serializeMarkdown(parsed.document, { includeCodeBlockThemeNull: true }), [
+    '```html theme={null}',
+    '<div>HTML</div>',
+    '```',
+    '```plain text theme={null}',
+    'plain text',
+    '```'
+  ].join('\n'));
+});
+test('the editor store can opt into theme=null code fences when returning Markdown', () => {
+  const store = createMarkdownEditor('```javascript\nconst value = 1;\n```');
+  assert.equal(store.getMarkdown(), '```javascript\nconst value = 1;\n```');
+  assert.equal(
+    store.getMarkdown({ includeCodeBlockThemeNull: true }),
+    '```javascript theme={null}\nconst value = 1;\n```'
+  );
 });
 test('epoch and revision reject stale events, preserving unaffected blocks', () => {
   const initial = createEditorDocument();
@@ -148,10 +186,10 @@ test('file editor blocks preserve metadata and reject empty URLs', () => {
 });
 test('audio Markdown preserves its URL and caption through a round trip', () => {
   const source = '<audio src="file:///tmp/memo.m4a">Voice **memo**</audio>';
-  const parsed = parseNotionMarkdown(source);
+  const parsed = parseMarkdown(source);
   assert.equal(parsed.document.blocks[0].type, 'audio');
   assert.equal(parsed.document.blocks[0].audio.external.url, 'file:///tmp/memo.m4a');
-  assert.match(serializeNotionMarkdown(parsed.document), /<audio src="file:\/\/\/tmp\/memo\.m4a">Voice \*\*memo\*\*<\/audio>/);
+  assert.match(serializeMarkdown(parsed.document), /<audio src="file:\/\/\/tmp\/memo\.m4a">Voice \*\*memo\*\*<\/audio>/);
 });
 test('editor link marks preserve URLs and reject malformed links', () => {
   const initial = createEditorDocument();
@@ -180,7 +218,7 @@ test('soft breaks stay in a block; empty blocks have selectable endpoints', () =
 });
 
 test('Milestone 2 parses rich text and block attributes', () => {
-  const result = parseNotionMarkdown('# Title **bold** *italic* ~~strike~~ <span underline="true" color="red">ink</span> [link](https://example.com)');
+  const result = parseMarkdown('# Title **bold** *italic* ~~strike~~ <span underline="true" color="red">ink</span> [link](https://example.com)');
   const richText = result.document.blocks[0].heading_1.rich_text;
   assert.equal(result.diagnostics.length, 0);
   assert.equal(richText[1].annotations.bold, true);
@@ -212,7 +250,7 @@ test('Milestone 2 parses recursive containers, tables, mentions, and literal cod
     '```',
     '<mention-user url="{{user://abc123}}">Ada</mention-user>'
   ].join('\n');
-  const result = parseNotionMarkdown(markdown);
+  const result = parseMarkdown(markdown);
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.document.blocks[0].type, 'toggle');
   assert.equal(result.document.blocks[0].children[0].type, 'bulleted_list_item');
@@ -220,40 +258,40 @@ test('Milestone 2 parses recursive containers, tables, mentions, and literal cod
   assert.equal(result.document.blocks[2].table.table_width, 1);
   assert.equal(result.document.blocks[3].code.rich_text[0].text.content, '**literal** \\ $x$');
   assert.equal(result.document.blocks[4].paragraph.rich_text[0].mention.user.id, 'abc123');
-  assert.match(serializeNotionMarkdown(result.document), /<table/);
+  assert.match(serializeMarkdown(result.document), /<table/);
 });
 
 test('Milestone 2 adapters preserve IDs and report unresolved SDK conversions', () => {
-  const imported = fromNotionBlocks([
+  const imported = fromMarkdownBlocks([
     { object: 'block', id: '11111111-1111-1111-1111-111111111111', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: 'Remote' }, annotations: {} }] } }
   ]);
   const block = imported.document.blocks[0];
   assert.equal(block.id, '11111111-1111-1111-1111-111111111111');
-  assert.equal(block.__notion_markdown.notionId, block.id);
-  assert.notEqual(block.__notion_markdown.editorId, block.id);
-  assert.equal(toNotionBlocks(imported.document).blocks[0].paragraph.rich_text[0].text.content, 'Remote');
+  assert.equal(block.__markdown_markdown.markdownId, block.id);
+  assert.notEqual(block.__markdown_markdown.editorId, block.id);
+  assert.equal(toMarkdownBlocks(imported.document).blocks[0].paragraph.rich_text[0].text.content, 'Remote');
 
-  const unresolved = parseNotionMarkdown('<page url="https://www.notion.so/page">Title</page>').document;
-  const converted = toNotionBlocks(unresolved);
+  const unresolved = parseMarkdown('<page url="https://www.markdown.so/page">Title</page>').document;
+  const converted = toMarkdownBlocks(unresolved);
   assert.equal(converted.blocks.length, 0);
   assert.equal(converted.diagnostics[0].code, 'unresolved-page-reference');
-  assert.throws(() => toNotionBlocks(unresolved, { strict: true }), /unresolved-page-reference/);
+  assert.throws(() => toMarkdownBlocks(unresolved, { strict: true }), /unresolved-page-reference/);
 });
 
 test('Milestone 2 preserves dates and translates background colors at the SDK boundary', () => {
-  const parsed = parseNotionMarkdown('# Color {color="blue_bg"}\nDate <mention-date start="2026-09-16" startTime="09:30" timeZone="America/Indiana/Indianapolis"/>');
-  const sdk = toNotionBlocks(parsed.document);
+  const parsed = parseMarkdown('# Color {color="blue_bg"}\nDate <mention-date start="2026-09-16" startTime="09:30" timeZone="America/Indiana/Indianapolis"/>');
+  const sdk = toMarkdownBlocks(parsed.document);
   assert.equal(sdk.blocks[0].heading_1.color, 'blue_background');
   assert.equal(sdk.blocks[1].paragraph.rich_text[1].mention.date.start, '2026-09-16T09:30');
-  assert.match(serializeNotionMarkdown(parsed.document), /mention-date start="2026-09-16"/);
+  assert.match(serializeMarkdown(parsed.document), /mention-date start="2026-09-16"/);
 });
 
 test('Milestone 2 selection mapping and grouped history use immutable snapshots', () => {
-  const store = createNotionEditor('One\nTwo');
+  const store = createMarkdownEditor('One\nTwo');
   const initial = store.getDocument();
-  const fields = getNotionEditableFields(initial);
+  const fields = getMarkdownEditableFields(initial);
   assert.equal(fields.length, 2);
-  assert.equal(notionSelectionPointAt(initial, 4).blockId, fields[1].blockId);
+  assert.equal(markdownSelectionPointAt(initial, 4).blockId, fields[1].blockId);
   store.transact((document) => ({ ...document, blocks: document.blocks.map((block) => block.type === 'paragraph' ? { ...block, paragraph: { ...block.paragraph, rich_text: [{ type: 'text', text: { content: 'Changed' } }] } } : block) }), 'user');
   store.transact((document) => ({ ...document, blocks: document.blocks.map((block) => block.type === 'paragraph' ? { ...block, paragraph: { ...block.paragraph, rich_text: [{ type: 'text', text: { content: 'Changed twice' } }] } } : block) }), 'user');
   assert.equal(store.undo(), true);

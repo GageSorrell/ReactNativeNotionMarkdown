@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["expo.modules.notionmarkdown.NotionMarkdownModule"]
+    "modules": ["expo.modules.markdown.MarkdownModule"]
   }
 }

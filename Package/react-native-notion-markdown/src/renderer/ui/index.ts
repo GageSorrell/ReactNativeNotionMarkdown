@@ -13,4 +13,4 @@ export * from "./RichText.tsx";
 export * from "./MathView.tsx";
 export * from "./MermaidView.tsx";
 export * from "./Previews.tsx";
-export * from "./NotionMarkdownRenderer.tsx";
+export * from "./MarkdownRenderer.tsx";

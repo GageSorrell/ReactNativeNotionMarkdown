@@ -7,10 +7,10 @@
  * @license   MIT
  */
 
-import type { NotionMarkdownColor } from "./document/types.ts";
+import type { MarkdownColor } from "./document/types.ts";
 
 /**
- * A block in the milestone-one transport model. This is not the public Notion AST.
+ * A block in the milestone-one transport model. This is not the public Markdown AST.
  *
  * @since 1.0.0
  */
@@ -53,7 +53,7 @@ export interface EditorBlock
     readonly fileSize?: number;
     /** Optional icon: a page icon for `link_to_page`, or a callout's emoji. */
     readonly icon?: string;
-    readonly color?: NotionMarkdownColor;
+    readonly color?: MarkdownColor;
     /** Whether a to-do block is checked. */
     readonly checked?: boolean;
     /** Number of columns in a `column_list` block. */
@@ -183,7 +183,7 @@ export interface EditorCommand
     readonly level?: 1 | 2 | 3 | 4;
 
     /** Block color for a `"color"` action. Omit (or clear) for the default color. */
-    readonly color?: NotionMarkdownColor;
+    readonly color?: MarkdownColor;
 
     /** Emoji icon for a callout `"icon"` action. */
     readonly icon?: string;
@@ -260,7 +260,7 @@ export/**
        */
 const createEditorDocument = CreateEditorDocument;
 
-/* Valid EditorBlock types -- kept separate from the SDK's `NotionMarkdownBlockType` since this
+/* Valid EditorBlock types -- kept separate from the SDK's `MarkdownBlockType` since this
    internal transport uses a smaller set of editable text and list block types. */
 const validEditorBlockTypes: ReadonlyArray<EditorBlock[ "type" ]> =
     [
@@ -270,8 +270,8 @@ const validEditorBlockTypes: ReadonlyArray<EditorBlock[ "type" ]> =
         "link_to_page"
     ];
 
-/* Valid EditorBlock colors, matching `NotionMarkdownColor` exactly. */
-const validEditorColors: ReadonlyArray<NotionMarkdownColor> =
+/* Valid EditorBlock colors, matching `MarkdownColor` exactly. */
+const validEditorColors: ReadonlyArray<MarkdownColor> =
     [
         "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red",
         "gray_bg", "brown_bg", "orange_bg", "yellow_bg", "green_bg",

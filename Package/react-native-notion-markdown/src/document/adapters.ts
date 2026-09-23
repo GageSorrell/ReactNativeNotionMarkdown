@@ -1,5 +1,5 @@
 /**
- * Pure adapters between the recursive document model and Notion SDK blocks.
+ * Pure adapters between the recursive document model and Markdown SDK blocks.
  *
  * @module react-native-notion-markdown/document/adapters
  *
@@ -15,29 +15,29 @@ import type {
     PartialBlockObjectResponse
 } from "@notionhq/client";
 import {
-    type FromNotionBlocksOptions,
-    type FromNotionBlocksResult,
-    NOTION_MARKDOWN_METADATA,
-    type NotionBlock,
-    NotionConversionError,
-    type NotionDiagnostic,
-    type NotionDocument,
-    type NotionMarkdownBlockType,
-    type NotionMarkdownMetadata,
-    type ToNotionBlocksOptions,
-    type ToNotionBlocksResult
+    type FromMarkdownBlocksOptions,
+    type FromMarkdownBlocksResult,
+    MARKDOWN_MARKDOWN_METADATA,
+    type MarkdownBlock,
+    MarkdownConversionError,
+    type MarkdownDiagnostic,
+    type MarkdownDocument,
+    type MarkdownBlockType,
+    type MarkdownMetadata,
+    type ToMarkdownBlocksOptions,
+    type ToMarkdownBlocksResult
 } from "./types.ts";
 import {
     asRecord,
     fromSdkColor,
-    getNotionBlockPayload,
-    getNotionMarkdownMetadata,
+    getMarkdownBlockPayload,
+    getMarkdownMetadata,
     toSdkColor
 } from "../internal.ts";
 
 type SdkRichTextContainer = Extract<BlockObjectRequest, { paragraph: unknown; }>;
 
-type NotionSdkRichTextItemRequest =
+type MarkdownSdkRichTextItemRequest =
     SdkRichTextContainer extends { paragraph: { rich_text: Array<infer Item>; }; }
         ? Item
         : never;
@@ -47,18 +47,18 @@ type SdkBlockInput =
     | PartialBlockObjectResponse;
 
 /**
- * Check whether a given value is a canonical Notion identifier.
+ * Check whether a given value is a canonical Markdown identifier.
  *
  * @category Functions
  * @since 1.0.0
  */
-function IsNotionId(value: unknown): value is string
+function IsMarkdownId(value: unknown): value is string
 {
     return typeof value === "string" && /^(?:[0-9a-f]{8}-?){4}[0-9a-f]{4}$/i.test(value.replace(/-/g, ""));
 }
 
 /**
- * Extract a Notion identifier from a reference URL or identifier value.
+ * Extract a Markdown identifier from a reference URL or identifier value.
  *
  * @category Functions
  * @since 1.0.0
@@ -72,7 +72,7 @@ function IdFromUrl(value: unknown): string | undefined
 
     const uri = value.match(/\{\{(?:page|database|block|user):\/\/([^}]+)\}\}/i);
 
-    return uri?.[1] ?? (IsNotionId(value) ? value : undefined);
+    return uri?.[1] ?? (IsMarkdownId(value) ? value : undefined);
 }
 
 /**
@@ -108,7 +108,7 @@ function NormalizeImportedPayload(value: unknown): Record<string, unknown>
  * @since 1.0.0
  */
 function Diagnostic(
-    diagnostics: Array<NotionDiagnostic>,
+    diagnostics: Array<MarkdownDiagnostic>,
     code: string,
     message: string,
     severity: "error" | "warning" = "warning"
@@ -137,25 +137,25 @@ function childrenOf(value: Record<string, unknown>): Array<SdkBlockInput>
 function fromBlock(
     input: SdkBlockInput,
     path: string,
-    options: FromNotionBlocksOptions,
-    diagnostics: Array<NotionDiagnostic>
-): NotionBlock
+    options: FromMarkdownBlocksOptions,
+    diagnostics: Array<MarkdownDiagnostic>
+): MarkdownBlock
 {
     const value = asRecord(input);
     const type = typeof value.type === "string" ? value.type : "unsupported";
-    const notionId = typeof value.id === "string" ? value.id : undefined;
+    const markdownId = typeof value.id === "string" ? value.id : undefined;
     const editorId =
-        options.idFactory?.(path, notionId) ??
-        (notionId === undefined
-            ? `notion:${ path }`
-            : `notion:${ notionId }`
+        options.idFactory?.(path, markdownId) ??
+        (markdownId === undefined
+            ? `markdown:${ path }`
+            : `markdown:${ markdownId }`
         );
 
-    const blockMetadata: NotionMarkdownMetadata =
+    const blockMetadata: MarkdownMetadata =
         {
-            ...getNotionMarkdownMetadata(input),
+            ...getMarkdownMetadata(input),
             editorId,
-            ...(notionId === undefined ? { } : { notionId })
+            ...(markdownId === undefined ? { } : { markdownId })
         } as const;
 
     const GetChildFromBlock = (Child: SdkBlockInput, Index: number) => fromBlock(
@@ -167,7 +167,7 @@ function fromBlock(
 
     const children = childrenOf(value).map(GetChildFromBlock);
 
-    const allowed: ReadonlySet<NotionMarkdownBlockType> = new Set<NotionMarkdownBlockType>([
+    const allowed: ReadonlySet<MarkdownBlockType> = new Set<MarkdownBlockType>([
         "paragraph",
         "heading_1",
         "heading_2",
@@ -198,26 +198,26 @@ function fromBlock(
         "synced_block"
     ]);
 
-    if (!allowed.has(type as NotionMarkdownBlockType))
+    if (!allowed.has(type as MarkdownBlockType))
     {
         Diagnostic(
             diagnostics,
             "unsupported-block",
-            `The Notion block type '${ type }' was imported as an empty text block.`
+            `The Markdown block type '${ type }' was imported as an empty text block.`
         );
 
         return {
-            [ NOTION_MARKDOWN_METADATA ]:
+            [ MARKDOWN_MARKDOWN_METADATA ]:
             {
                 ...blockMetadata,
                 unsupportedBlock: value,
                 unsupportedType: type
             },
             children,
-            id: notionId ?? `notion:${ path }`,
+            id: markdownId ?? `markdown:${ path }`,
             paragraph: { rich_text: [ ] },
             type: "paragraph"
-        } as NotionBlock;
+        } as MarkdownBlock;
     }
 
     const payload = NormalizeImportedPayload(value[type] ?? { });
@@ -226,7 +226,7 @@ function fromBlock(
     delete payload.children;
 
     return {
-        id: notionId ?? `notion:${ path }`,
+        id: markdownId ?? `markdown:${ path }`,
         type,
         [ type ]: payload,
         ...(children.length === 0 && nestedChildren.length === 0
@@ -236,8 +236,8 @@ function fromBlock(
                     ? nestedChildren
                     : children
             }),
-        [ NOTION_MARKDOWN_METADATA ]: blockMetadata
-    } as NotionBlock;
+        [ MARKDOWN_MARKDOWN_METADATA ]: blockMetadata
+    } as MarkdownBlock;
 }
 
 /**
@@ -245,12 +245,12 @@ function fromBlock(
  *
  * @since 1.0.0
  */
-export function fromNotionBlocks(
+export function fromMarkdownBlocks(
     blocks: ReadonlyArray<SdkBlockInput>,
-    options: FromNotionBlocksOptions = { }
-): FromNotionBlocksResult
+    options: FromMarkdownBlocksOptions = { }
+): FromMarkdownBlocksResult
 {
-    const diagnostics: Array<NotionDiagnostic> = [ ];
+    const diagnostics: Array<MarkdownDiagnostic> = [ ];
 
     const GetBlock = (Block: SdkBlockInput, Index: number) => fromBlock(
         Block,
@@ -259,7 +259,7 @@ export function fromNotionBlocks(
         diagnostics
     );
 
-    const document: NotionDocument =
+    const document: MarkdownDocument =
         {
             blocks: blocks.map(GetBlock),
             version: 1
@@ -279,8 +279,8 @@ export function fromNotionBlocks(
  */
 function ToRequestRichText(
     items: unknown,
-    diagnostics: Array<NotionDiagnostic>
-): ReadonlyArray<NotionSdkRichTextItemRequest>
+    diagnostics: Array<MarkdownDiagnostic>
+): ReadonlyArray<MarkdownSdkRichTextItemRequest>
 {
     if (!Array.isArray(items))
     {
@@ -290,7 +290,7 @@ function ToRequestRichText(
     return items.map((item: unknown) =>
     {
         const value = asRecord(item);
-        const itemMetadata = getNotionMarkdownMetadata(item);
+        const itemMetadata = getMarkdownMetadata(item);
         const text = asRecord(value.text);
         if (value.type === "text" || text.content !== undefined)
         {
@@ -337,7 +337,7 @@ function ToRequestRichText(
                         }
                     }
                 )
-            } as NotionSdkRichTextItemRequest;
+            } as MarkdownSdkRichTextItemRequest;
         }
         if (value.type === "equation" && typeof asRecord(value.equation).expression === "string")
         {
@@ -347,7 +347,7 @@ function ToRequestRichText(
                     expression: String(asRecord(value.equation).expression)
                 },
                 type: "equation"
-            } as NotionSdkRichTextItemRequest;
+            } as MarkdownSdkRichTextItemRequest;
         }
         if (value.type === "mention")
         {
@@ -357,12 +357,12 @@ function ToRequestRichText(
 
             if (kind === "user" || kind === "page" || kind === "database")
             {
-                if (!IsNotionId(source.id))
+                if (!IsMarkdownId(source.id))
                 {
                     Diagnostic(
                         diagnostics,
                         "unresolved-mention",
-                        `The ${ kind } mention has no resolvable Notion ID.`,
+                        `The ${ kind } mention has no resolvable Markdown ID.`,
                         "error"
                     );
 
@@ -372,7 +372,7 @@ function ToRequestRichText(
                             content: String(itemMetadata.mention?.label ?? "")
                         },
                         type: "text"
-                    } as NotionSdkRichTextItemRequest;
+                    } as MarkdownSdkRichTextItemRequest;
                 }
 
                 return {
@@ -385,7 +385,7 @@ function ToRequestRichText(
                         type: kind
                     },
                     type: "mention"
-                } as NotionSdkRichTextItemRequest;
+                } as MarkdownSdkRichTextItemRequest;
             }
             if (kind === "date" && asRecord(mention.date).start !== undefined)
             {
@@ -396,14 +396,14 @@ function ToRequestRichText(
                         type: "date"
                     },
                     type: "mention"
-                } as NotionSdkRichTextItemRequest;
+                } as MarkdownSdkRichTextItemRequest;
             }
         }
 
         Diagnostic(
             diagnostics,
             "unrepresentable-rich-text",
-            "A rich-text item has no Notion SDK representation.",
+            "A rich-text item has no Markdown SDK representation.",
             "error"
         );
 
@@ -413,7 +413,7 @@ function ToRequestRichText(
                 content: String(value.plain_text ?? value.content ?? "")
             },
             type: "text"
-        } as NotionSdkRichTextItemRequest;
+        } as MarkdownSdkRichTextItemRequest;
     });
 }
 
@@ -423,12 +423,12 @@ function ToRequestRichText(
  * @category Functions
  * @since 1.0.0
  */
-function ToBlock(block: NotionBlock, diagnostics: Array<NotionDiagnostic>): BlockObjectRequest | undefined
+function ToBlock(block: MarkdownBlock, diagnostics: Array<MarkdownDiagnostic>): BlockObjectRequest | undefined
 {
-    const data = getNotionBlockPayload(block);
+    const data = getMarkdownBlockPayload(block);
 
     const childRequests = (block.children ?? [ ])
-        .map((child: NotionBlock) => ToBlock(child, diagnostics))
+        .map((child: MarkdownBlock) => ToBlock(child, diagnostics))
         .filter((child: BlockObjectRequest | undefined): child is BlockObjectRequest => child !== undefined);
 
     const copy = { ...data } as Record<string, unknown>;
@@ -438,9 +438,9 @@ function ToBlock(block: NotionBlock, diagnostics: Array<NotionDiagnostic>): Bloc
         copy.children = childRequests;
     }
 
-    if (copy.color === undefined && getNotionMarkdownMetadata(block).color !== undefined)
+    if (copy.color === undefined && getMarkdownMetadata(block).color !== undefined)
     {
-        copy.color = getNotionMarkdownMetadata(block).color;
+        copy.color = getMarkdownMetadata(block).color;
     }
 
     if (block.type === "synced_block_reference")
@@ -449,14 +449,14 @@ function ToBlock(block: NotionBlock, diagnostics: Array<NotionDiagnostic>): Bloc
             diagnostics,
             "unrepresentable-synced-reference",
             "A synced block reference URL cannot be converted to the SDK's synced_from.block_id " +
-                "without a Notion block ID.",
+                "without a Markdown block ID.",
             "error"
         );
         return undefined;
     }
     if (block.type === "link_to_page")
     {
-        const blockMetadata = getNotionMarkdownMetadata(block);
+        const blockMetadata = getMarkdownMetadata(block);
         const dataId = data.page_id ?? data.database_id;
         const id = IdFromUrl(dataId) ?? IdFromUrl(blockMetadata.referenceUrl);
 
@@ -465,7 +465,7 @@ function ToBlock(block: NotionBlock, diagnostics: Array<NotionDiagnostic>): Bloc
             Diagnostic(
                 diagnostics,
                 "unresolved-page-reference",
-                "A page/database reference has no resolvable Notion ID.",
+                "A page/database reference has no resolvable Markdown ID.",
                 "error"
             );
 
@@ -498,7 +498,7 @@ function ToBlock(block: NotionBlock, diagnostics: Array<NotionDiagnostic>): Bloc
     if (block.type === "table")
     {
         copy.children = (block.children ?? [ ])
-            .map((child: NotionBlock) => ToBlock(child, diagnostics))
+            .map((child: MarkdownBlock) => ToBlock(child, diagnostics))
             .filter((child: BlockObjectRequest | undefined): child is BlockObjectRequest =>
                 child !== undefined
             );
@@ -524,16 +524,16 @@ function ToBlock(block: NotionBlock, diagnostics: Array<NotionDiagnostic>): Bloc
         copy.caption = ToRequestRichText(copy.caption, diagnostics);
     }
 
-    if (block.type === "synced_block" && getNotionMarkdownMetadata(block).referenceUrl !== undefined)
+    if (block.type === "synced_block" && getMarkdownMetadata(block).referenceUrl !== undefined)
     {
-        const id = IdFromUrl(getNotionMarkdownMetadata(block).referenceUrl);
+        const id = IdFromUrl(getMarkdownMetadata(block).referenceUrl);
 
         if (id === undefined)
         {
             Diagnostic(
                 diagnostics,
                 "unresolved-synced-block",
-                "A synced block URL cannot be converted to synced_from.block_id without a Notion block ID.",
+                "A synced block URL cannot be converted to synced_from.block_id without a Markdown block ID.",
                 "error"
             );
 
@@ -547,23 +547,23 @@ function ToBlock(block: NotionBlock, diagnostics: Array<NotionDiagnostic>): Bloc
 /**
  * Export SDK request payloads and retain explicit conversion diagnostics.
  *
- * @throws {NotionConversionError} Iff part of the document cannot be converted to a block.
+ * @throws {MarkdownConversionError} Iff part of the document cannot be converted to a block.
  *
  * @since 1.0.0
  */
-export function toNotionBlocks(
-    document: NotionDocument,
-    options: ToNotionBlocksOptions = { }
-): ToNotionBlocksResult
+export function toMarkdownBlocks(
+    document: MarkdownDocument,
+    options: ToMarkdownBlocksOptions = { }
+): ToMarkdownBlocksResult
 {
-    const diagnostics: Array<NotionDiagnostic> = [ ];
-    const blocks = document.blocks.map((block: NotionBlock) =>
+    const diagnostics: Array<MarkdownDiagnostic> = [ ];
+    const blocks = document.blocks.map((block: MarkdownBlock) =>
         ToBlock(block, diagnostics))
         .filter((block: BlockObjectRequest | undefined): block is BlockObjectRequest => block !== undefined);
 
-    if (options.strict === true && diagnostics.some((item: NotionDiagnostic) => item.severity === "error"))
+    if (options.strict === true && diagnostics.some((item: MarkdownDiagnostic) => item.severity === "error"))
     {
-        throw new NotionConversionError(diagnostics);
+        throw new MarkdownConversionError(diagnostics);
     }
 
     return { blocks, diagnostics };

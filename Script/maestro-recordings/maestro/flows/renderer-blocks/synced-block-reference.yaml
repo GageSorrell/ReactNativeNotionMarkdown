@@ -1,4 +1,4 @@
-appId: com.gagesorrell.notionmarkdown.storybook
+appId: com.gagesorrell.markdown.storybook
 ---
 # `resolved` defaults to true with no artificial delay, so the resolved text renders
 # immediately; toggling it off/on to show the unresolved state needs the Controls

@@ -2,7 +2,7 @@
  * Local media fixtures shared by renderer story previews. Fixture URLs resolve to a downloaded
  * asset; any other URL is passed through unchanged so stories can also demo remote sources.
  *
- * @module notion-markdown-storybook/Stories/fixtures
+ * @module markdown-storybook/Stories/fixtures
  *
  * @file      fixtures.ts
  * @author    Gage Sorrell <gage@sorrell.sh>
@@ -11,7 +11,7 @@
  */
 
 import { Asset } from "expo-asset";
-import type { NotionMediaRequest } from "react-native-notion-markdown/renderer/ui";
+import type { MarkdownMediaRequest } from "react-native-notion-markdown/renderer/ui";
 
 const fixtures: Record<string, number> =
     {
@@ -22,7 +22,7 @@ const fixtures: Record<string, number> =
     } as const;
 
 /** Resolve a local `fixture://` URL to a downloaded asset URI; pass any other URL through as-is. */
-export async function resolveFixture(request: NotionMediaRequest): Promise<string | null>
+export async function resolveFixture(request: MarkdownMediaRequest): Promise<string | null>
 {
     const module = request.url ? fixtures[request.url] : undefined;
 

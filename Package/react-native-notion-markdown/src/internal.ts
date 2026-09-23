@@ -14,9 +14,9 @@
  */
 
 import {
-    NOTION_MARKDOWN_METADATA,
-    type NotionBlock,
-    type NotionMarkdownMetadata
+    MARKDOWN_MARKDOWN_METADATA,
+    type MarkdownBlock,
+    type MarkdownMetadata
 } from "./document/types.ts";
 
 /**
@@ -31,14 +31,14 @@ export function asRecord(value: unknown): Record<string, unknown>
 }
 
 /**
- * Read the `__notion_markdown` metadata bag off a block or rich-text item, defaulting to `{}`
+ * Read the `__markdown_markdown` metadata bag off a block or rich-text item, defaulting to `{}`
  * when the value carries none.
  *
  * @since 1.0.0
  */
-export function getNotionMarkdownMetadata(value: unknown): NotionMarkdownMetadata
+export function getMarkdownMetadata(value: unknown): MarkdownMetadata
 {
-    return asRecord(value)[ NOTION_MARKDOWN_METADATA ] as NotionMarkdownMetadata ?? { };
+    return asRecord(value)[ MARKDOWN_MARKDOWN_METADATA ] as MarkdownMetadata ?? { };
 }
 
 /**
@@ -47,13 +47,13 @@ export function getNotionMarkdownMetadata(value: unknown): NotionMarkdownMetadat
  *
  * @since 1.0.0
  */
-export function getNotionBlockPayload(block: NotionBlock): Record<string, unknown>
+export function getMarkdownBlockPayload(block: MarkdownBlock): Record<string, unknown>
 {
     return asRecord(asRecord(block)[ block.type ]);
 }
 
 /**
- * Convert a color from the Notion SDK's `_background` suffix to the enhanced Markdown format's
+ * Convert a color from the Markdown SDK's `_background` suffix to the enhanced Markdown format's
  * `_bg` suffix. Values that are not background colors, or not strings, pass through unchanged.
  *
  * @since 1.0.0
@@ -66,7 +66,7 @@ export function fromSdkColor(value: unknown): unknown
 }
 
 /**
- * Convert a color from the enhanced Markdown format's `_bg` suffix to the Notion SDK's
+ * Convert a color from the enhanced Markdown format's `_bg` suffix to the Markdown SDK's
  * `_background` suffix. Values that are not background colors, or not strings, pass through
  * unchanged. The inverse of {@link fromSdkColor}.
  *

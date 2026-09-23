@@ -1,6 +1,6 @@
 /**
  * The canonical set of UI message identifiers and default English text for the editor. Consuming
- * applications translate these through {@link NotionEditorConfigProvider} rather than the package
+ * applications translate these through {@link MarkdownEditorConfigProvider} rather than the package
  * depending on any particular i18n framework.
  *
  * @module react-native-notion-markdown/editor/ui/messages
@@ -111,6 +111,13 @@ export type EditorMessageId =
     | "insertPanel.audio"
     | "insertPanel.video"
     | "insertPanel.file"
+    | "insertPanel.code"
+    | "insertPanel.link"
+    | "insertPanel.mediaTitle"
+    | "insertPanel.advancedTitle"
+    | "insertPanel.blockEquation"
+    | "insertPanel.syncedBlock"
+    | "insertPanel.mermaidDiagram"
     | "insertPanel.callout"
     | "insertPanel.quote"
     | "insertPanel.columns"
@@ -119,9 +126,11 @@ export type EditorMessageId =
     | "insertPanel.columns4"
     | "insertPanel.columns5"
     | "insertPanel.text"
+    | "insertPanel.table"
     | "insertPanel.divider"
     | "insertPanel.tableOfContents"
     | "insertPanel.toDo"
+    | "insertPanel.toggleList"
     | "insertPanel.pageReference"
     | "insertPanel.heading1"
     | "insertPanel.heading2"
@@ -140,7 +149,7 @@ export type EditorMessageId =
  *
  * @since 1.0.0
  */
-export interface NotionEditorMessageDescriptor
+export interface MarkdownEditorMessageDescriptor
 {
     readonly id: EditorMessageId;
     readonly defaultMessage: string;
@@ -149,12 +158,12 @@ export interface NotionEditorMessageDescriptor
 
 /**
  * Resolves a message descriptor to display text, optionally interpolating `Values`. Supplied by
- * the host application -- see {@link NotionEditorConfigProvider}.
+ * the host application -- see {@link MarkdownEditorConfigProvider}.
  *
  * @since 1.0.0
  */
-export type NotionEditorTranslate = (
-    Message: NotionEditorMessageDescriptor,
+export type MarkdownEditorTranslate = (
+    Message: MarkdownEditorMessageDescriptor,
     Values?: Readonly<Record<string, string | number>>
 ) => string;
 
@@ -164,7 +173,7 @@ export/**
        *
        * @since 1.0.0
        */
-const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessageDescriptor>> =
+const defaultEditorMessages: Readonly<Record<EditorMessageId, MarkdownEditorMessageDescriptor>> =
     {
         "actionsSheet.delete":
         {
@@ -376,11 +385,23 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Section heading for foreground colors in the color panel",
             id: "colorPanel.foreground"
         },
+        "insertPanel.advancedTitle":
+        {
+            defaultMessage: "Advanced",
+            description: "Heading for the insert-panel advanced section",
+            id: "insertPanel.advancedTitle"
+        },
         "insertPanel.audio":
         {
             defaultMessage: "Audio",
             description: "Insert-panel button that opens the audio picker",
             id: "insertPanel.audio"
+        },
+        "insertPanel.blockEquation":
+        {
+            defaultMessage: "Block equation",
+            description: "Insert-panel button reserved for the editor's future block equation",
+            id: "insertPanel.blockEquation"
         },
         "insertPanel.bulletedList":
         {
@@ -393,6 +414,12 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Callout",
             description: "Insert-panel button that inserts a callout block",
             id: "insertPanel.callout"
+        },
+        "insertPanel.code":
+        {
+            defaultMessage: "Code",
+            description: "Insert-panel button reserved for the editor's future non-inline code block",
+            id: "insertPanel.code"
         },
         "insertPanel.columns":
         {
@@ -460,6 +487,24 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             description: "Insert-panel button that opens the shared image and video picker",
             id: "insertPanel.image"
         },
+        "insertPanel.link":
+        {
+            defaultMessage: "Link",
+            description: "Insert-panel button reserved for the editor's future link block",
+            id: "insertPanel.link"
+        },
+        "insertPanel.mediaTitle":
+        {
+            defaultMessage: "Media",
+            description: "Heading for the insert-panel media section",
+            id: "insertPanel.mediaTitle"
+        },
+        "insertPanel.mermaidDiagram":
+        {
+            defaultMessage: "Mermaid diagram",
+            description: "Insert-panel button reserved for the editor's future Mermaid diagram block",
+            id: "insertPanel.mermaidDiagram"
+        },
         "insertPanel.numberedList":
         {
             defaultMessage: "Numbered list",
@@ -468,8 +513,8 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
         },
         "insertPanel.pageReference":
         {
-            defaultMessage: "Page",
-            description: "Insert-panel button that requests creation of a page reference",
+            defaultMessage: "Link to page",
+            description: "Insert-panel button that requests creation of a link to a page",
             id: "insertPanel.pageReference"
         },
         "insertPanel.quote":
@@ -483,6 +528,12 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "Return to keyboard",
             description: "Full-width insert-panel button that closes the panel and refocuses the keyboard",
             id: "insertPanel.returnToKeyboard"
+        },
+        "insertPanel.table":
+        {
+            defaultMessage: "Table",
+            description: "Insert-panel button reserved for the editor's future table block",
+            id: "insertPanel.table"
         },
         "insertPanel.tableOfContents":
         {
@@ -504,31 +555,31 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
         },
         "insertPanel.toDo":
         {
-            defaultMessage: "To-do",
+            defaultMessage: "To do list",
             description: "Insert-panel button that inserts a to-do block",
             id: "insertPanel.toDo"
         },
         "insertPanel.toggleHeading1":
         {
-            defaultMessage: "Toggle Header 1",
+            defaultMessage: "Toggle Heading 1",
             description: "Insert-panel button that inserts a toggle heading 1 block",
             id: "insertPanel.toggleHeading1"
         },
         "insertPanel.toggleHeading2":
         {
-            defaultMessage: "Toggle Header 2",
+            defaultMessage: "Toggle Heading 2",
             description: "Insert-panel button that inserts a toggle heading 2 block",
             id: "insertPanel.toggleHeading2"
         },
         "insertPanel.toggleHeading3":
         {
-            defaultMessage: "Toggle Header 3",
+            defaultMessage: "Toggle Heading 3",
             description: "Insert-panel button that inserts a toggle heading 3 block",
             id: "insertPanel.toggleHeading3"
         },
         "insertPanel.toggleHeading4":
         {
-            defaultMessage: "Toggle Header 4",
+            defaultMessage: "Toggle Heading 4",
             description: "Insert-panel button that inserts a toggle heading 4 block",
             id: "insertPanel.toggleHeading4"
         },
@@ -537,6 +588,18 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, NotionEditorMessag
             defaultMessage: "File",
             description: "Insert-panel button that opens the native file picker",
             id: "insertPanel.file"
+        },
+        "insertPanel.syncedBlock":
+        {
+            defaultMessage: "Synced block",
+            description: "Insert-panel button reserved for the editor's future synced block",
+            id: "insertPanel.syncedBlock"
+        },
+        "insertPanel.toggleList":
+        {
+            defaultMessage: "Toggle list",
+            description: "Insert-panel button reserved for the editor's future toggle-list block",
+            id: "insertPanel.toggleList"
         },
         "insertPanel.video":
         {

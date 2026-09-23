@@ -12,7 +12,7 @@
 import { Text, View } from "react-native";
 import { renderToSvg, uniffiInitAsync } from "react-native-ratex";
 import { useEffect, useMemo, useState } from "react";
-import type { NotionRendererTheme } from "./types.ts";
+import type { MarkdownRendererTheme } from "./types.ts";
 import { SvgXml } from "react-native-svg";
 
 /**
@@ -21,11 +21,11 @@ import { SvgXml } from "react-native-svg";
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionMathViewProps
+export interface MarkdownMathViewProps
 {
     readonly expression: string;
     readonly display?: boolean;
-    readonly theme: NotionRendererTheme;
+    readonly theme: MarkdownRendererTheme;
 }
 
 /**
@@ -34,7 +34,7 @@ export interface NotionMathViewProps
  * @category Functions
  * @since 1.0.0
  */
-export function NotionMathView({ expression, display = false, theme }: NotionMathViewProps)
+export function MarkdownMathView({ expression, display = false, theme }: MarkdownMathViewProps)
 {
     const key = `${ expression }\u0000${ display }\u0000${ theme.fontSize }\u0000${ theme.foreground }`;
     const [ result, setResult ] = useState<{ key: string; svg?: string; error?: boolean }>();

@@ -41,7 +41,7 @@ export type DocumentReplaceMessage = { blocks?: Array<EditorBlock> };
 export type PingMessage = { from: "app" | "web" };
 
 /** Message type name -> payload shape, for both directions of the bridge. */
-export type NotionMarkdownDevToolsMessages = {
+export type MarkdownDevToolsMessages = {
   "snapshot:update": SnapshotUpdateMessage;
   "event:report": EventReportMessage;
   "command:report": CommandReportMessage;

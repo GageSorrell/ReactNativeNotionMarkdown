@@ -16,7 +16,7 @@
  * then -- or if this module is never imported at all -- the renderer falls back to the platform's
  * system font, since React Native silently ignores an unregistered `fontFamily` name.
  *
- * Usage: `useFonts(notionMarkdownInterFonts)`, from `expo-font`, in an app that has installed
+ * Usage: `useFonts(markdownInterFonts)`, from `expo-font`, in an app that has installed
  * both optional peers.
  *
  * @module react-native-notion-markdown/renderer/ui/interFont
@@ -35,7 +35,7 @@ export/**
        *
        * @since 1.0.0
        */
-const notionMarkdownInterFonts =
+const markdownInterFonts =
     {
         Inter: Inter_400Regular,
         "Inter-Black": Inter_900Black

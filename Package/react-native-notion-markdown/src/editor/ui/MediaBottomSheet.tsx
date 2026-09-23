@@ -12,7 +12,7 @@
 /**
  * Optional native insert-media sheet.
  *
- * This module is loaded lazily by `NotionEditor`. Keeping the Expo ImagePicker import here means
+ * This module is loaded lazily by `MarkdownEditor`. Keeping the Expo ImagePicker import here means
  * applications that provide their own `onInsertMedia` handler do not need to install that peer.
  */
 
@@ -20,20 +20,20 @@ import * as ImagePicker from "expo-image-picker";
 import { CameraIcon, GalleryIcon, VideoIcon } from "./mediaIcons.tsx";
 import { Modal, Pressable, StyleSheet, Text, View, useColorScheme } from "react-native";
 import type {
-    NotionEditorComponents,
-    NotionEditorIconProps,
-    NotionEditorMediaAction,
-    NotionEditorMediaSelection
-} from "./NotionEditor.tsx";
+    MarkdownEditorComponents,
+    MarkdownEditorIconProps,
+    MarkdownEditorMediaAction,
+    MarkdownEditorMediaSelection
+} from "./MarkdownEditor.tsx";
 import type { ComponentType } from "react";
 import { useCallback, useMemo } from "react";
 
 /** Public props for the native insert-media sheet. */
 export interface MediaBottomSheetProps
 {
-    readonly components?: NotionEditorComponents;
+    readonly components?: MarkdownEditorComponents;
     readonly onDismiss: () => void;
-    readonly onSelected: (selection: NotionEditorMediaSelection) => void | Promise<void>;
+    readonly onSelected: (selection: MarkdownEditorMediaSelection) => void | Promise<void>;
     readonly labels: {
         readonly captureVideo: string;
         readonly openGallery: string;
@@ -44,19 +44,19 @@ export interface MediaBottomSheetProps
 
 interface MediaOptionProps
 {
-    readonly action: NotionEditorMediaAction;
+    readonly action: MarkdownEditorMediaAction;
     readonly color: string;
-    readonly icon: ComponentType<NotionEditorIconProps>;
+    readonly icon: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
-    readonly onPress: (action: NotionEditorMediaAction) => void;
+    readonly onPress: (action: MarkdownEditorMediaAction) => void;
 }
 
-type LucideModule = Record<string, ComponentType<NotionEditorIconProps>> &
+type LucideModule = Record<string, ComponentType<MarkdownEditorIconProps>> &
 {
-    readonly default?: Record<string, ComponentType<NotionEditorIconProps>>;
+    readonly default?: Record<string, ComponentType<MarkdownEditorIconProps>>;
 };
 
-const lucideNames: Readonly<Record<NotionEditorMediaAction, string>> =
+const lucideNames: Readonly<Record<MarkdownEditorMediaAction, string>> =
     {
         gallery: "Image",
         picture: "Camera",
@@ -90,9 +90,9 @@ function getLucideIcons(): LucideModule | undefined
 
 /** Resolve an override, an installed Lucide icon, or the dependency-free SVG fallback. */
 function getMediaIcon(
-    action: NotionEditorMediaAction,
+    action: MarkdownEditorMediaAction,
     components: MediaBottomSheetProps["components"]
-): ComponentType<NotionEditorIconProps>
+): ComponentType<MarkdownEditorIconProps>
 {
     const override = components?.[action];
 
@@ -140,9 +140,9 @@ function MediaOption({ action, color, icon: Icon, label, onPress }: MediaOptionP
 
 /** Convert Expo's picker result to the package's dependency-free public shape. */
 function normalizeSelection(
-    action: NotionEditorMediaAction,
+    action: MarkdownEditorMediaAction,
     result: ImagePicker.ImagePickerResult
-): NotionEditorMediaSelection
+): MarkdownEditorMediaSelection
 {
     return {
         action,
@@ -173,7 +173,7 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
     const divider = dark ? "rgba(255, 255, 255, 0.10)" : "#EEECE9";
     const scrim = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.25)";
 
-    const handleAction = useCallback(async (action: NotionEditorMediaAction) =>
+    const handleAction = useCallback(async (action: MarkdownEditorMediaAction) =>
     {
         const result = action === "gallery"
             ? await ImagePicker.launchImageLibraryAsync({ mediaTypes: [ "images", "videos" ] })
@@ -181,7 +181,7 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
                 mediaTypes: action === "picture" ? [ "images" ] : [ "videos" ]
             });
 
-        /* Close first: NotionEditor sends a focus command on dismissal. Sending the selected
+        /* Close first: MarkdownEditor sends a focus command on dismissal. Sending the selected
            asset afterwards keeps insertImage/insertVideo as the final command in the batch. */
         onDismiss();
         await onSelected(normalizeSelection(action, result));

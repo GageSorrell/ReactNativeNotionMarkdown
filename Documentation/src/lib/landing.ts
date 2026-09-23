@@ -119,8 +119,8 @@ export interface LandingPageConfig {
 export const LANDING_CONFIG: LandingPageConfig = {
   name: "react-native-notion-markdown",
   eyebrow: "React Native document infrastructure",
-  title: "Bring structured Notion-flavored content to every React Native surface.",
-  description: "Parse, render, edit, and serialize Notion-flavored markdown with a typed document model designed for React Native applications.",
+  title: "Bring structured Markdown-flavored content to every React Native surface.",
+  description: "Parse, render, edit, and serialize Markdown-formatted content with a typed document model designed for React Native applications.",
   content: {
     capabilityLabel: "// Built for content-heavy apps",
     examplesCaption: "A static preview of the package flow; the source visual effects are intentionally omitted.",
@@ -142,7 +142,7 @@ export const LANDING_CONFIG: LandingPageConfig = {
     faqDescription: "Start with the smallest boundary that solves the problem in front of you, then expand when the product needs it.",
     ctaTitle: "Give every content surface a structure it can keep.",
     pipelineSteps: [
-      { value: "01", title: "Parse", description: "Notion-flavored markdown" },
+      { value: "01", title: "Parse", description: "Markdown-formatted content" },
       { value: "02", title: "Model", description: "Typed blocks and rich text" },
       { value: "03", title: "Render", description: "Native UI and custom themes" }
     ]
@@ -217,7 +217,7 @@ export const LANDING_CONFIG: LandingPageConfig = {
     }
   ],
   modelRows: [
-    { value: "Input", label: "Notion-flavored markdown or Notion blocks" },
+    { value: "Input", label: "Markdown-formatted content or Markdown blocks" },
     { value: "Model", label: "Typed blocks, rich text, fields, selections, and commands" },
     { value: "Surface", label: "Renderer, editor, custom UI, or native adapter" }
   ],
@@ -271,7 +271,7 @@ export const LANDING_CONFIG: LandingPageConfig = {
   faqs: [
     {
       question: "What does the package render?",
-      answer: "It works with Notion-flavored markdown and the package document model, including rich text, blocks, links, media, code, diagrams, and tables."
+      answer: "It works with Markdown-formatted content and the package document model, including rich text, blocks, links, media, code, diagrams, and tables."
     },
     {
       question: "Can I use only the document layer?",

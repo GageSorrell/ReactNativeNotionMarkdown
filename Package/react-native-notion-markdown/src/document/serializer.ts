@@ -1,5 +1,5 @@
 /**
- * Canonical serializer for the Notion-enhanced Markdown document model.
+ * Canonical serializer for the Markdown-enhanced content document model.
  *
  * @module react-native-notion-markdown/document/serializer
  *
@@ -10,13 +10,14 @@
  */
 
 import {
-    type NotionBlock,
-    type NotionDocument,
-    type NotionMarkdownColor,
-    type NotionMarkdownMetadata,
-    type NotionRichText
+    type MarkdownBlock,
+    type MarkdownColor,
+    type MarkdownDocument,
+    type MarkdownMetadata,
+    type MarkdownRichText,
+    type SerializeMarkdownOptions
 } from "./types.ts";
-import { asRecord, getNotionBlockPayload, getNotionMarkdownMetadata } from "../internal.ts";
+import { asRecord, getMarkdownBlockPayload, getMarkdownMetadata } from "../internal.ts";
 
 /**
  * Escape Markdown-significant characters in the given text.
@@ -46,10 +47,10 @@ function quoteAttribute(value: string): string
  * @category Functions
  * @since 1.0.0
  */
-function richTextItem(item: NotionRichText[number]): string
+function richTextItem(item: MarkdownRichText[number]): string
 {
     const value = asRecord(item);
-    const itemMetadata = getNotionMarkdownMetadata(item);
+    const itemMetadata = getMarkdownMetadata(item);
     const mention = itemMetadata.mention;
 
     if (mention !== undefined)
@@ -166,8 +167,23 @@ function richText(items: unknown): string
 {
     return Array.isArray(items)
         ? items
-            .map((item: unknown) => richTextItem(item as NotionRichText[number]))
+            .map((item: unknown) => richTextItem(item as MarkdownRichText[number]))
             .join("")
+        : "";
+}
+
+/** Serialize fenced-code content literally; code blocks do not escape Markdown characters. */
+function codeText(items: unknown): string
+{
+    return Array.isArray(items)
+        ? items.map((item: unknown) =>
+        {
+            const value = asRecord(item);
+            const text = asRecord(value.text);
+            return typeof text.content === "string"
+                ? text.content
+                : typeof value.plain_text === "string" ? value.plain_text : "";
+        }).join("")
         : "";
 }
 
@@ -177,7 +193,7 @@ function richText(items: unknown): string
  * @category Functions
  * @since 1.0.0
  */
-function blockAttributes(meta: NotionMarkdownMetadata, includeToggle = false): string
+function blockAttributes(meta: MarkdownMetadata, includeToggle = false): string
 {
     const attrs: Array<string> = [ ];
     if (meta.color !== undefined)
@@ -201,7 +217,7 @@ function blockAttributes(meta: NotionMarkdownMetadata, includeToggle = false): s
  * @category Functions
  * @since 1.0.0
  */
-function tagAttributes(meta: NotionMarkdownMetadata): string
+function tagAttributes(meta: MarkdownMetadata): string
 {
     const attrs: Array<string> = [ ];
     if (meta.color !== undefined) {
@@ -227,12 +243,17 @@ function tagAttributes(meta: NotionMarkdownMetadata): string
  * @category Functions
  * @since 1.0.0
  */
-function serializeBlock(block: NotionBlock, indent: number): Array<string>
+function serializeBlock(
+    block: MarkdownBlock,
+    indent: number,
+    options: SerializeMarkdownOptions
+): Array<string>
 {
-    const data = getNotionBlockPayload(block);
-    const meta = getNotionMarkdownMetadata(block);
+    const data = getMarkdownBlockPayload(block);
+    const meta = getMarkdownMetadata(block);
     const children = block.children ?? [ ];
-    const childLines = children.flatMap((child: NotionBlock) => serializeBlock(child, indent + 1));
+    const childLines = children.flatMap((child: MarkdownBlock) =>
+        serializeBlock(child, indent + 1, options));
     const line = (value: string): Array<string> => [ `${"\t".repeat(indent)}${value}` ];
     const withChildren = (value: string): Array<string> => [ ...line(value), ...childLines ];
     switch (block.type)
@@ -284,10 +305,11 @@ function serializeBlock(block: NotionBlock, indent: number): Array<string>
         case "code":
         {
             const language = typeof data.language === "string" ? data.language : "plain text";
-            const code = richText(data.rich_text);
+            const code = codeText(data.rich_text);
+            const theme = options.includeCodeBlockThemeNull === true ? " theme={null}" : "";
 
             return [
-                `${"\t".repeat(indent)}\`\`\`${ language }`,
+                `${"\t".repeat(indent)}\`\`\`${ language }${ theme }`,
                 ...code.split("\n").map((value: string) => `${ "\t".repeat(indent) }${ value }`),
                 `${"\t".repeat(indent)}\`\`\``
             ];
@@ -319,7 +341,7 @@ function serializeBlock(block: NotionBlock, indent: number): Array<string>
             const columnColors = tableMeta.columnColors ?? [ ];
             const columns = columnColors.length === 0 ? [ ] : [
                 `${"\t".repeat(indent + 1)}<colgroup>`,
-                ...columnColors.map((color: NotionMarkdownColor | undefined) =>
+                ...columnColors.map((color: MarkdownColor | undefined) =>
                     "\t".repeat(indent + 2) +
                     `<col${color === undefined ? "" : ` color=${ quoteAttribute(color) }` }>`),
                 `${"\t".repeat(indent + 1)}</colgroup>`
@@ -329,7 +351,7 @@ function serializeBlock(block: NotionBlock, indent: number): Array<string>
                 "\t".repeat(indent) +
                 `<table${ tableAttrs.length === 0 ? "" : ` ${ tableAttrs }` }>`,
                 ...columns,
-                ...children.flatMap((row: NotionBlock) => serializeTableRow(row, indent + 1)),
+                ...children.flatMap((row: MarkdownBlock) => serializeTableRow(row, indent + 1)),
                 `${"\t".repeat(indent)}</table>`
             ];
         }
@@ -390,10 +412,10 @@ function serializeBlock(block: NotionBlock, indent: number): Array<string>
  * @category Functions
  * @since 1.0.0
  */
-function serializeTableRow(block: NotionBlock, indent: number): Array<string>
+function serializeTableRow(block: MarkdownBlock, indent: number): Array<string>
 {
-    const data = getNotionBlockPayload(block);
-    const rowMeta = getNotionMarkdownMetadata(block);
+    const data = getMarkdownBlockPayload(block);
+    const rowMeta = getMarkdownMetadata(block);
     const cells = Array.isArray(data.cells) ? data.cells : [ ];
     const rowColor = rowMeta.table?.rowColor === undefined
         ? ""
@@ -405,7 +427,7 @@ function serializeTableRow(block: NotionBlock, indent: number): Array<string>
             const cellColor = rowMeta.table?.cellColors?.[cellIndex];
             const cellValue = Array.isArray(cell)
                 ? (cell as Array<unknown>)
-                    .map((item: unknown) => richTextItem(item as NotionRichText[number]))
+                    .map((item: unknown) => richTextItem(item as MarkdownRichText[number]))
                     .join("")
                 : "";
 
@@ -418,7 +440,12 @@ function serializeTableRow(block: NotionBlock, indent: number): Array<string>
 }
 
 /** Serialize a document into canonical enhanced Markdown. */
-export function serializeNotionMarkdown(document: NotionDocument): string
+export function serializeMarkdown(
+    document: MarkdownDocument,
+    options: SerializeMarkdownOptions = { }
+): string
 {
-    return document.blocks.flatMap((block) => serializeBlock(block, 0)).join("\n");
+    return document.blocks
+        .flatMap((block: MarkdownBlock) => serializeBlock(block, 0, options))
+        .join("\n");
 }

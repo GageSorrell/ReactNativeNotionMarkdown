@@ -40,19 +40,19 @@ import {
 } from "./audioWaveform.ts";
 import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View, useColorScheme } from "react-native";
 import type {
-    NotionEditorAudioAction,
-    NotionEditorAudioAsset,
-    NotionEditorAudioSelection,
-    NotionEditorComponents,
-    NotionEditorIconProps
-} from "./NotionEditor.tsx";
+    MarkdownEditorAudioAction,
+    MarkdownEditorAudioAsset,
+    MarkdownEditorAudioSelection,
+    MarkdownEditorComponents,
+    MarkdownEditorIconProps
+} from "./MarkdownEditor.tsx";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export interface AudioBottomSheetProps
 {
-    readonly components?: NotionEditorComponents;
-    readonly initialAction?: NotionEditorAudioAction;
+    readonly components?: MarkdownEditorComponents;
+    readonly initialAction?: MarkdownEditorAudioAction;
     readonly replacement?: boolean;
     readonly labels: {
         readonly cancel: string;
@@ -73,7 +73,7 @@ export interface AudioBottomSheetProps
         readonly title: string;
     };
     readonly onDismiss: () => void;
-    readonly onSelected: (selection: NotionEditorAudioSelection) => void | Promise<void>;
+    readonly onSelected: (selection: MarkdownEditorAudioSelection) => void | Promise<void>;
 }
 
 type Phase = "choice" | "recorder" | "confirmation";
@@ -112,14 +112,14 @@ interface AudioOptionProps
 {
     readonly action: "choose" | "record";
     readonly color: string;
-    readonly icon: ComponentType<NotionEditorIconProps>;
+    readonly icon: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
     readonly onPress: (action: "choose" | "record") => void;
 }
 
-type LucideModule = Record<string, ComponentType<NotionEditorIconProps>> &
+type LucideModule = Record<string, ComponentType<MarkdownEditorIconProps>> &
 {
-    readonly default?: Record<string, ComponentType<NotionEditorIconProps>>;
+    readonly default?: Record<string, ComponentType<MarkdownEditorIconProps>>;
 };
 
 type AudioIconName = "choose" | "record" | "stop" | "cancel" | "check" | "play" | "pause";
@@ -162,8 +162,8 @@ function getLucideIcons(): LucideModule | undefined
 /** Resolve a host override, optional Lucide icon, or dependency-free SVG fallback. */
 function getAudioIcon(
     action: "choose" | "record",
-    components: NotionEditorComponents | undefined
-): ComponentType<NotionEditorIconProps>
+    components: MarkdownEditorComponents | undefined
+): ComponentType<MarkdownEditorIconProps>
 {
     const override = action === "choose"
         ? components?.filePicker
@@ -187,8 +187,8 @@ function getAudioIcon(
 /** Resolve a recorder-control override, optional Lucide icon, or dependency-free SVG fallback. */
 function getRecordingIcon(
     action: "record" | "stop" | "cancel" | "check" | "play" | "pause",
-    components: NotionEditorComponents | undefined
-): ComponentType<NotionEditorIconProps>
+    components: MarkdownEditorComponents | undefined
+): ComponentType<MarkdownEditorIconProps>
 {
     const override = action === "record"
         ? components?.record ?? components?.speech
@@ -390,15 +390,15 @@ function FinalWaveformBar({ amplitude, bars, cursor, darkColor, index, lightColo
 interface AudioPlayerCardProps
 {
     readonly accent: string;
-    readonly asset: NotionEditorAudioAsset;
+    readonly asset: MarkdownEditorAudioAsset;
     readonly currentTime: number;
     readonly darkColor: string;
     readonly foreground: string;
     readonly lightColor: string;
     readonly muted: string;
     readonly onPress: () => void;
-    readonly pauseIcon: ComponentType<NotionEditorIconProps>;
-    readonly playIcon: ComponentType<NotionEditorIconProps>;
+    readonly pauseIcon: ComponentType<MarkdownEditorIconProps>;
+    readonly playIcon: ComponentType<MarkdownEditorIconProps>;
     readonly playing: boolean;
     readonly surface: string;
     readonly label: string;
@@ -474,7 +474,7 @@ export function AudioBottomSheet({ components, initialAction, labels, onDismiss,
     const [ phase, setPhase ] = useState<Phase>(initialAction === undefined ? "choice" : "recorder");
     const [ error, setError ] = useState<string>();
     const [ prepared, setPrepared ] = useState(false);
-    const [ recordingAsset, setRecordingAsset ] = useState<NotionEditorAudioSelection["asset"]>();
+    const [ recordingAsset, setRecordingAsset ] = useState<MarkdownEditorAudioSelection["asset"]>();
     const recorder = useAudioRecorder(recordingOptions);
     const recorderState = useAudioRecorderState(recorder, 100);
     const previewPlayer = useAudioPlayer(recordingAsset?.uri ?? null, { updateInterval: 250 });
@@ -490,7 +490,7 @@ export function AudioBottomSheet({ components, initialAction, labels, onDismiss,
         }
     }, [ recorderState.isRecording, recorderState.metering ]);
 
-    const reportAndClose = useCallback(async (selection: NotionEditorAudioSelection) =>
+    const reportAndClose = useCallback(async (selection: MarkdownEditorAudioSelection) =>
     {
         if (closed.current) {return;}
         closed.current = true;

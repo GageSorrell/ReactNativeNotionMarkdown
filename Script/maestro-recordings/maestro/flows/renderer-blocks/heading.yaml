@@ -1,4 +1,4 @@
-appId: com.gagesorrell.notionmarkdown.storybook
+appId: com.gagesorrell.markdown.storybook
 ---
 # Shows the default level-1 heading; cycling `level` needs the Controls addon (deferred).
 - runFlow:

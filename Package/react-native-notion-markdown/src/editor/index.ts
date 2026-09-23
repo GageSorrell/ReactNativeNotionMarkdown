@@ -1,5 +1,5 @@
 /**
- * The WYSIWYG editor for Notion-enhanced markdown.
+ * The WYSIWYG editor for Markdown-enhanced content.
  *
  * @module react-native-notion-markdown/editor
  *
@@ -14,12 +14,12 @@ export {
     type NativePageReferencePressEvent,
     type NativeEditorProps
 } from "../NativeEditor.tsx";
-export { default as NotionMarkdown } from "../NotionMarkdownModule.ts";
+export { default as Markdown } from "../MarkdownModule.ts";
 
 /** Pure store and React bindings for composable editors. */
 export {
-    NotionEditorProvider,
-    useNotionEditor,
-    useNotionEditorState,
-    type NotionEditorProviderProps
+    MarkdownEditorProvider,
+    useMarkdownEditor,
+    useMarkdownEditorState,
+    type MarkdownEditorProviderProps
 } from "./state.tsx";

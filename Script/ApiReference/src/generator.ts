@@ -49,7 +49,7 @@ export async function generate(version: string, sourceRef = "HEAD"): Promise<Ref
   const records = extractModules(typedoc, modules, revision)
   const id = snapshotId(version, { [version]: revision })
   const packageJson = JSON.parse(await readFile(resolve(repositoryRoot(), "Package/react-native-notion-markdown/package.json"), "utf8")) as { description?: string }
-  const description = packageJson.description ?? "Native foundation for Notion-flavored markdown in React Native."
+  const description = packageJson.description ?? "Native foundation for Markdown-formatted content in React Native."
   const manifest: ReferenceManifest = {
     schemaVersion: REFERENCE_SCHEMA_VERSION,
     version,

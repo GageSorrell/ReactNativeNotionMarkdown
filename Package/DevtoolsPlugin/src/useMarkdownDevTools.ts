@@ -1,9 +1,9 @@
 /**
  *
  *
- * @module @react-native-notion-markdown/devtools-plugin/useNotionMarkdownDevTools
+ * @module @react-native-notion-markdown/devtools-plugin/useMarkdownDevTools
  *
- * @file      useNotionMarkdownDevTools.ts
+ * @file      useMarkdownDevTools.ts
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
@@ -17,7 +17,7 @@ import { diagnoseRejection, pluginName } from "./protocol";
 import type { EditorBlock, EditorCommand, EditorEvent, EditorSnapshot } from "react-native-notion-markdown";
 import { useCallback, useEffect, useRef } from "react";
 
-export type UseNotionMarkdownDevToolsOptions = {
+export type UseMarkdownDevToolsOptions = {
   /** The harness's current EditorSnapshot. Re-sent to the webUI whenever its epoch or revision changes. */
   snapshot: EditorSnapshot;
   /** Whether the editor is currently rendering in dark mode. */
@@ -28,7 +28,7 @@ export type UseNotionMarkdownDevToolsOptions = {
   onReplaceDocument: (blocks?: Array<EditorBlock>) => void;
 };
 
-export type UseNotionMarkdownDevToolsResult = {
+export type UseMarkdownDevToolsResult = {
   /** Report the outcome of `acceptEditorEvent` for one native edit, accepted or rejected. */
   reportEvent: (current: EditorSnapshot, event: EditorEvent, accepted: boolean) => void;
   /** Report a command that was actually dispatched, from either an on-device button or the webUI. */
@@ -41,9 +41,9 @@ type CommandRequestData = { action: EditorCommand["action"] };
 type DocumentReplaceData = { blocks?: Array<EditorBlock> };
 
 /** Bridges the harness's Editor transport state to the devtools webUI. No-ops outside development. */
-export function useNotionMarkdownDevTools(
-  options: UseNotionMarkdownDevToolsOptions
-): UseNotionMarkdownDevToolsResult {
+export function useMarkdownDevTools(
+  options: UseMarkdownDevToolsOptions
+): UseMarkdownDevToolsResult {
   const client = useDevToolsPluginClient(pluginName);
   const latestOptions = useRef(options);
 

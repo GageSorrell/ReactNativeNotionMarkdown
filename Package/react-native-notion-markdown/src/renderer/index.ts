@@ -1,5 +1,5 @@
 /**
- * Render Notion-enhanced markdown.
+ * Render Markdown-enhanced content.
  *
  * @module react-native-notion-markdown/renderer
  *

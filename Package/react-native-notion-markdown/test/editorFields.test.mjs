@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {
   richTextToFieldMarks,
   fieldMarksToRichText,
-  encodeNotionFieldClipboard,
-  decodeNotionFieldClipboard,
-  encodeNotionBlockClipboard,
-  decodeNotionBlockClipboard,
+  encodeMarkdownFieldClipboard,
+  decodeMarkdownFieldClipboard,
+  encodeMarkdownBlockClipboard,
+  decodeMarkdownBlockClipboard,
   splitFieldMarks,
   mergeFieldMarks,
   toggleFieldRangeMark,
@@ -33,10 +33,10 @@ test('richTextToFieldMarks captures annotations, color, and link ranges', () => 
 });
 
 test('richTextToFieldMarks represents mentions, equations, citations, and custom emoji as one-unit atoms', () => {
-  const mention = { type: 'mention', mention: { type: 'user', user: { id: 'abc' } }, __notion_markdown: { mention: { kind: 'user', label: 'Ada' } } };
+  const mention = { type: 'mention', mention: { type: 'user', user: { id: 'abc' } }, __markdown_markdown: { mention: { kind: 'user', label: 'Ada' } } };
   const equation = { type: 'equation', equation: { expression: 'x^2' } };
-  const citation = { type: 'text', text: { content: 'https://example.com/paper' }, __notion_markdown: { citationUrl: 'https://example.com/paper' } };
-  const emoji = { type: 'text', text: { content: 'partyparrot' }, __notion_markdown: { emojiName: 'partyparrot' } };
+  const citation = { type: 'text', text: { content: 'https://example.com/paper' }, __markdown_markdown: { citationUrl: 'https://example.com/paper' } };
+  const emoji = { type: 'text', text: { content: 'partyparrot' }, __markdown_markdown: { emojiName: 'partyparrot' } };
   const { text, marks } = richTextToFieldMarks([mention, equation, citation, emoji]);
   assert.equal(text, '￼￼￼￼');
   assert.equal(marks.length, 4);
@@ -87,7 +87,7 @@ test('fieldMarksToRichText splices an untouched atom back in unchanged', () => {
 test('richText -> field marks -> richText is stable for a mixed document', () => {
   const original = [
     { type: 'text', text: { content: 'Say ' } },
-    { type: 'mention', mention: { type: 'user', user: { id: 'abc' } }, __notion_markdown: { mention: { kind: 'user', label: 'Ada' } } },
+    { type: 'mention', mention: { type: 'user', user: { id: 'abc' } }, __markdown_markdown: { mention: { kind: 'user', label: 'Ada' } } },
     { type: 'text', text: { content: ' hi to ' } },
     { type: 'equation', equation: { expression: 'x+1' } }
   ];
@@ -179,19 +179,19 @@ test('setFieldValueMark clears a link over a range when given undefined', () => 
 
 test('field clipboard fragments encode and decode, rejecting malformed payloads', () => {
   const richText = [{ type: 'text', text: { content: 'Clip me' }, annotations: { bold: true, italic: false, strikethrough: false, underline: false, code: false } }];
-  const json = encodeNotionFieldClipboard(richText);
-  const decoded = decodeNotionFieldClipboard(json);
+  const json = encodeMarkdownFieldClipboard(richText);
+  const decoded = decodeMarkdownFieldClipboard(json);
   assert.equal(decoded[0].text.content, 'Clip me');
   assert.equal(decoded[0].annotations.bold, true);
-  assert.equal(decodeNotionFieldClipboard('not json'), undefined);
-  assert.equal(decodeNotionFieldClipboard(JSON.stringify({ version: 2, kind: 'field', text: '', marks: [] })), undefined);
+  assert.equal(decodeMarkdownFieldClipboard('not json'), undefined);
+  assert.equal(decodeMarkdownFieldClipboard(JSON.stringify({ version: 2, kind: 'field', text: '', marks: [] })), undefined);
 });
 
 test('block clipboard fragments encode and decode, rejecting malformed payloads', () => {
   const blocks = [{ id: 'a', type: 'paragraph', paragraph: { rich_text: [] } }];
-  const json = encodeNotionBlockClipboard(blocks);
-  const decoded = decodeNotionBlockClipboard(json);
+  const json = encodeMarkdownBlockClipboard(blocks);
+  const decoded = decodeMarkdownBlockClipboard(json);
   assert.deepEqual(decoded, blocks);
-  assert.equal(decodeNotionBlockClipboard('not json'), undefined);
-  assert.equal(decodeNotionBlockClipboard(JSON.stringify({ version: 1, kind: 'field', blocks: [] })), undefined);
+  assert.equal(decodeMarkdownBlockClipboard('not json'), undefined);
+  assert.equal(decodeMarkdownBlockClipboard(JSON.stringify({ version: 1, kind: 'field', blocks: [] })), undefined);
 });

@@ -1,5 +1,5 @@
 /**
- * Public pure document engine for Notion-enhanced Markdown.
+ * Public pure document engine for Markdown-enhanced content.
  *
  * @module react-native-notion-markdown/document
  *

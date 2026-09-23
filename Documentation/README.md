@@ -174,16 +174,16 @@ Generated files are stored under `Documentation/.data/api-reference/<version>/` 
 Put the public description immediately above an exported declaration and use normal Markdown in the summary. `@since`, `@see`, and `@example` are supported and are rendered on the declaration page. `{@link Symbol}` and `{@linkcode Symbol}` are accepted in comments, and fenced Markdown, tables, and ordinary inline Markdown are passed through the reference comment renderer. Keep comments focused on the public contract and avoid documenting private, protected, internal, or `@internal` implementation details.
 
 ```ts
-/** Parse a Notion-flavored markdown document.
+/** Parse a Markdown-formatted content document.
  *
  * @since 1.0.0
- * @see serializeNotionMarkdown
+ * @see serializeMarkdown
  * @example
  * ```ts
- * const result = parseNotionMarkdown(markdown)
+ * const result = parseMarkdown(markdown)
  * ```
  */
-export function parseNotionMarkdown(markdown: string) { }
+export function parseMarkdown(markdown: string) { }
 ```
 
 After changing a public declaration or its comments, regenerate the references and run `npm run verify --workspace Documentation`. Declaration anchors are derived from the exported name and should be treated as stable permalinks.

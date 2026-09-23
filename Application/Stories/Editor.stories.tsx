@@ -1,5 +1,5 @@
 /**
- * @module notion-markdown-storybook/Stories/Editor.stories
+ * @module markdown-storybook/Stories/Editor.stories
  *
  * @file      Editor.stories.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
@@ -10,21 +10,26 @@
 import type { ComponentProps, ComponentType } from "react";
 import {
     type EditorMessageId,
-    NotionEditor,
-    NotionEditorConfigProvider,
-    type NotionEditorCustomButton,
-    type NotionEditorCustomPanelContext,
-    type NotionEditorMessageDescriptor,
-    type NotionEditorTranslate
+    MarkdownEditor,
+    MarkdownEditorConfigProvider,
+    type MarkdownEditorCustomButton,
+    type MarkdownEditorCustomPanelContext,
+    type MarkdownEditorMessageDescriptor,
+    type MarkdownEditorTranslate
 } from "react-native-notion-markdown/editor/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Sparkles, Star } from "lucide-react-native";
-import { ThemeOverrideProvider, ThemeToggleButton, useThemeOverride } from "./themeToggle";
+import {
+    KeyboardToggleButton,
+    ThemeOverrideProvider,
+    ThemeToggleButton,
+    useThemeOverride
+} from "./themeToggle";
 import { useEffect, useState } from "react";
 import { Asset } from "expo-asset";
 import type { EditorSnapshot } from "react-native-notion-markdown";
-import { notionEditorLucideIcons } from "react-native-notion-markdown/editor/ui/lucide-icons";
+import { markdownEditorLucideIcons } from "react-native-notion-markdown/editor/ui/lucide-icons";
 
 /* Bundled Pexels stock photos used to seed the "With Images" story's starter document. */
 const stockImageModules =
@@ -90,7 +95,7 @@ function buildRichSnapshot(images: Record<StockImageKey, string>): EditorSnapsho
 }
 
 /** Content for the "AI Tools" custom panel -- demonstrates the render-context contract. */
-function AiToolsPanel({ close, foreground, panelBackground }: NotionEditorCustomPanelContext)
+function AiToolsPanel({ close, foreground, panelBackground }: MarkdownEditorCustomPanelContext)
 {
     return <View style={ { backgroundColor: panelBackground, flex: 1, gap: 12 } }>
         <Text style={ { color: foreground, fontSize: 15 } }>Custom panel content goes here.</Text>
@@ -100,7 +105,7 @@ function AiToolsPanel({ close, foreground, panelBackground }: NotionEditorCustom
     </View>;
 }
 
-const customButtons: Array<NotionEditorCustomButton> =
+const customButtons: Array<MarkdownEditorCustomButton> =
     [
         {
             after: "insert",
@@ -141,7 +146,7 @@ const frenchMessages: Partial<Record<EditorMessageId, string>> =
         "toolbar.paste": "Coller"
     };
 
-const translateFrench: NotionEditorTranslate = (Message: NotionEditorMessageDescriptor) =>
+const translateFrench: MarkdownEditorTranslate = (Message: MarkdownEditorMessageDescriptor) =>
     frenchMessages[Message.id] ?? Message.defaultMessage;
 const frenchLocalization = { translate: translateFrench };
 
@@ -150,7 +155,7 @@ const frenchLocalization = { translate: translateFrench };
  * doesn't mount until the bundled stock photos have downloaded to local file URIs, and it's seeded
  * with {@link buildRichSnapshot} instead of the package's plain three-block starter document.
  */
-function RichDocumentEditorStory(args: ComponentProps<typeof NotionEditor>)
+function RichDocumentEditorStory(args: ComponentProps<typeof MarkdownEditor>)
 {
     const { override } = useThemeOverride();
     const dark = override === "system" ? args.dark === true : override === "dark";
@@ -169,12 +174,15 @@ function RichDocumentEditorStory(args: ComponentProps<typeof NotionEditor>)
     return <View style={ [ styles.page, dark && styles.darkPage ] }>
         <View style={ styles.titleContainer }>
             <Text style={ [ styles.pageTitle, dark && styles.darkPageTitle ] }>Editor</Text>
-            <ThemeToggleButton dark={ dark } />
+            <View style={ styles.titleActions }>
+                <KeyboardToggleButton dark={ dark } />
+                <ThemeToggleButton dark={ dark } />
+            </View>
         </View>
         {
             snapshot === undefined
                 ? null
-                : <NotionEditor
+                : <MarkdownEditor
                     { ...args }
                     dark={ dark }
                     snapshot={ snapshot }
@@ -189,7 +197,7 @@ function RichDocumentEditorStory(args: ComponentProps<typeof NotionEditor>)
  * upper-right `ThemeToggleButton`, opposite the "Editor" title, overrides it unless left on
  * "system".
  */
-function EditorStoryRender(args: ComponentProps<typeof NotionEditor>)
+function EditorStoryRender(args: ComponentProps<typeof MarkdownEditor>)
 {
     const { override } = useThemeOverride();
     const dark = override === "system" ? args.dark === true : override === "dark";
@@ -197,9 +205,12 @@ function EditorStoryRender(args: ComponentProps<typeof NotionEditor>)
     return <View style={ [ styles.page, dark && styles.darkPage ] }>
         <View style={ styles.titleContainer }>
             <Text style={ [ styles.pageTitle, dark && styles.darkPageTitle ] }>Editor</Text>
-            <ThemeToggleButton dark={ dark } />
+            <View style={ styles.titleActions }>
+                <KeyboardToggleButton dark={ dark } />
+                <ThemeToggleButton dark={ dark } />
+            </View>
         </View>
-        <NotionEditor
+        <MarkdownEditor
             { ...args }
             dark={ dark }
             style={ [ styles.editor, args.style ] }
@@ -239,6 +250,11 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         marginBottom: 16
     },
+    titleActions:
+    {
+        flexDirection: "row",
+        gap: 8
+    },
     titleContainer:
     {
         alignItems: "flex-start",
@@ -258,9 +274,9 @@ const meta =
         },
         args:
         {
-            components: notionEditorLucideIcons
+            components: markdownEditorLucideIcons
         },
-        component: NotionEditor,
+        component: MarkdownEditor,
         decorators: [ withThemeOverride ],
         parameters:
         {
@@ -269,7 +285,7 @@ const meta =
         },
         render: EditorStoryRender,
         title: "Editor"
-    } satisfies Meta<typeof NotionEditor>;
+    } satisfies Meta<typeof MarkdownEditor>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -308,10 +324,10 @@ export const Localized: Story =
         },
         decorators:
         [
-            (StoryComponent: ComponentType) => <NotionEditorConfigProvider
+            (StoryComponent: ComponentType) => <MarkdownEditorConfigProvider
                 localization={ frenchLocalization }>
                 <StoryComponent />
-            </NotionEditorConfigProvider>
+            </MarkdownEditorConfigProvider>
         ]
     };
 
@@ -321,7 +337,7 @@ export const WithImages: Story =
         {
             style: { flex: 1 }
         },
-        render: (args: ComponentProps<typeof NotionEditor>) => <RichDocumentEditorStory { ...args } />
+        render: (args: ComponentProps<typeof MarkdownEditor>) => <RichDocumentEditorStory { ...args } />
     };
 
 export const Callout: Story =

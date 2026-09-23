@@ -10,43 +10,43 @@
  */
 
 export {
-    NotionEditor,
-    type NotionEditorAudioAction,
-    type NotionEditorAudioAsset,
-    type NotionEditorAudioSelection,
-    type NotionEditorFileAsset,
-    type NotionEditorFileSelection,
-    type NotionEditorBlockActionsSelection,
-    type NotionEditorButton,
-    type NotionEditorComponents,
-    type NotionEditorCustomButton,
-    type NotionEditorCustomButtonPlacement,
-    type NotionEditorCustomPanel,
-    type NotionEditorCustomPanelContext,
-    type NotionEditorIconProps,
-    type NotionEditorLinkPromptResult,
-    type NotionEditorLinkResult,
-    type NotionEditorLinkSelection,
-    type NotionEditorMediaAction,
-    type NotionEditorMediaAsset,
-    type NotionEditorMediaSelection,
-    type NotionEditorPageReference,
-    type NotionEditorPageReferenceSelection,
-    type NotionEditorProps
-} from "./NotionEditor.tsx";
-export { type NotionEditorBlockAction } from "./ActionsBottomSheet.tsx";
+    MarkdownEditor,
+    type MarkdownEditorAudioAction,
+    type MarkdownEditorAudioAsset,
+    type MarkdownEditorAudioSelection,
+    type MarkdownEditorFileAsset,
+    type MarkdownEditorFileSelection,
+    type MarkdownEditorBlockActionsSelection,
+    type MarkdownEditorButton,
+    type MarkdownEditorComponents,
+    type MarkdownEditorCustomButton,
+    type MarkdownEditorCustomButtonPlacement,
+    type MarkdownEditorCustomPanel,
+    type MarkdownEditorCustomPanelContext,
+    type MarkdownEditorIconProps,
+    type MarkdownEditorLinkPromptResult,
+    type MarkdownEditorLinkResult,
+    type MarkdownEditorLinkSelection,
+    type MarkdownEditorMediaAction,
+    type MarkdownEditorMediaAsset,
+    type MarkdownEditorMediaSelection,
+    type MarkdownEditorPageReference,
+    type MarkdownEditorPageReferenceSelection,
+    type MarkdownEditorProps
+} from "./MarkdownEditor.tsx";
+export { type MarkdownEditorBlockAction } from "./ActionsBottomSheet.tsx";
 
 /** Editor UI configuration -- currently localization, with room to grow to theming. */
 export {
-    NotionEditorConfigProvider,
-    useNotionEditorConfig,
-    useNotionEditorTranslate,
-    type NotionEditorConfigProviderProps,
-    type NotionEditorLocalization
+    MarkdownEditorConfigProvider,
+    useMarkdownEditorConfig,
+    useMarkdownEditorTranslate,
+    type MarkdownEditorConfigProviderProps,
+    type MarkdownEditorLocalization
 } from "./config.tsx";
 export {
     defaultEditorMessages,
     type EditorMessageId,
-    type NotionEditorMessageDescriptor,
-    type NotionEditorTranslate
+    type MarkdownEditorMessageDescriptor,
+    type MarkdownEditorTranslate
 } from "./messages.ts";

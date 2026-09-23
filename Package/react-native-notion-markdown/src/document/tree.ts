@@ -2,8 +2,8 @@
  * Structural operations over the recursive block tree: locating a block, replacing it with
  * structural sharing along the path to it, and the insert/remove/move/indent/outdent
  * primitives the milestone-four command layer builds its commands from. Blocks are matched by
- * their stable editor identity (`getNotionEditorBlockId`), not `block.id`, so commands keep
- * working on locally-created blocks that have no remote Notion id yet.
+ * their stable editor identity (`getMarkdownEditorBlockId`), not `block.id`, so commands keep
+ * working on locally-created blocks that have no remote Markdown id yet.
  *
  * @module react-native-notion-markdown/document/tree
  *
@@ -14,23 +14,23 @@
  */
 
 import type {
-    NotionBlock,
-    NotionDocument,
-    NotionMarkdownBlockType,
-    NotionRichText
+    MarkdownBlock,
+    MarkdownDocument,
+    MarkdownBlockType,
+    MarkdownRichText
 } from "./types.ts";
-import { getNotionBlockPayload } from "../internal.ts";
-import { getNotionEditorBlockId } from "./selection.ts";
+import { getMarkdownBlockPayload } from "../internal.ts";
+import { getMarkdownEditorBlockId } from "./selection.ts";
 
 /** A sequence of child-array indices from the document root down to one block. */
-export type NotionBlockPath = ReadonlyArray<number>;
+export type MarkdownBlockPath = ReadonlyArray<number>;
 
 /**
  * Find the path to a block by its stable editor identity, searching depth-first.
  *
  * @since 1.0.0
  */
-export function findNotionBlockPath(document: NotionDocument, blockId: string): NotionBlockPath | undefined
+export function findMarkdownBlockPath(document: MarkdownDocument, blockId: string): MarkdownBlockPath | undefined
 {
     /**
      * Search the given block tree for a block identifier.
@@ -39,14 +39,14 @@ export function findNotionBlockPath(document: NotionDocument, blockId: string): 
      * @since 1.0.0
      */
     function search(
-        blocks: ReadonlyArray<NotionBlock>,
+        blocks: ReadonlyArray<MarkdownBlock>,
         prefix: ReadonlyArray<number>
-    ): NotionBlockPath | undefined
+    ): MarkdownBlockPath | undefined
     {
         for (let index = 0; index < blocks.length; index += 1)
         {
             const block = blocks[ index ]!;
-            if (getNotionEditorBlockId(block) === blockId) {return [ ...prefix, index ];}
+            if (getMarkdownEditorBlockId(block) === blockId) {return [ ...prefix, index ];}
 
             if (block.children !== undefined)
             {
@@ -66,10 +66,10 @@ export function findNotionBlockPath(document: NotionDocument, blockId: string): 
  *
  * @since 1.0.0
  */
-export function getNotionBlockAtPath(document: NotionDocument, path: NotionBlockPath): NotionBlock | undefined
+export function getMarkdownBlockAtPath(document: MarkdownDocument, path: MarkdownBlockPath): MarkdownBlock | undefined
 {
-    let blocks: ReadonlyArray<NotionBlock> = document.blocks;
-    let block: NotionBlock | undefined;
+    let blocks: ReadonlyArray<MarkdownBlock> = document.blocks;
+    let block: MarkdownBlock | undefined;
 
     for (const index of path)
     {
@@ -86,13 +86,13 @@ export function getNotionBlockAtPath(document: NotionDocument, path: NotionBlock
  *
  * @since 1.0.0
  */
-export function getNotionBlock(document: NotionDocument, blockId: string): NotionBlock | undefined
+export function getMarkdownBlock(document: MarkdownDocument, blockId: string): MarkdownBlock | undefined
 {
-    const path = findNotionBlockPath(document, blockId);
-    return path === undefined ? undefined : getNotionBlockAtPath(document, path);
+    const path = findMarkdownBlockPath(document, blockId);
+    return path === undefined ? undefined : getMarkdownBlockAtPath(document, path);
 }
 
-type NotionContainerTransform = (container: ReadonlyArray<NotionBlock>) => ReadonlyArray<NotionBlock>;
+type MarkdownContainerTransform = (container: ReadonlyArray<MarkdownBlock>) => ReadonlyArray<MarkdownBlock>;
 
 /**
  * Rebuild the tree with `transform` applied to the children array at `containerPath` -- the
@@ -101,20 +101,20 @@ type NotionContainerTransform = (container: ReadonlyArray<NotionBlock>) => Reado
  *
  * @since 1.0.0
  */
-function updateNotionContainer(
-    blocks: ReadonlyArray<NotionBlock>,
-    containerPath: NotionBlockPath,
-    transform: NotionContainerTransform
-): Array<NotionBlock>
+function updateMarkdownContainer(
+    blocks: ReadonlyArray<MarkdownBlock>,
+    containerPath: MarkdownBlockPath,
+    transform: MarkdownContainerTransform
+): Array<MarkdownBlock>
 {
     if (containerPath.length === 0) {return [ ...transform(blocks) ];}
 
     const [ head, ...rest ] = containerPath;
 
-    return blocks.map((block: NotionBlock, index: number): NotionBlock =>
+    return blocks.map((block: MarkdownBlock, index: number): MarkdownBlock =>
     {
         if (index !== head) {return block;}
-        return { ...block, children: updateNotionContainer(block.children ?? [ ], rest, transform) };
+        return { ...block, children: updateMarkdownContainer(block.children ?? [ ], rest, transform) };
     });
 }
 
@@ -124,30 +124,30 @@ function updateNotionContainer(
  *
  * @since 1.0.0
  */
-export function updateNotionBlock(
-    document: NotionDocument,
+export function updateMarkdownBlock(
+    document: MarkdownDocument,
     blockId: string,
-    updater: (block: NotionBlock) => NotionBlock | undefined
-): NotionDocument
+    updater: (block: MarkdownBlock) => MarkdownBlock | undefined
+): MarkdownDocument
 {
-    const path = findNotionBlockPath(document, blockId);
+    const path = findMarkdownBlockPath(document, blockId);
     if (path === undefined) {return document;}
 
     const index = path[ path.length - 1 ]!;
     const containerPath = path.slice(0, -1);
 
-    const transform: NotionContainerTransform = (container: ReadonlyArray<NotionBlock>) =>
+    const transform: MarkdownContainerTransform = (container: ReadonlyArray<MarkdownBlock>) =>
     {
         const target = container[ index ];
         if (target === undefined) {return container;}
 
         const next = updater(target);
         return next === undefined
-            ? container.filter((_: NotionBlock, itemIndex: number) => itemIndex !== index)
-            : container.map((block: NotionBlock, itemIndex: number) => (itemIndex === index ? next : block));
+            ? container.filter((_: MarkdownBlock, itemIndex: number) => itemIndex !== index)
+            : container.map((block: MarkdownBlock, itemIndex: number) => (itemIndex === index ? next : block));
     };
 
-    const blocks = updateNotionContainer(document.blocks, containerPath, transform);
+    const blocks = updateMarkdownContainer(document.blocks, containerPath, transform);
     return { blocks, version: 1 };
 }
 
@@ -156,9 +156,9 @@ export function updateNotionBlock(
  *
  * @since 1.0.0
  */
-export function removeNotionBlock(document: NotionDocument, blockId: string): NotionDocument
+export function removeMarkdownBlock(document: MarkdownDocument, blockId: string): MarkdownDocument
 {
-    return updateNotionBlock(document, blockId, () => undefined);
+    return updateMarkdownBlock(document, blockId, () => undefined);
 }
 
 /**
@@ -166,28 +166,28 @@ export function removeNotionBlock(document: NotionDocument, blockId: string): No
  *
  * @since 1.0.0
  */
-export function insertNotionBlockRelative(
-    document: NotionDocument,
+export function insertMarkdownBlockRelative(
+    document: MarkdownDocument,
     anchorBlockId: string,
-    newBlock: NotionBlock,
+    newBlock: MarkdownBlock,
     position: "before" | "after"
-): NotionDocument
+): MarkdownDocument
 {
-    const path = findNotionBlockPath(document, anchorBlockId);
+    const path = findMarkdownBlockPath(document, anchorBlockId);
     if (path === undefined) {return document;}
 
     const index = path[ path.length - 1 ]!;
     const containerPath = path.slice(0, -1);
     const insertAt = position === "before" ? index : index + 1;
 
-    const transform: NotionContainerTransform = (container: ReadonlyArray<NotionBlock>) =>
+    const transform: MarkdownContainerTransform = (container: ReadonlyArray<MarkdownBlock>) =>
     {
         const next = [ ...container ];
         next.splice(insertAt, 0, newBlock);
         return next;
     };
 
-    const blocks = updateNotionContainer(document.blocks, containerPath, transform);
+    const blocks = updateMarkdownContainer(document.blocks, containerPath, transform);
     return { blocks, version: 1 };
 }
 
@@ -196,18 +196,18 @@ export function insertNotionBlockRelative(
  *
  * @since 1.0.0
  */
-export function appendNotionChild(
-    document: NotionDocument,
+export function appendMarkdownChild(
+    document: MarkdownDocument,
     parentBlockId: string,
-    newBlock: NotionBlock
-): NotionDocument
+    newBlock: MarkdownBlock
+): MarkdownDocument
 {
-    const parentPath = findNotionBlockPath(document, parentBlockId);
+    const parentPath = findMarkdownBlockPath(document, parentBlockId);
     if (parentPath === undefined) {return document;}
 
-    const transform: NotionContainerTransform =
-        (children: ReadonlyArray<NotionBlock>) => [ ...children, newBlock ];
-    const blocks = updateNotionContainer(document.blocks, parentPath, transform);
+    const transform: MarkdownContainerTransform =
+        (children: ReadonlyArray<MarkdownBlock>) => [ ...children, newBlock ];
+    const blocks = updateMarkdownContainer(document.blocks, parentPath, transform);
     return { blocks, version: 1 };
 }
 
@@ -216,20 +216,20 @@ export function appendNotionChild(
  *
  * @since 1.0.0
  */
-export function moveNotionBlock(
-    document: NotionDocument,
+export function moveMarkdownBlock(
+    document: MarkdownDocument,
     blockId: string,
     direction: "up" | "down"
-): NotionDocument
+): MarkdownDocument
 {
-    const path = findNotionBlockPath(document, blockId);
+    const path = findMarkdownBlockPath(document, blockId);
     if (path === undefined) {return document;}
 
     const index = path[ path.length - 1 ]!;
     const containerPath = path.slice(0, -1);
     const swapWith = direction === "up" ? index - 1 : index + 1;
 
-    const transform: NotionContainerTransform = (container: ReadonlyArray<NotionBlock>) =>
+    const transform: MarkdownContainerTransform = (container: ReadonlyArray<MarkdownBlock>) =>
     {
         if (swapWith < 0 || swapWith >= container.length) {return container;}
 
@@ -240,7 +240,7 @@ export function moveNotionBlock(
         return next;
     };
 
-    const blocks = updateNotionContainer(document.blocks, containerPath, transform);
+    const blocks = updateMarkdownContainer(document.blocks, containerPath, transform);
     return { blocks, version: 1 };
 }
 
@@ -250,9 +250,9 @@ export function moveNotionBlock(
  *
  * @since 1.0.0
  */
-export function indentNotionBlock(document: NotionDocument, blockId: string): NotionDocument
+export function indentMarkdownBlock(document: MarkdownDocument, blockId: string): MarkdownDocument
 {
-    const path = findNotionBlockPath(document, blockId);
+    const path = findMarkdownBlockPath(document, blockId);
     if (path === undefined) {return document;}
 
     const index = path[ path.length - 1 ]!;
@@ -260,18 +260,18 @@ export function indentNotionBlock(document: NotionDocument, blockId: string): No
 
     const containerPath = path.slice(0, -1);
 
-    const transform: NotionContainerTransform = (container: ReadonlyArray<NotionBlock>) =>
+    const transform: MarkdownContainerTransform = (container: ReadonlyArray<MarkdownBlock>) =>
     {
         const target = container[ index ]!;
         const previous = container[ index - 1 ]!;
-        const nestedPrevious: NotionBlock =
+        const nestedPrevious: MarkdownBlock =
             { ...previous, children: [ ...(previous.children ?? [ ]), target ] };
-        const withoutTarget = container.filter((_: NotionBlock, itemIndex: number) => itemIndex !== index);
-        return withoutTarget.map((block: NotionBlock, itemIndex: number) =>
+        const withoutTarget = container.filter((_: MarkdownBlock, itemIndex: number) => itemIndex !== index);
+        return withoutTarget.map((block: MarkdownBlock, itemIndex: number) =>
             (itemIndex === index - 1 ? nestedPrevious : block));
     };
 
-    const blocks = updateNotionContainer(document.blocks, containerPath, transform);
+    const blocks = updateMarkdownContainer(document.blocks, containerPath, transform);
     return { blocks, version: 1 };
 }
 
@@ -281,9 +281,9 @@ export function indentNotionBlock(document: NotionDocument, blockId: string): No
  *
  * @since 1.0.0
  */
-export function outdentNotionBlock(document: NotionDocument, blockId: string): NotionDocument
+export function outdentMarkdownBlock(document: MarkdownDocument, blockId: string): MarkdownDocument
 {
-    const path = findNotionBlockPath(document, blockId);
+    const path = findMarkdownBlockPath(document, blockId);
     if (path === undefined || path.length < 2) {return document;}
 
     const index = path[ path.length - 1 ]!;
@@ -291,25 +291,25 @@ export function outdentNotionBlock(document: NotionDocument, blockId: string): N
     const parentIndexInGrandparent = parentPath[ parentPath.length - 1 ]!;
     const grandparentContainerPath = parentPath.slice(0, -1);
 
-    let removed: NotionBlock | undefined;
-    const removeTransform: NotionContainerTransform = (children: ReadonlyArray<NotionBlock>) =>
+    let removed: MarkdownBlock | undefined;
+    const removeTransform: MarkdownContainerTransform = (children: ReadonlyArray<MarkdownBlock>) =>
     {
         removed = children[ index ];
-        return children.filter((_: NotionBlock, itemIndex: number) => itemIndex !== index);
+        return children.filter((_: MarkdownBlock, itemIndex: number) => itemIndex !== index);
     };
 
-    const withoutTarget = updateNotionContainer(document.blocks, parentPath, removeTransform);
+    const withoutTarget = updateMarkdownContainer(document.blocks, parentPath, removeTransform);
     if (removed === undefined) {return document;}
 
     const capturedRemoved = removed;
-    const insertTransform: NotionContainerTransform = (container: ReadonlyArray<NotionBlock>) =>
+    const insertTransform: MarkdownContainerTransform = (container: ReadonlyArray<MarkdownBlock>) =>
     {
         const next = [ ...container ];
         next.splice(parentIndexInGrandparent + 1, 0, capturedRemoved);
         return next;
     };
 
-    const blocks = updateNotionContainer(withoutTarget, grandparentContainerPath, insertTransform);
+    const blocks = updateMarkdownContainer(withoutTarget, grandparentContainerPath, insertTransform);
     return { blocks, version: 1 };
 }
 
@@ -318,10 +318,10 @@ export function outdentNotionBlock(document: NotionDocument, blockId: string): N
  *
  * @since 1.0.0
  */
-export function getNotionBlockRichText(block: NotionBlock): NotionRichText | undefined
+export function getMarkdownBlockRichText(block: MarkdownBlock): MarkdownRichText | undefined
 {
-    const payload = getNotionBlockPayload(block);
-    return Array.isArray(payload.rich_text) ? payload.rich_text as NotionRichText : undefined;
+    const payload = getMarkdownBlockPayload(block);
+    return Array.isArray(payload.rich_text) ? payload.rich_text as MarkdownRichText : undefined;
 }
 
 /**
@@ -329,11 +329,11 @@ export function getNotionBlockRichText(block: NotionBlock): NotionRichText | und
  *
  * @since 1.0.0
  */
-export function setNotionBlockRichText(block: NotionBlock, richText: NotionRichText): NotionBlock
+export function setMarkdownBlockRichText(block: MarkdownBlock, richText: MarkdownRichText): MarkdownBlock
 {
     const key = block.type;
-    const payload = getNotionBlockPayload(block);
-    return { ...block, [ key ]: { ...payload, rich_text: richText } } as NotionBlock;
+    const payload = getMarkdownBlockPayload(block);
+    return { ...block, [ key ]: { ...payload, rich_text: richText } } as MarkdownBlock;
 }
 
 /**
@@ -341,10 +341,10 @@ export function setNotionBlockRichText(block: NotionBlock, richText: NotionRichT
  *
  * @since 1.0.0
  */
-export function getNotionBlockCaption(block: NotionBlock): NotionRichText | undefined
+export function getMarkdownBlockCaption(block: MarkdownBlock): MarkdownRichText | undefined
 {
-    const payload = getNotionBlockPayload(block);
-    return Array.isArray(payload.caption) ? payload.caption as NotionRichText : undefined;
+    const payload = getMarkdownBlockPayload(block);
+    return Array.isArray(payload.caption) ? payload.caption as MarkdownRichText : undefined;
 }
 
 /**
@@ -352,11 +352,11 @@ export function getNotionBlockCaption(block: NotionBlock): NotionRichText | unde
  *
  * @since 1.0.0
  */
-export function setNotionBlockCaption(block: NotionBlock, richText: NotionRichText): NotionBlock
+export function setMarkdownBlockCaption(block: MarkdownBlock, richText: MarkdownRichText): MarkdownBlock
 {
     const key = block.type;
-    const payload = getNotionBlockPayload(block);
-    return { ...block, [ key ]: { ...payload, caption: richText } } as NotionBlock;
+    const payload = getMarkdownBlockPayload(block);
+    return { ...block, [ key ]: { ...payload, caption: richText } } as MarkdownBlock;
 }
 
 /**
@@ -364,10 +364,10 @@ export function setNotionBlockCaption(block: NotionBlock, richText: NotionRichTe
  *
  * @since 1.0.0
  */
-export function getNotionBlockCell(block: NotionBlock, index: number): NotionRichText | undefined
+export function getMarkdownBlockCell(block: MarkdownBlock, index: number): MarkdownRichText | undefined
 {
-    const payload = getNotionBlockPayload(block);
-    const cells = Array.isArray(payload.cells) ? payload.cells as Array<NotionRichText> : undefined;
+    const payload = getMarkdownBlockPayload(block);
+    const cells = Array.isArray(payload.cells) ? payload.cells as Array<MarkdownRichText> : undefined;
     return cells?.[ index ];
 }
 
@@ -376,13 +376,13 @@ export function getNotionBlockCell(block: NotionBlock, index: number): NotionRic
  *
  * @since 1.0.0
  */
-export function setNotionBlockCell(block: NotionBlock, index: number, richText: NotionRichText): NotionBlock
+export function setMarkdownBlockCell(block: MarkdownBlock, index: number, richText: MarkdownRichText): MarkdownBlock
 {
     const key = block.type;
-    const payload = getNotionBlockPayload(block);
+    const payload = getMarkdownBlockPayload(block);
     const cells = Array.isArray(payload.cells) ? [ ...payload.cells ] : [ ];
     cells[ index ] = richText;
-    return { ...block, [ key ]: { ...payload, cells } } as NotionBlock;
+    return { ...block, [ key ]: { ...payload, cells } } as MarkdownBlock;
 }
 
 /**
@@ -391,20 +391,20 @@ export function setNotionBlockCell(block: NotionBlock, index: number, richText: 
  *
  * @since 1.0.0
  */
-export function turnNotionBlockInto(block: NotionBlock, type: NotionMarkdownBlockType): NotionBlock
+export function turnMarkdownBlockInto(block: MarkdownBlock, type: MarkdownBlockType): MarkdownBlock
 {
     if (block.type === type) {return block;}
 
-    const richText = getNotionBlockRichText(block) ?? [ ];
+    const richText = getMarkdownBlockRichText(block) ?? [ ];
     const rest = { ...(block as unknown as Record<string, unknown>) };
     delete rest[ block.type ];
     rest.type = type;
     rest[ type ] = { rich_text: richText };
-    return rest as unknown as NotionBlock;
+    return rest as unknown as MarkdownBlock;
 }
 
 /** Block types that carry an editable `rich_text` field directly on the block payload. */
-const textBearingBlockTypes: ReadonlySet<NotionMarkdownBlockType> = new Set([
+const textBearingBlockTypes: ReadonlySet<MarkdownBlockType> = new Set([
     "paragraph",
     "heading_1",
     "heading_2",
@@ -424,13 +424,13 @@ const textBearingBlockTypes: ReadonlySet<NotionMarkdownBlockType> = new Set([
  *
  * @since 1.0.0
  */
-export function isNotionTextBearingBlockType(type: NotionMarkdownBlockType): boolean
+export function isMarkdownTextBearingBlockType(type: MarkdownBlockType): boolean
 {
     return textBearingBlockTypes.has(type);
 }
 
 /** List block types that continue as a new sibling item on Enter. */
-const listBlockTypes: ReadonlySet<NotionMarkdownBlockType> = new Set([
+const listBlockTypes: ReadonlySet<MarkdownBlockType> = new Set([
     "bulleted_list_item",
     "numbered_list_item",
     "to_do"
@@ -442,7 +442,7 @@ const listBlockTypes: ReadonlySet<NotionMarkdownBlockType> = new Set([
  *
  * @since 1.0.0
  */
-export function isNotionListBlockType(type: NotionMarkdownBlockType): boolean
+export function isMarkdownListBlockType(type: MarkdownBlockType): boolean
 {
     return listBlockTypes.has(type);
 }

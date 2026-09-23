@@ -1,7 +1,7 @@
 /**
- * @module react-native-notion-markdown/editor/ui/NotionEditor
+ * @module react-native-notion-markdown/editor/ui/MarkdownEditor
  *
- * @file      NotionEditor.tsx
+ * @file      MarkdownEditor.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
@@ -51,17 +51,17 @@ import { EmojiBottomSheet } from "./EmojiBottomSheet.tsx";
 import type { LayoutChangeEvent } from "react-native";
 import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
 import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
-import type { NotionEditorBlockAction } from "./ActionsBottomSheet.tsx";
-import type { NotionMarkdownColor } from "../../document/types.ts";
+import type { MarkdownEditorBlockAction } from "./ActionsBottomSheet.tsx";
+import type { MarkdownColor } from "../../document/types.ts";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
-import { useNotionEditorTranslate } from "./config.tsx";
+import { useMarkdownEditorTranslate } from "./config.tsx";
 
 /**
  * Buttons that can display an icon in the editor UI.
  *
  * @since 1.0.0
  */
-export type NotionEditorButton =
+export type MarkdownEditorButton =
     | "insert"
     | "color"
     | "gallery"
@@ -73,6 +73,7 @@ export type NotionEditorButton =
     | "strikethrough"
     | "underline"
     | "code"
+    | "mermaid"
     | "eraseFormatting"
     | "link"
     | "speech"
@@ -102,6 +103,8 @@ export type NotionEditorButton =
     | "text"
     | "bulletedList"
     | "numberedList"
+    | "toggleList"
+    | "table"
     | "divider"
     | "tableOfContents"
     | "columns"
@@ -128,7 +131,7 @@ export type NotionEditorButton =
  *
  * @since 1.0.0
  */
-export interface NotionEditorIconProps
+export interface MarkdownEditorIconProps
 {
     readonly color: string;
     readonly size: number;
@@ -138,21 +141,21 @@ export interface NotionEditorIconProps
 /**
  * Optional per-button icon overrides. Toolbar buttons with no entry here fall back to a plain text
  * label. The built-in media sheet uses these overrides first, then the optional Lucide peer, then
- * its dependency-free SVG fallback. Import {@link notionEditorLucideIcons} from
+ * its dependency-free SVG fallback. Import {@link markdownEditorLucideIcons} from
  * `react-native-notion-markdown/editor/ui/lucide-icons` for a ready-made toolbar icon set.
  *
  * @since 1.0.0
  */
-export interface NotionEditorComponents extends Partial<Record<
-    NotionEditorButton,
-    ComponentType<NotionEditorIconProps>
+export interface MarkdownEditorComponents extends Partial<Record<
+    MarkdownEditorButton,
+    ComponentType<MarkdownEditorIconProps>
 >> { }
 
 /** The built-in media action selected from the insert-media sheet. */
-export type NotionEditorMediaAction = "gallery" | "picture" | "video";
+export type MarkdownEditorMediaAction = "gallery" | "picture" | "video";
 
 /** A portable description of one asset returned by Expo ImagePicker. */
-export interface NotionEditorMediaAsset
+export interface MarkdownEditorMediaAsset
 {
     readonly duration?: number | null;
     readonly fileName?: string | null;
@@ -165,18 +168,18 @@ export interface NotionEditorMediaAsset
 }
 
 /** Result delivered after an action in the built-in insert-media sheet completes. */
-export interface NotionEditorMediaSelection
+export interface MarkdownEditorMediaSelection
 {
-    readonly action: NotionEditorMediaAction;
-    readonly assets?: ReadonlyArray<NotionEditorMediaAsset>;
+    readonly action: MarkdownEditorMediaAction;
+    readonly assets?: ReadonlyArray<MarkdownEditorMediaAsset>;
     readonly canceled: boolean;
 }
 
 /** The two sources supported by the built-in audio workflow. */
-export type NotionEditorAudioAction = "picked" | "recorded";
+export type MarkdownEditorAudioAction = "picked" | "recorded";
 
 /** A portable audio asset returned by the document picker or recorder. */
-export interface NotionEditorAudioAsset
+export interface MarkdownEditorAudioAsset
 {
     readonly duration?: number;
     readonly fileName?: string;
@@ -187,16 +190,16 @@ export interface NotionEditorAudioAsset
 }
 
 /** Result delivered after audio insertion or replacement completes. */
-export interface NotionEditorAudioSelection
+export interface MarkdownEditorAudioSelection
 {
-    readonly action: NotionEditorAudioAction;
-    readonly asset?: NotionEditorAudioAsset;
+    readonly action: MarkdownEditorAudioAction;
+    readonly asset?: MarkdownEditorAudioAsset;
     readonly canceled: boolean;
     readonly error?: string;
 }
 
 /** A portable file asset returned by the built-in native document picker. */
-export interface NotionEditorFileAsset
+export interface MarkdownEditorFileAsset
 {
     readonly fileName?: string;
     readonly fileSize?: number;
@@ -205,9 +208,9 @@ export interface NotionEditorFileAsset
 }
 
 /** Result delivered after the built-in file picker completes. */
-export interface NotionEditorFileSelection
+export interface MarkdownEditorFileSelection
 {
-    readonly asset?: NotionEditorFileAsset;
+    readonly asset?: MarkdownEditorFileAsset;
     readonly canceled: boolean;
 }
 
@@ -217,7 +220,7 @@ export interface NotionEditorFileSelection
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionEditorPageReference
+export interface MarkdownEditorPageReference
 {
     readonly icon?: string;
     readonly id: string;
@@ -231,7 +234,7 @@ export interface NotionEditorPageReference
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionEditorPageReferenceSelection
+export interface MarkdownEditorPageReferenceSelection
 {
     readonly anchor: EditorPoint;
     readonly focus: EditorPoint;
@@ -244,14 +247,14 @@ export interface NotionEditorPageReferenceSelection
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionEditorBlockActionsSelection
+export interface MarkdownEditorBlockActionsSelection
 {
     readonly blockId: string;
     readonly blockType: EditorBlock["type"];
 }
 
 /** The current text selection handed to a host link prompt. */
-export interface NotionEditorLinkSelection
+export interface MarkdownEditorLinkSelection
 {
     readonly anchor: EditorPoint;
     readonly focus: EditorPoint;
@@ -260,27 +263,27 @@ export interface NotionEditorLinkSelection
 }
 
 /** A link value returned by a host link prompt or the built-in link modal. */
-export interface NotionEditorLinkResult
+export interface MarkdownEditorLinkResult
 {
     readonly label?: string;
     readonly url: string;
 }
 
 /** Host-supplied link prompt result. Returning nothing leaves the selection unchanged. */
-export type NotionEditorLinkPromptResult =
-    | NotionEditorLinkResult
+export type MarkdownEditorLinkPromptResult =
+    | MarkdownEditorLinkResult
     | null
     | undefined
-    | Promise<NotionEditorLinkResult | null | undefined>;
+    | Promise<MarkdownEditorLinkResult | null | undefined>;
 
 /**
- * Theme and control values handed to a {@link NotionEditorCustomPanel}'s `render` function, so
+ * Theme and control values handed to a {@link MarkdownEditorCustomPanel}'s `render` function, so
  * custom panel content can match the editor's current theme without re-deriving dark/light
  * itself, and can close the panel the same way the built-in "Return to keyboard" option does.
  *
  * @since 1.0.0
  */
-export interface NotionEditorCustomPanelContext
+export interface MarkdownEditorCustomPanelContext
 {
     /** Raised-card surface color, matching the built-in insert panel's block options. */
     readonly cardBackground: string;
@@ -299,22 +302,22 @@ export interface NotionEditorCustomPanelContext
 }
 
 /**
- * A panel that replaces the on-screen keyboard while its owning {@link NotionEditorCustomButton}
+ * A panel that replaces the on-screen keyboard while its owning {@link MarkdownEditorCustomButton}
  * is active -- the custom equivalent of the built-in "Basic blocks" insert panel.
  *
  * @since 1.0.0
  */
-export interface NotionEditorCustomPanel
+export interface MarkdownEditorCustomPanel
 {
     /** Fixed panel height, used to reserve space above the keyboard while the panel is open. */
     readonly height: number;
 
     /** Renders the panel's content. */
-    readonly render: ComponentType<NotionEditorCustomPanelContext>;
+    readonly render: ComponentType<MarkdownEditorCustomPanelContext>;
 }
 
 /**
- * Placement of a {@link NotionEditorCustomButton} relative to another button's id -- a built-in
+ * Placement of a {@link MarkdownEditorCustomButton} relative to another button's id -- a built-in
  * main-row id (`"insert" | "format" | "speech" | "filePicker" | "turnInto" | "undo" | "redo" |
  * "remove" | "indent" | "outdent" | "moveUp" | "moveDown" | "copy" | "cut" | "paste" | "edit"` -- the last
  * four are not shown by
@@ -325,15 +328,15 @@ export interface NotionEditorCustomPanel
  *
  * @since 1.0.0
  */
-export type NotionEditorCustomButtonPlacement =
+export type MarkdownEditorCustomButtonPlacement =
     | { readonly after: string; readonly before?: undefined }
     | { readonly after?: undefined; readonly before: string }
     | { readonly after?: undefined; readonly before?: undefined };
 
-interface NotionEditorCustomButtonBase
+interface MarkdownEditorCustomButtonBase
 {
     /** Icon for this button. Omit for a plain text label, matching the built-in buttons. */
-    readonly icon?: ComponentType<NotionEditorIconProps>;
+    readonly icon?: ComponentType<MarkdownEditorIconProps>;
 
     /** Unique id for this button, used for placement and to identify its open panel. */
     readonly id: string;
@@ -344,18 +347,18 @@ interface NotionEditorCustomButtonBase
 /**
  * A consumer-supplied button spliced into the main toolbar row -- never the format row or the
  * trailing hide-keyboard/close slot. Supply either `onPress` for a plain action button, or
- * `panel` to pair the button with a {@link NotionEditorCustomPanel}: pressing it then opens that
+ * `panel` to pair the button with a {@link MarkdownEditorCustomPanel}: pressing it then opens that
  * panel in place of the on-screen keyboard, and the button is highlighted the same way the
  * built-in "Insert" button is while its panel is open.
  *
  * @since 1.0.0
  */
-export type NotionEditorCustomButton =
-    NotionEditorCustomButtonBase
-    & NotionEditorCustomButtonPlacement
+export type MarkdownEditorCustomButton =
+    MarkdownEditorCustomButtonBase
+    & MarkdownEditorCustomButtonPlacement
     & (
         | { readonly onPress: () => void; readonly panel?: undefined }
-        | { readonly onPress?: undefined; readonly panel: NotionEditorCustomPanel }
+        | { readonly onPress?: undefined; readonly panel: MarkdownEditorCustomPanel }
     );
 
 /**
@@ -363,7 +366,7 @@ export type NotionEditorCustomButton =
  *
  * @since 1.0.0
  */
-export interface NotionEditorProps extends Omit<NativeEditorProps, "command" | "onEdit" | "snapshot">
+export interface MarkdownEditorProps extends Omit<NativeEditorProps, "command" | "onEdit" | "snapshot">
 {
     /** Horizontal inset applied to the WYSIWYG page content. The MAB is not affected. */
     readonly pagePaddingHorizontal?: number;
@@ -390,7 +393,7 @@ export interface NotionEditorProps extends Omit<NativeEditorProps, "command" | "
     ) => void;
 
     /** Optional icon overrides for the editor UI. */
-    readonly components?: NotionEditorComponents;
+    readonly components?: MarkdownEditorComponents;
 
     /**
      * Replaces the built-in insert-media sheet. This is also the fallback for applications that
@@ -409,33 +412,33 @@ export interface NotionEditorProps extends Omit<NativeEditorProps, "command" | "
      * video assets are also displayed in the editor automatically.
      */
     readonly onMediaSelected?: (
-        Selection: NotionEditorMediaSelection
+        Selection: MarkdownEditorMediaSelection
     ) => void | Promise<void>;
 
     /** Observes picked, recorded, cancelled, and failed audio selections. */
     readonly onAudioSelected?: (
-        Selection: NotionEditorAudioSelection
+        Selection: MarkdownEditorAudioSelection
     ) => void | Promise<void>;
 
     /** Observes picked and cancelled selections from the built-in file picker. */
     readonly onFileSelected?: (
-        Selection: NotionEditorFileSelection
+        Selection: MarkdownEditorFileSelection
     ) => void | Promise<void>;
 
     /** Requests that the dependent create a page reference for the current selection. */
     readonly onCreatePageReference?: (
-        Selection: NotionEditorPageReferenceSelection
+        Selection: MarkdownEditorPageReferenceSelection
     ) => void | Promise<void>;
 
     /** Requests that the dependent edit the selected page reference. */
     readonly onEditPageReference?: (
-        Reference: NotionEditorPageReference
+        Reference: MarkdownEditorPageReference
     ) => void | Promise<void>;
 
     /** Prompts for a link URL and optional replacement label instead of using the built-in modal. */
     readonly onRequestLink?: (
-        Selection: NotionEditorLinkSelection
-    ) => NotionEditorLinkPromptResult;
+        Selection: MarkdownEditorLinkSelection
+    ) => MarkdownEditorLinkPromptResult;
 
     /** Handles page-reference taps, or falls back to the optional expo-linking peer. */
     readonly onOpenPageReference?: (url: string) => void | Promise<void>;
@@ -445,11 +448,11 @@ export interface NotionEditorProps extends Omit<NativeEditorProps, "command" | "
      * otherwise receive the text cursor, currently the divider.
      */
     readonly onBlockActions?: (
-        Selection: NotionEditorBlockActionsSelection
+        Selection: MarkdownEditorBlockActionsSelection
     ) => void | Promise<void>;
 
     /** Buttons spliced into the main toolbar row. Never shown in the format row or trailing slot. */
-    readonly customButtons?: Array<NotionEditorCustomButton>;
+    readonly customButtons?: Array<MarkdownEditorCustomButton>;
 }
 
 interface ActionButtonProps
@@ -457,13 +460,13 @@ interface ActionButtonProps
     /** Highlights the button as the active toggle for an open panel (e.g. "Insert" while open). */
     readonly active?: boolean;
     readonly activeBackground?: string;
-    readonly button?: NotionEditorButton;
+    readonly button?: MarkdownEditorButton;
     readonly color: string;
-    readonly components?: NotionEditorComponents;
+    readonly components?: MarkdownEditorComponents;
     /** Dims the button and blocks presses, e.g. "Undo" with no history to undo. */
     readonly disabled?: boolean;
     /** Icon to use directly, taking precedence over `button`/`components` lookup -- for custom buttons. */
-    readonly icon?: ComponentType<NotionEditorIconProps>;
+    readonly icon?: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
     readonly onPress: () => void;
 }
@@ -471,10 +474,10 @@ interface ActionButtonProps
 interface BlockOptionProps
 {
     readonly background: string;
-    readonly button?: NotionEditorButton;
+    readonly button?: MarkdownEditorButton;
     /** Icon color -- muted, matching the toolbar's icon color. */
     readonly color: string;
-    readonly components?: NotionEditorComponents;
+    readonly components?: MarkdownEditorComponents;
     readonly fullWidth?: boolean;
     readonly grid?: boolean;
     readonly label: string;
@@ -482,6 +485,14 @@ interface BlockOptionProps
     readonly labelColor: string;
     readonly disabled?: boolean;
     readonly onPress: () => void;
+}
+
+/** Resolve the MAB's text-label color while leaving each option's icon color untouched. */
+function resolveMabLabelColor(labelColor: string): string
+{
+    if (labelColor === "#ada9a3") {return "#A8A8A8";}
+    if (labelColor === "#8e8b86") {return "#646464";}
+    return labelColor;
 }
 
 /**
@@ -493,16 +504,16 @@ interface BlockOptionProps
  * `editor/ui` to install it, and a *hidden* one (e.g. via `eval("require")`) is never bundled at
  * all and can thus never succeed even when the peer is present. Either way, this module cannot
  * auto-detect and load Lucide itself. Consumers who have the peer installed opt in explicitly by
- * importing {@link notionEditorLucideIcons} from `react-native-notion-markdown/editor/ui/
+ * importing {@link markdownEditorLucideIcons} from `react-native-notion-markdown/editor/ui/
  * lucide-icons` -- a separate module Metro only needs to resolve `lucide-react-native` for when
  * something actually imports it -- and passing it as `components`.
  *
  * @since 1.0.0
  */
 function getButtonIcon(
-    button: NotionEditorButton | undefined,
-    components: NotionEditorComponents | undefined
-): ComponentType<NotionEditorIconProps> | undefined
+    button: MarkdownEditorButton | undefined,
+    components: MarkdownEditorComponents | undefined
+): ComponentType<MarkdownEditorIconProps> | undefined
 {
     if (button === undefined || components === undefined)
     {
@@ -570,7 +581,7 @@ function ActionButton({
 
 /**
  * Render a labeled block option for the "Basic blocks" panel -- an icon-and-label card, matching
- * Notion's own insert-block picker rather than the toolbar's icon-only buttons.
+ * Markdown's own insert-block picker rather than the toolbar's icon-only buttons.
  *
  * @since 1.0.0
  */
@@ -600,7 +611,10 @@ function BlockOption({
         ],
         [ background, disabled, fullWidth, grid ]
     );
-    const labelStyle = useMemo(() => [ styles.blockOptionLabel, { color: labelColor } ], [ labelColor ]);
+    const labelStyle = useMemo(
+        () => [ styles.blockOptionLabel, { color: resolveMabLabelColor(labelColor) } ],
+        [ labelColor ]
+    );
     const accessibilityState = useMemo(
         () => ({ disabled: disabled === true }), [ disabled ]
     );
@@ -622,11 +636,11 @@ function BlockOption({
 interface EditorColorOption
 {
     readonly background: boolean;
-    readonly color: NotionMarkdownColor | undefined;
+    readonly color: MarkdownColor | undefined;
     readonly hex: string | undefined;
 }
 
-/* The Notion-flavored Markdown text colors, plus their `_bg` background variants, offered by the
+/* The Markdown-formatted content text colors, plus their `_bg` background variants, offered by the
    selection color panel. `undefined` clears the selected blocks back to their default color. */
 const editorColorOptions: ReadonlyArray<EditorColorOption> =
     [
@@ -654,7 +668,7 @@ const editorColorOptions: ReadonlyArray<EditorColorOption> =
 const editorTurnIntoTypes: ReadonlyArray<EditorBlock["type"]> =
     [ "text", "heading_1", "heading_2", "heading_3", "heading_4" ];
 
-const editorColumnButtons: Readonly<Record<EditorColumnCount, Extract<NotionEditorButton,
+const editorColumnButtons: Readonly<Record<EditorColumnCount, Extract<MarkdownEditorButton,
     "columns2" | "columns3" | "columns4" | "columns5">>> =
     {
         2: "columns2",
@@ -708,7 +722,7 @@ function editorCursorTouchesWord(text: string, offset: number): boolean
 
 /**
  * A human-readable accessibility label for a color swatch. The color catalog is a fixed, small
- * set of Notion-defined names rather than host-facing copy, so it isn't routed through `t()`.
+ * set of Markdown-defined names rather than host-facing copy, so it isn't routed through `t()`.
  *
  * @since 1.0.0
  */
@@ -803,7 +817,7 @@ interface ColorOptionGridProps
     readonly defaultLabel: string;
     readonly foreground: string;
     readonly iconColor: string;
-    readonly onSelect: (color: NotionMarkdownColor | undefined) => () => void;
+    readonly onSelect: (color: MarkdownColor | undefined) => () => void;
     readonly options: ReadonlyArray<EditorColorOption>;
 }
 
@@ -901,7 +915,7 @@ const ScrollFadeSteps = 8;
  *
  * @since 1.0.0
  */
-export function NotionEditor({
+export function MarkdownEditor({
     command: suppliedCommand,
     components,
     customButtons,
@@ -926,9 +940,9 @@ export function NotionEditor({
     imageMaxWidth = DefaultPageMaxWidth,
     snapshot: suppliedSnapshot,
     ...viewProps
-}: NotionEditorProps)
+}: MarkdownEditorProps)
 {
-    const t = useNotionEditorTranslate();
+    const t = useMarkdownEditorTranslate();
     const [ defaultSnapshot ] = useState(CreateEditorDocument);
     const [ internalSnapshot, setInternalSnapshot ] = useState<EditorSnapshot>();
     const [ internalCommand, setInternalCommand ] = useState<EditorCommand>();
@@ -937,11 +951,11 @@ export function NotionEditor({
     const refocusAfterPanelClose = useRef(false);
     const [ mediaSheetVisible, setMediaSheetVisible ] = useState(false);
     const [ audioSheetVisible, setAudioSheetVisible ] = useState(false);
-    const [ audioSheetInitialAction, setAudioSheetInitialAction ] = useState<NotionEditorAudioAction>();
+    const [ audioSheetInitialAction, setAudioSheetInitialAction ] = useState<MarkdownEditorAudioAction>();
     const [ audioReplacementBlockId, setAudioReplacementBlockId ] = useState<string>();
     const [ linkSheetVisible, setLinkSheetVisible ] = useState(false);
-    const [ linkRequest, setLinkRequest ] = useState<NotionEditorLinkSelection>();
-    const [ blockActionsRequest, setBlockActionsRequest ] = useState<NotionEditorBlockActionsSelection>();
+    const [ linkRequest, setLinkRequest ] = useState<MarkdownEditorLinkSelection>();
+    const [ blockActionsRequest, setBlockActionsRequest ] = useState<MarkdownEditorBlockActionsSelection>();
     const [ emojiSheetVisible, setEmojiSheetVisible ] = useState(false);
     const [ emojiSheetBlockId, setEmojiSheetBlockId ] = useState<string>();
     /* The native text layout's own content height, in dp -- reported by the native view since
@@ -956,7 +970,7 @@ export function NotionEditor({
     /* A JS-side history of past/undone snapshots for the internally-managed document. This needs
        no native undo support: undoing/redoing simply hands the native editor an older/newer
        snapshot under a bumped epoch, the same "replace the whole document" path already used for
-       a host-supplied `snapshot` -- see NotionEditorView.kt's `setSnapshot`. Edits reported with
+       a host-supplied `snapshot` -- see MarkdownEditorView.kt's `setSnapshot`. Edits reported with
        `source === "replacement"` are our own history replay landing back through `onEdit`, not new
        user edits, so they're accepted into state but never pushed onto the undo stack. */
     const undoStack = useRef<Array<EditorSnapshot>>([ ]);
@@ -983,11 +997,11 @@ export function NotionEditor({
     const { height, progress } = useReanimatedKeyboardAnimation();
     const foreground = dark ? "#eeeeee" : "#2C2C2B";
     const background = dark ? "#191919" : "#ffffff";
-    /* Matches Notion's own above-the-keyboard toolbar icon/label color, sampled from its
+    /* Matches Markdown's own above-the-keyboard toolbar icon/label color, sampled from its
        mobile action bar in both themes -- a warm gray, not a neutral one. */
     const iconColor = dark ? "#ada9a3" : "#8e8b86";
     /* The "Basic blocks" panel sits on a slightly recessed surface, with raised cards for each
-       option -- matching Notion's own insert-block picker. */
+       option -- matching Markdown's own insert-block picker. */
     const panelBackground = dark ? "#2b2b2a" : "#f7f7f5";
     const cardBackground = dark ? "#3a3a39" : "#ffffff";
     const activeBackground = dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
@@ -1069,7 +1083,7 @@ export function NotionEditor({
         && snapshot.blocks.slice(selectionBlockRange.low, selectionBlockRange.high + 1).some(
             (block: EditorBlock) => (block.depth ?? 0) > 0
         );
-    const selectedPageReference = useMemo<NotionEditorPageReference | undefined>(() =>
+    const selectedPageReference = useMemo<MarkdownEditorPageReference | undefined>(() =>
     {
         if (selectionBlockRange === undefined || selectionBlockRange.low !== selectionBlockRange.high)
         {
@@ -1102,8 +1116,8 @@ export function NotionEditor({
     }, [ selectionBlockRange, snapshot.blocks ]);
     const customButtonsById = useMemo(() =>
     {
-        const map = new Map<string, NotionEditorCustomButton>();
-        customButtons?.forEach((button: NotionEditorCustomButton) => map.set(button.id, button));
+        const map = new Map<string, MarkdownEditorCustomButton>();
+        customButtons?.forEach((button: MarkdownEditorCustomButton) => map.set(button.id, button));
         return map;
     }, [ customButtons ]);
     const mainRowOrder = useMemo(() =>
@@ -1118,7 +1132,7 @@ export function NotionEditor({
             order.push("edit");
         }
 
-        customButtons?.forEach((button: NotionEditorCustomButton) =>
+        customButtons?.forEach((button: MarkdownEditorCustomButton) =>
         {
             const existingIndex = order.indexOf(button.id);
             if (existingIndex !== -1)
@@ -1336,7 +1350,7 @@ export function NotionEditor({
         nativeEvent
     }: { nativeEvent: NativeBlockActionsPressEvent }) =>
     {
-        const selection: NotionEditorBlockActionsSelection =
+        const selection: MarkdownEditorBlockActionsSelection =
             { blockId: nativeEvent.id, blockType: nativeEvent.type };
         send("dismiss");
         if (onBlockActions !== undefined)
@@ -1357,7 +1371,7 @@ export function NotionEditor({
         {
             return;
         }
-        const selection: NotionEditorBlockActionsSelection =
+        const selection: MarkdownEditorBlockActionsSelection =
             { blockId: block.id, blockType: "callout" };
         send("dismiss");
         if (onBlockActions !== undefined)
@@ -1372,7 +1386,7 @@ export function NotionEditor({
         setBlockActionsRequest(undefined);
         send("focus");
     }, [ send ]);
-    const handleBlockAction = useCallback((action: NotionEditorBlockAction) =>
+    const handleBlockAction = useCallback((action: MarkdownEditorBlockAction) =>
     {
         const blockId = blockActionsRequest?.blockId;
         setBlockActionsRequest(undefined);
@@ -1387,7 +1401,7 @@ export function NotionEditor({
     }, [ blockActionsRequest, send ]);
     const handleReplaceImage = useCallback((blockId: string, url: string) =>
         send("replaceImage", { blockId, url }), [ send ]);
-    const handleReplaceAudio = useCallback((action: NotionEditorAudioAction) =>
+    const handleReplaceAudio = useCallback((action: MarkdownEditorAudioAction) =>
     {
         const blockId = blockActionsRequest?.blockId;
         if (blockId === undefined)
@@ -1401,7 +1415,7 @@ export function NotionEditor({
         setAudioSheetVisible(true);
         send("dismiss");
     }, [ blockActionsRequest, send ]);
-    const handleCalloutColor = useCallback((color: NotionMarkdownColor | undefined) =>
+    const handleCalloutColor = useCallback((color: MarkdownColor | undefined) =>
     {
         const blockId = blockActionsRequest?.blockId;
         setBlockActionsRequest(undefined);
@@ -1489,7 +1503,7 @@ export function NotionEditor({
             type: "*/*"
         });
         const pickedAsset = result.canceled ? undefined : result.assets?.[ 0 ];
-        const selection: NotionEditorFileSelection = {
+        const selection: MarkdownEditorFileSelection = {
             asset: pickedAsset === undefined
                 ? undefined
                 : {
@@ -1536,7 +1550,7 @@ export function NotionEditor({
         setAudioReplacementBlockId(undefined);
         send("focus");
     }, [ send ]);
-    const handleLinkResult = useCallback((result: NotionEditorLinkResult | null | undefined) =>
+    const handleLinkResult = useCallback((result: MarkdownEditorLinkResult | null | undefined) =>
     {
         setLinkSheetVisible(false);
         setLinkRequest(undefined);
@@ -1598,7 +1612,7 @@ export function NotionEditor({
                 }
             });
         });
-        const request: NotionEditorLinkSelection =
+        const request: MarkdownEditorLinkSelection =
             {
                 anchor: {
                     blockId: selectionAnchorBlockId,
@@ -1702,6 +1716,7 @@ export function NotionEditor({
     const handleSplit = useCallback(() => send("split"), [ send ]);
     const handleBulletedList = useCallback(() => send("bulletedList"), [ send ]);
     const handleNumberedList = useCallback(() => send("numberedList"), [ send ]);
+    const handleUnavailableInsert = useCallback(() => { }, [ ]);
     const handleHeading1 = useCallback(
         () => send("heading", { level: 1 }), [ send ]
     );
@@ -1758,11 +1773,23 @@ export function NotionEditor({
             void onEditPageReference?.(selectedPageReference);
         }
     }, [ onEditPageReference, selectedPageReference ]);
-    const handleMediaSelected = useCallback(async (selection: NotionEditorMediaSelection) =>
+    const handleToggleHeading1 = useCallback(
+        () => send("heading", { level: 1, toggle: true }), [ send ]
+    );
+    const handleToggleHeading2 = useCallback(
+        () => send("heading", { level: 2, toggle: true }), [ send ]
+    );
+    const handleToggleHeading3 = useCallback(
+        () => send("heading", { level: 3, toggle: true }), [ send ]
+    );
+    const handleToggleHeading4 = useCallback(
+        () => send("heading", { level: 4, toggle: true }), [ send ]
+    );
+    const handleMediaSelected = useCallback(async (selection: MarkdownEditorMediaSelection) =>
     {
         if (!selection.canceled && selection.assets !== undefined)
         {
-            const mediaAsset = selection.assets.find((asset: NotionEditorMediaAsset) =>
+            const mediaAsset = selection.assets.find((asset: MarkdownEditorMediaAsset) =>
             {
                 const type = asset.type?.toLowerCase();
                 const mimeType = asset.mimeType?.toLowerCase();
@@ -1782,7 +1809,7 @@ export function NotionEditor({
         }
         await onMediaSelected?.(selection);
     }, [ onMediaSelected, send ]);
-    const handleAudioSelected = useCallback(async (selection: NotionEditorAudioSelection) =>
+    const handleAudioSelected = useCallback(async (selection: MarkdownEditorAudioSelection) =>
     {
         if (!selection.canceled && selection.error === undefined && selection.asset !== undefined)
         {
@@ -1805,20 +1832,8 @@ export function NotionEditor({
         }
         await onAudioSelected?.(selection);
     }, [ audioReplacementBlockId, onAudioSelected, send ]);
-    const handleToggleHeading1 = useCallback(
-        () => send("heading", { level: 1, toggle: true }), [ send ]
-    );
-    const handleToggleHeading2 = useCallback(
-        () => send("heading", { level: 2, toggle: true }), [ send ]
-    );
-    const handleToggleHeading3 = useCallback(
-        () => send("heading", { level: 3, toggle: true }), [ send ]
-    );
-    const handleToggleHeading4 = useCallback(
-        () => send("heading", { level: 4, toggle: true }), [ send ]
-    );
     const handleSelectColor = useCallback(
-        (color: NotionMarkdownColor | undefined) => () => send("color", { color }), [ send ]
+        (color: MarkdownColor | undefined) => () => send("color", { color }), [ send ]
     );
     const handleCopy = useCallback(() => send("copy"), [ send ]);
     const handleCut = useCallback(() => send("cut"), [ send ]);
@@ -2226,12 +2241,12 @@ export function NotionEditor({
                     openPanel.kind === "insert" && <Animated.View entering={ FadeIn.duration(160) }
                         exiting={ FadeOut.duration(120) }
                         style={ panelStyle }>
-                        <Text accessibilityRole="header"
-                            style={ panelTitleStyle }>{ t("insertPanel.title") }</Text>
                         <ScrollView contentContainerStyle={ styles.panelScrollContent }
                             keyboardShouldPersistTaps="always"
                             showsVerticalScrollIndicator={ false }
                             style={ styles.panelScroll }>
+                            <Text accessibilityRole="header"
+                                style={ panelTitleStyle }>{ t("insertPanel.title") }</Text>
                             <View style={ styles.blockGrid }>
                                 <BlockOption background={ cardBackground }
                                     button="text"
@@ -2241,116 +2256,6 @@ export function NotionEditor({
                                     label={ t("insertPanel.text") }
                                     labelColor={ iconColor }
                                     onPress={ handleSplit } />
-                                <BlockOption background={ cardBackground }
-                                    button="bulletedList"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.bulletedList") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleBulletedList } />
-                                <BlockOption background={ cardBackground }
-                                    button="numberedList"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.numberedList") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleNumberedList } />
-                                {
-                                    onCreatePageReference !== undefined && <BlockOption
-                                        background={ cardBackground }
-                                        button="linkToPage"
-                                        color={ iconColor }
-                                        components={ components }
-                                        grid
-                                        label={ t("insertPanel.pageReference") }
-                                        labelColor={ iconColor }
-                                        onPress={ handleCreatePageReference } />
-                                }
-                                <BlockOption background={ cardBackground }
-                                    button="picture"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.image") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleInsertMedia } />
-                                <BlockOption background={ cardBackground }
-                                    button="speech"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.audio") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleInsertAudio } />
-                                <BlockOption background={ cardBackground }
-                                    button="video"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.video") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleInsertMedia } />
-                                <BlockOption background={ cardBackground }
-                                    button="filePicker"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.file") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleInsertFile } />
-                                <BlockOption background={ cardBackground }
-                                    button="divider"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.divider") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleDivider } />
-                                <BlockOption background={ cardBackground }
-                                    button="tableOfContents"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.tableOfContents") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleTableOfContents } />
-                                { ([ 2, 3, 4, 5 ] as const).map((columnCount: EditorColumnCount) =>
-                                    <BlockOption background={ cardBackground }
-                                        button={ editorColumnButtons[ columnCount ] }
-                                        color={ iconColor }
-                                        components={ components }
-                                        grid
-                                        key={ columnCount }
-                                        label={ columnLabels[ columnCount ] }
-                                        labelColor={ iconColor }
-                                        onPress={ handleColumns(columnCount) } />
-                                ) }
-                                <BlockOption background={ cardBackground }
-                                    button="toDo"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.toDo") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleToDo } />
-                                <BlockOption background={ cardBackground }
-                                    button="callout"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.callout") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleCallout } />
-                                <BlockOption background={ cardBackground }
-                                    button="quote"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.quote") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleQuote } />
                                 <BlockOption background={ cardBackground }
                                     button="heading1"
                                     color={ iconColor }
@@ -2384,6 +2289,171 @@ export function NotionEditor({
                                     labelColor={ iconColor }
                                     onPress={ handleHeading4 } />
                                 <BlockOption background={ cardBackground }
+                                    button="bulletedList"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.bulletedList") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleBulletedList } />
+                                <BlockOption background={ cardBackground }
+                                    button="numberedList"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.numberedList") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleNumberedList } />
+                                <BlockOption background={ cardBackground }
+                                    button="toDo"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.toDo") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleToDo } />
+                                <BlockOption background={ cardBackground }
+                                    button="toggleList"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.toggleList") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleUnavailableInsert } />
+                                <BlockOption background={ cardBackground }
+                                    button="callout"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.callout") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleCallout } />
+                                <BlockOption background={ cardBackground }
+                                    button="quote"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.quote") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleQuote } />
+                                <BlockOption background={ cardBackground }
+                                    button="table"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.table") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleUnavailableInsert } />
+                                <BlockOption background={ cardBackground }
+                                    button="divider"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.divider") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleDivider } />
+                                <BlockOption background={ cardBackground }
+                                    button="linkToPage"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.pageReference") }
+                                    labelColor={ iconColor }
+                                    onPress={ onCreatePageReference === undefined
+                                        ? handleUnavailableInsert
+                                        : handleCreatePageReference } />
+                                { ([ 2, 3, 4, 5 ] as const).map((columnCount: EditorColumnCount) =>
+                                    <BlockOption background={ cardBackground }
+                                        button={ editorColumnButtons[ columnCount ] }
+                                        color={ iconColor }
+                                        components={ components }
+                                        grid
+                                        key={ columnCount }
+                                        label={ columnLabels[ columnCount ] }
+                                        labelColor={ iconColor }
+                                        onPress={ handleColumns(columnCount) } />
+                                ) }
+                            </View>
+                            <Text accessibilityRole="header"
+                                style={ panelTitleStyle }>{ t("insertPanel.mediaTitle") }</Text>
+                            <View style={ styles.blockGrid }>
+                                <BlockOption background={ cardBackground }
+                                    button="picture"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.image") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleInsertMedia } />
+                                <BlockOption background={ cardBackground }
+                                    button="video"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.video") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleInsertMedia } />
+                                <BlockOption background={ cardBackground }
+                                    button="speech"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.audio") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleInsertAudio } />
+                                <BlockOption background={ cardBackground }
+                                    button="code"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.code") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleUnavailableInsert } />
+                                <BlockOption background={ cardBackground }
+                                    button="filePicker"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.file") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleInsertFile } />
+                                <BlockOption background={ cardBackground }
+                                    button="link"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.link") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleUnavailableInsert } />
+                            </View>
+                            <Text accessibilityRole="header"
+                                style={ panelTitleStyle }>{ t("insertPanel.advancedTitle") }</Text>
+                            <View style={ styles.blockGrid }>
+                                <BlockOption background={ cardBackground }
+                                    button="tableOfContents"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.tableOfContents") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleTableOfContents } />
+                                <BlockOption background={ cardBackground }
+                                    button="code"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.blockEquation") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleUnavailableInsert } />
+                                <BlockOption background={ cardBackground }
+                                    button="copy"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.syncedBlock") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleUnavailableInsert } />
+                                <BlockOption background={ cardBackground }
                                     button="toggleHeading1"
                                     color={ iconColor }
                                     components={ components }
@@ -2415,6 +2485,14 @@ export function NotionEditor({
                                     label={ t("insertPanel.toggleHeading4") }
                                     labelColor={ iconColor }
                                     onPress={ handleToggleHeading4 } />
+                                <BlockOption background={ cardBackground }
+                                    button="mermaid"
+                                    color={ iconColor }
+                                    components={ components }
+                                    grid
+                                    label={ t("insertPanel.mermaidDiagram") }
+                                    labelColor={ iconColor }
+                                    onPress={ handleUnavailableInsert } />
                             </View>
                         </ScrollView>
                         {/* <BlockOption background={ cardBackground }
@@ -2587,7 +2665,9 @@ const styles = StyleSheet.create({
     {
         flexDirection: "row",
         flexWrap: "wrap",
-        gap: 8
+        gap: 8,
+        /* About one-third of the 54px MAB button height separates each section. */
+        marginBottom: 18
     },
     blockOption:
     {

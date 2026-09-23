@@ -14,13 +14,13 @@ export {
     type NativePageReferencePressEvent,
     type NativeEditorProps
 } from "./NativeEditor.tsx";
-export { default as NotionMarkdown } from "./NotionMarkdownModule.ts";
+export { default as Markdown } from "./MarkdownModule.ts";
 export * from "./prototype.ts";
 
 /** Per-field editable coordinator: one native view per block field, plus its selection overlay. */
 export {
-    NotionSelectionOverlay,
-    NotionTextField,
-    type NotionSelectionOverlayProps,
-    type NotionTextFieldProps
-} from "./NotionEditorFields.tsx";
+    MarkdownSelectionOverlay,
+    MarkdownTextField,
+    type MarkdownSelectionOverlayProps,
+    type MarkdownTextFieldProps
+} from "./MarkdownEditorFields.tsx";

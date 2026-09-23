@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Notion Markdown Storybook",
-    "slug": "notion-markdown",
-    "scheme": "notionmarkdownstorybook",
+    "name": "Markdown Storybook",
+    "slug": "markdown",
+    "scheme": "markdownstorybook",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "android": {
-      "package": "com.gagesorrell.notionmarkdown.storybook",
+      "package": "com.gagesorrell.markdown.storybook",
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]

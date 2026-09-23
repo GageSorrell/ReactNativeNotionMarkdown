@@ -10,10 +10,10 @@
  */
 
 import { Path, Rect, Svg } from "react-native-svg";
-import type { NotionEditorIconProps } from "./NotionEditor.tsx";
+import type { MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
 
 /** Render the duplicate ("copy") icon. */
-export function CopyActionIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function CopyActionIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -36,7 +36,7 @@ export function CopyActionIcon({ color, size, strokeWidth }: NotionEditorIconPro
 }
 
 /** Render the delete ("trash can") icon. */
-export function TrashActionIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function TrashActionIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"

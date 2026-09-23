@@ -8,7 +8,7 @@
  * light/dark/system toggle share this module rather than reaching into the renderer's or editor's
  * own theming.
  *
- * @module notion-markdown-storybook/Stories/themeToggle
+ * @module markdown-storybook/Stories/themeToggle
  *
  * @file      themeToggle.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
@@ -17,7 +17,8 @@
  */
 
 import type { ComponentType, ReactNode } from "react";
-import { Monitor, Moon, Sun } from "lucide-react-native";
+import { Keyboard, KeyboardOff, Monitor, Moon, Sun } from "lucide-react-native";
+import { KeyboardController, useKeyboardState } from "react-native-keyboard-controller";
 import { Pressable, StyleSheet, useColorScheme } from "react-native";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
@@ -35,6 +36,12 @@ const themeOverrideIcons: Record<ThemeOverride, ComponentType<{
     light: Sun,
     system: Monitor
 };
+
+/** Selects only keyboard visibility so the toggle re-renders on show/hide events. */
+function keyboardVisibilitySelector(state: { readonly isVisible: boolean }): boolean
+{
+    return state.isVisible;
+}
 
 interface ThemeOverrideContextValue
 {
@@ -115,6 +122,48 @@ export function ThemeToggleButton({ dark }: ThemeToggleButtonProps)
 
     return <Pressable
         accessibilityLabel={ `Theme: ${ override }` }
+        accessibilityRole="button"
+        hitSlop={ 8 }
+        onPress={ handlePress }
+        style={ buttonStyle }>
+        <Icon
+            color={ iconColor }
+            size={ 18 }
+            strokeWidth={ 2 }
+        />
+    </Pressable>;
+}
+
+interface KeyboardToggleButtonProps
+{
+    readonly dark: boolean;
+}
+
+/** Toggles the active keyboard while reflecting visibility changes made elsewhere in the app. */
+export function KeyboardToggleButton({ dark }: KeyboardToggleButtonProps)
+{
+    const isKeyboardVisible = useKeyboardState(keyboardVisibilitySelector);
+    const handlePress = useCallback(() =>
+    {
+        if (isKeyboardVisible)
+        {
+            void KeyboardController.dismiss({ keepFocus: true });
+        }
+        else
+        {
+            KeyboardController.setFocusTo("current");
+        }
+    }, [ isKeyboardVisible ]);
+    const Icon = isKeyboardVisible ? KeyboardOff : Keyboard;
+    const iconColor = dark ? "#e6e6e6" : "#2c2c2b";
+    const accessibilityLabel = isKeyboardVisible ? "Hide keyboard" : "Show keyboard";
+    const buttonStyle = useMemo(
+        () => [ themeToggleStyles.button, dark && themeToggleStyles.buttonDark ],
+        [ dark ]
+    );
+
+    return <Pressable
+        accessibilityLabel={ accessibilityLabel }
         accessibilityRole="button"
         hitSlop={ 8 }
         onPress={ handlePress }

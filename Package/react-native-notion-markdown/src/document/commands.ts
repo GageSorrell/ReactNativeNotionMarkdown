@@ -2,7 +2,7 @@
  * The domain command layer: insertion, deletion, conversion, movement, indentation,
  * formatting, links, mentions, Markdown shortcuts, and the Enter/Backspace/Delete/arrow
  * boundary semantics from a native field, all expressed as named functions over a
- * `NotionEditorStore` rather than ad hoc document splicing in UI code. Every command ends in
+ * `MarkdownEditorStore` rather than ad hoc document splicing in UI code. Every command ends in
  * a `store.transact(...)` (and often a `store.setSelection(...)`), so undo/redo and selection
  * mapping keep working for free.
  *
@@ -16,11 +16,11 @@
 
 import {
     type FieldMarks,
-    type NotionFieldBoundaryEvent,
-    type NotionFieldEditEvent,
-    type NotionFieldKind,
-    type NotionFieldRangeMarkKind,
-    type NotionInlineMark,
+    type MarkdownFieldBoundaryEvent,
+    type MarkdownFieldEditEvent,
+    type MarkdownFieldKind,
+    type MarkdownFieldRangeMarkKind,
+    type MarkdownInlineMark,
     fieldMarksToRichText,
     mergeFieldMarks,
     richTextToFieldMarks,
@@ -29,40 +29,40 @@ import {
     toggleFieldRangeMark
 } from "./fields.ts";
 import type {
-    NotionBlock,
-    NotionDocument,
-    NotionEditableField,
-    NotionMarkdownBlockType,
-    NotionMarkdownColor,
-    NotionRichText,
-    NotionRichTextItem,
-    NotionSelection,
-    NotionSelectionPoint
+    MarkdownBlock,
+    MarkdownDocument,
+    MarkdownEditableField,
+    MarkdownBlockType,
+    MarkdownColor,
+    MarkdownRichText,
+    MarkdownRichTextItem,
+    MarkdownSelection,
+    MarkdownSelectionPoint
 } from "./types.ts";
 import {
-    appendNotionChild,
-    findNotionBlockPath,
-    getNotionBlock,
-    getNotionBlockAtPath,
-    getNotionBlockCaption,
-    getNotionBlockCell,
-    getNotionBlockRichText,
-    indentNotionBlock,
-    insertNotionBlockRelative,
-    isNotionListBlockType,
-    isNotionTextBearingBlockType,
-    moveNotionBlock,
-    outdentNotionBlock,
-    removeNotionBlock,
-    setNotionBlockCaption,
-    setNotionBlockCell,
-    setNotionBlockRichText,
-    turnNotionBlockInto,
-    updateNotionBlock
+    appendMarkdownChild,
+    findMarkdownBlockPath,
+    getMarkdownBlock,
+    getMarkdownBlockAtPath,
+    getMarkdownBlockCaption,
+    getMarkdownBlockCell,
+    getMarkdownBlockRichText,
+    indentMarkdownBlock,
+    insertMarkdownBlockRelative,
+    isMarkdownListBlockType,
+    isMarkdownTextBearingBlockType,
+    moveMarkdownBlock,
+    outdentMarkdownBlock,
+    removeMarkdownBlock,
+    setMarkdownBlockCaption,
+    setMarkdownBlockCell,
+    setMarkdownBlockRichText,
+    turnMarkdownBlockInto,
+    updateMarkdownBlock
 } from "./tree.ts";
-import { getNotionEditableFields, notionSelectionPositionOf } from "./selection.ts";
-import type { NotionEditorStore } from "./store.ts";
-import { getNotionMarkdownMetadata } from "../internal.ts";
+import { getMarkdownEditableFields, markdownSelectionPositionOf } from "./selection.ts";
+import type { MarkdownEditorStore } from "./store.ts";
+import { getMarkdownMetadata } from "../internal.ts";
 
 let nextBlockSequence = 0;
 
@@ -72,7 +72,7 @@ let nextBlockSequence = 0;
  *
  * @since 1.0.0
  */
-export function generateNotionBlockId(): string
+export function generateMarkdownBlockId(): string
 {
     nextBlockSequence += 1;
     return `editor:${ Date.now().toString(36) }:${ nextBlockSequence.toString(36) }`;
@@ -85,24 +85,24 @@ export function generateNotionBlockId(): string
  * @since 1.0.0
  */
 function readFieldRichText(
-    block: NotionBlock,
-    field: NotionFieldKind,
+    block: MarkdownBlock,
+    field: MarkdownFieldKind,
     index: number | undefined
-): NotionRichText | undefined
+): MarkdownRichText | undefined
 {
     if (field === "rich_text")
     {
-        return getNotionBlockRichText(block);
+        return getMarkdownBlockRichText(block);
     }
 
     if (field === "caption")
     {
-        return getNotionBlockCaption(block);
+        return getMarkdownBlockCaption(block);
     }
 
     return index === undefined
         ? undefined
-        : getNotionBlockCell(block, index);
+        : getMarkdownBlockCell(block, index);
 }
 
 /**
@@ -112,25 +112,25 @@ function readFieldRichText(
  * @since 1.0.0
  */
 function writeFieldRichText(
-    block: NotionBlock,
-    field: NotionFieldKind,
+    block: MarkdownBlock,
+    field: MarkdownFieldKind,
     index: number | undefined,
-    richText: NotionRichText
-): NotionBlock
+    richText: MarkdownRichText
+): MarkdownBlock
 {
     if (field === "rich_text")
     {
-        return setNotionBlockRichText(block, richText);
+        return setMarkdownBlockRichText(block, richText);
     }
 
     if (field === "caption")
     {
-        return setNotionBlockCaption(block, richText);
+        return setMarkdownBlockCaption(block, richText);
     }
 
     return index === undefined
         ? block
-        : setNotionBlockCell(block, index, richText);
+        : setMarkdownBlockCell(block, index, richText);
 }
 
 /**
@@ -141,10 +141,10 @@ function writeFieldRichText(
  */
 function fieldPoint(
     blockId: string,
-    field: NotionFieldKind,
+    field: MarkdownFieldKind,
     index: number | undefined,
     offset: number
-): NotionSelectionPoint
+): MarkdownSelectionPoint
 {
     return {
         blockId,
@@ -160,7 +160,7 @@ function fieldPoint(
  * @category Functions
  * @since 1.0.0
  */
-function collapsedSelection(point: NotionSelectionPoint): NotionSelection
+function collapsedSelection(point: MarkdownSelectionPoint): MarkdownSelection
 {
     return { anchor: point, focus: point } as const;
 }
@@ -172,9 +172,9 @@ function collapsedSelection(point: NotionSelectionPoint): NotionSelection
  * @since 1.0.0
  */
 function sameField(
-    field: NotionEditableField,
+    field: MarkdownEditableField,
     blockId: string,
-    kind: NotionFieldKind,
+    kind: MarkdownFieldKind,
     index: number | undefined
 ): boolean
 {
@@ -191,7 +191,7 @@ function sameField(
  * @category Functions
  * @since 1.0.0
  */
-function defaultBlockPayload(type: NotionMarkdownBlockType): Record<string, unknown>
+function defaultBlockPayload(type: MarkdownBlockType): Record<string, unknown>
 {
     switch (type)
     {
@@ -214,23 +214,23 @@ function defaultBlockPayload(type: NotionMarkdownBlockType): Record<string, unkn
  *
  * @since 1.0.0
  */
-export function makeNotionBlock(
-    type: NotionMarkdownBlockType,
-    id: string = generateNotionBlockId()
-): NotionBlock
+export function makeMarkdownBlock(
+    type: MarkdownBlockType,
+    id: string = generateMarkdownBlockId()
+): MarkdownBlock
 {
     return {
-        __notion_markdown: { editorId: id },
+        __markdown_markdown: { editorId: id },
         id,
         type,
         [ type ]: defaultBlockPayload(type)
-    } as unknown as NotionBlock;
+    } as unknown as MarkdownBlock;
 }
 
 /** One entry in the Insert/Turn-into catalog: a block type a host UI can offer to create. */
-export interface NotionInsertableBlockOption
+export interface MarkdownInsertableBlockOption
 {
-    readonly type: NotionMarkdownBlockType;
+    readonly type: MarkdownBlockType;
     readonly label: string;
     readonly category: "basic" | "list" | "advanced";
     readonly keywords: ReadonlyArray<string>;
@@ -244,7 +244,7 @@ export/**
        * @category Constants
        * @since 1.0.0
        */
-const notionInsertableBlockCatalog: ReadonlyArray<NotionInsertableBlockOption> = [
+const markdownInsertableBlockCatalog: ReadonlyArray<MarkdownInsertableBlockOption> = [
     { category: "basic", keywords: [ "text", "text block" ], label: "Text block", type: "paragraph" },
     { category: "basic", keywords: [ "heading", "h1", "title" ], label: "Heading 1", type: "heading_1" },
     { category: "basic", keywords: [ "heading", "h2" ], label: "Heading 2", type: "heading_2" },
@@ -288,12 +288,12 @@ const notionInsertableBlockCatalog: ReadonlyArray<NotionInsertableBlockOption> =
  *
  * @since 1.0.0
  */
-export function searchInsertableBlocks(query: string): ReadonlyArray<NotionInsertableBlockOption>
+export function searchInsertableBlocks(query: string): ReadonlyArray<MarkdownInsertableBlockOption>
 {
     const normalized = query.trim().toLowerCase();
-    if (normalized.length === 0) {return notionInsertableBlockCatalog;}
+    if (normalized.length === 0) {return markdownInsertableBlockCatalog;}
 
-    return notionInsertableBlockCatalog.filter((option: NotionInsertableBlockOption) =>
+    return markdownInsertableBlockCatalog.filter((option: MarkdownInsertableBlockOption) =>
         option.label.toLowerCase().includes(normalized) ||
         option.keywords.some((keyword: string) => keyword.includes(normalized)));
 }
@@ -305,16 +305,16 @@ export function searchInsertableBlocks(query: string): ReadonlyArray<NotionInser
 /**
  * Write a native field's current (text, marks) back into the document as real rich text, and
  * sync the store's selection to the field's reported caret. This is the point where a
- * `NotionFieldEditEvent` from `NotionTextField` becomes a real document transaction.
+ * `MarkdownFieldEditEvent` from `MarkdownTextField` becomes a real document transaction.
  *
  * @since 1.0.0
  */
-export function applyFieldEdit(store: NotionEditorStore, event: NotionFieldEditEvent): void
+export function applyFieldEdit(store: MarkdownEditorStore, event: MarkdownFieldEditEvent): void
 {
     const richText = fieldMarksToRichText(event.text, event.marks);
 
-    store.transact((document: NotionDocument) =>
-        updateNotionBlock(document, event.blockId, (block: NotionBlock) =>
+    store.transact((document: MarkdownDocument) =>
+        updateMarkdownBlock(document, event.blockId, (block: MarkdownBlock) =>
             writeFieldRichText(block, event.field, event.index, richText)), "user");
 
     store.setSelection({
@@ -329,7 +329,7 @@ export function applyFieldEdit(store: NotionEditorStore, event: NotionFieldEditE
  * @category Functions
  * @since 1.0.0
  */
-function fieldMarksOf(block: NotionBlock, field: NotionFieldKind, index: number | undefined): FieldMarks
+function fieldMarksOf(block: MarkdownBlock, field: MarkdownFieldKind, index: number | undefined): FieldMarks
 {
     return richTextToFieldMarks(readFieldRichText(block, field, index) ?? [ ]);
 }
@@ -341,13 +341,13 @@ function fieldMarksOf(block: NotionBlock, field: NotionFieldKind, index: number 
  * @category Functions
  * @since 1.0.0
  */
-function getNextSiblingBlock(document: NotionDocument, blockId: string): NotionBlock | undefined
+function getNextSiblingBlock(document: MarkdownDocument, blockId: string): MarkdownBlock | undefined
 {
-    const path = findNotionBlockPath(document, blockId);
+    const path = findMarkdownBlockPath(document, blockId);
     if (path === undefined || path.length === 0) {return undefined;}
 
     const siblingPath = [ ...path.slice(0, -1), path[ path.length - 1 ]! + 1 ];
-    return getNotionBlockAtPath(document, siblingPath);
+    return getMarkdownBlockAtPath(document, siblingPath);
 }
 
 /**
@@ -362,31 +362,31 @@ function getNextSiblingBlock(document: NotionDocument, blockId: string): NotionB
  *
  * @since 1.0.0
  */
-function handleEnter(store: NotionEditorStore, event: NotionFieldBoundaryEvent): void
+function handleEnter(store: MarkdownEditorStore, event: MarkdownFieldBoundaryEvent): void
 {
     if (event.field !== "rich_text") {return;}
 
     const document = store.getDocument();
-    const block = getNotionBlock(document, event.blockId);
-    if (block === undefined || !isNotionTextBearingBlockType(block.type)) {return;}
+    const block = getMarkdownBlock(document, event.blockId);
+    if (block === undefined || !isMarkdownTextBearingBlockType(block.type)) {return;}
 
     const { marks, text } = fieldMarksOf(block, "rich_text", undefined);
 
-    if (isNotionListBlockType(block.type) && event.offset === text.length)
+    if (isMarkdownListBlockType(block.type) && event.offset === text.length)
     {
         const nextSibling = getNextSiblingBlock(document, event.blockId);
         if (nextSibling !== undefined && nextSibling.type === block.type)
         {
-            const firstBlockId = generateNotionBlockId();
-            const secondBlockId = generateNotionBlockId();
-            const firstBlock = makeNotionBlock("paragraph", firstBlockId);
-            const secondBlock = makeNotionBlock("paragraph", secondBlockId);
+            const firstBlockId = generateMarkdownBlockId();
+            const secondBlockId = generateMarkdownBlockId();
+            const firstBlock = makeMarkdownBlock("paragraph", firstBlockId);
+            const secondBlock = makeMarkdownBlock("paragraph", secondBlockId);
 
-            store.transact((doc: NotionDocument) =>
+            store.transact((doc: MarkdownDocument) =>
             {
-                const withSecond = insertNotionBlockRelative(doc, event.blockId, secondBlock, "after");
-                const withFirst = insertNotionBlockRelative(withSecond, event.blockId, firstBlock, "before");
-                return removeNotionBlock(withFirst, event.blockId);
+                const withSecond = insertMarkdownBlockRelative(doc, event.blockId, secondBlock, "after");
+                const withFirst = insertMarkdownBlockRelative(withSecond, event.blockId, firstBlock, "before");
+                return removeMarkdownBlock(withFirst, event.blockId);
             }, "user");
 
             store.setSelection(collapsedSelection(fieldPoint(firstBlockId, "rich_text", undefined, 0)));
@@ -394,27 +394,27 @@ function handleEnter(store: NotionEditorStore, event: NotionFieldBoundaryEvent):
         }
     }
 
-    if (isNotionListBlockType(block.type) && text.length === 0)
+    if (isMarkdownListBlockType(block.type) && text.length === 0)
     {
-        store.transact((doc: NotionDocument) =>
-            updateNotionBlock(doc, event.blockId, (b: NotionBlock) =>
-                turnNotionBlockInto(b, "paragraph")), "user");
+        store.transact((doc: MarkdownDocument) =>
+            updateMarkdownBlock(doc, event.blockId, (b: MarkdownBlock) =>
+                turnMarkdownBlockInto(b, "paragraph")), "user");
         store.setSelection(collapsedSelection(fieldPoint(event.blockId, "rich_text", undefined, 0)));
         return;
     }
 
     const [ before, after ] = splitFieldMarks(text, marks, event.offset);
-    const newType: NotionMarkdownBlockType = block.type.startsWith("heading_") ? "paragraph" : block.type;
-    const newBlockId = generateNotionBlockId();
-    const newBlock = makeNotionBlock(newType, newBlockId);
+    const newType: MarkdownBlockType = block.type.startsWith("heading_") ? "paragraph" : block.type;
+    const newBlockId = generateMarkdownBlockId();
+    const newBlock = makeMarkdownBlock(newType, newBlockId);
     const newRichText = fieldMarksToRichText(after.text, after.marks);
     const filledNewBlock = writeFieldRichText(newBlock, "rich_text", undefined, newRichText);
 
-    store.transact((doc: NotionDocument) =>
+    store.transact((doc: MarkdownDocument) =>
     {
-        const withSplitCurrent = updateNotionBlock(doc, event.blockId, (b: NotionBlock) =>
+        const withSplitCurrent = updateMarkdownBlock(doc, event.blockId, (b: MarkdownBlock) =>
             writeFieldRichText(b, "rich_text", undefined, fieldMarksToRichText(before.text, before.marks)));
-        return insertNotionBlockRelative(withSplitCurrent, event.blockId, filledNewBlock, "after");
+        return insertMarkdownBlockRelative(withSplitCurrent, event.blockId, filledNewBlock, "after");
     }, "user");
 
     store.setSelection(collapsedSelection(fieldPoint(newBlockId, "rich_text", undefined, 0)));
@@ -428,53 +428,53 @@ function handleEnter(store: NotionEditorStore, event: NotionFieldBoundaryEvent):
  *
  * @since 1.0.0
  */
-function handleBackspaceAtStart(store: NotionEditorStore, event: NotionFieldBoundaryEvent): void
+function handleBackspaceAtStart(store: MarkdownEditorStore, event: MarkdownFieldBoundaryEvent): void
 {
     if (event.field !== "rich_text") {return;}
 
     const document = store.getDocument();
-    const block = getNotionBlock(document, event.blockId);
+    const block = getMarkdownBlock(document, event.blockId);
     if (block === undefined) {return;}
 
-    if (isNotionListBlockType(block.type))
+    if (isMarkdownListBlockType(block.type))
     {
-        const path = findNotionBlockPath(document, event.blockId);
+        const path = findMarkdownBlockPath(document, event.blockId);
         if (path !== undefined && path.length > 1)
         {
-            store.transact((doc: NotionDocument) => outdentNotionBlock(doc, event.blockId), "user");
+            store.transact((doc: MarkdownDocument) => outdentMarkdownBlock(doc, event.blockId), "user");
         }
         else
         {
-            store.transact((doc: NotionDocument) =>
-                updateNotionBlock(doc, event.blockId, (b: NotionBlock) =>
-                    turnNotionBlockInto(b, "paragraph")), "user");
+            store.transact((doc: MarkdownDocument) =>
+                updateMarkdownBlock(doc, event.blockId, (b: MarkdownBlock) =>
+                    turnMarkdownBlockInto(b, "paragraph")), "user");
         }
 
         store.setSelection(collapsedSelection(fieldPoint(event.blockId, "rich_text", undefined, 0)));
         return;
     }
 
-    const fields = getNotionEditableFields(document);
-    const currentIndex = fields.findIndex((field: NotionEditableField) =>
+    const fields = getMarkdownEditableFields(document);
+    const currentIndex = fields.findIndex((field: MarkdownEditableField) =>
         sameField(field, event.blockId, "rich_text", event.index));
     const previous = currentIndex > 0 ? fields[ currentIndex - 1 ] : undefined;
     if (previous === undefined || previous.field !== "rich_text") {return;}
 
-    const previousBlock = getNotionBlock(document, previous.blockId);
-    if (previousBlock === undefined || !isNotionTextBearingBlockType(previousBlock.type)) {return;}
+    const previousBlock = getMarkdownBlock(document, previous.blockId);
+    if (previousBlock === undefined || !isMarkdownTextBearingBlockType(previousBlock.type)) {return;}
 
     const joinOffset = previous.text.length;
     const mergedFieldMarks = mergeFieldMarks(
-        richTextToFieldMarks(getNotionBlockRichText(previousBlock) ?? [ ]),
-        richTextToFieldMarks(getNotionBlockRichText(block) ?? [ ])
+        richTextToFieldMarks(getMarkdownBlockRichText(previousBlock) ?? [ ]),
+        richTextToFieldMarks(getMarkdownBlockRichText(block) ?? [ ])
     );
     const mergedChildren = [ ...(previousBlock.children ?? [ ]), ...(block.children ?? [ ]) ];
     const previousId = previous.blockId;
 
-    store.transact((doc: NotionDocument) =>
+    store.transact((doc: MarkdownDocument) =>
     {
-        const withoutCurrent = removeNotionBlock(doc, event.blockId);
-        return updateNotionBlock(withoutCurrent, previousId, (b: NotionBlock) =>
+        const withoutCurrent = removeMarkdownBlock(doc, event.blockId);
+        return updateMarkdownBlock(withoutCurrent, previousId, (b: MarkdownBlock) =>
         {
             const withRichText = writeFieldRichText(
                 b,
@@ -495,35 +495,35 @@ function handleBackspaceAtStart(store: NotionEditorStore, event: NotionFieldBoun
  *
  * @since 1.0.0
  */
-function handleDeleteAtEnd(store: NotionEditorStore, event: NotionFieldBoundaryEvent): void
+function handleDeleteAtEnd(store: MarkdownEditorStore, event: MarkdownFieldBoundaryEvent): void
 {
     if (event.field !== "rich_text") {return;}
 
     const document = store.getDocument();
-    const block = getNotionBlock(document, event.blockId);
-    if (block === undefined || !isNotionTextBearingBlockType(block.type)) {return;}
+    const block = getMarkdownBlock(document, event.blockId);
+    if (block === undefined || !isMarkdownTextBearingBlockType(block.type)) {return;}
 
-    const fields = getNotionEditableFields(document);
-    const currentIndex = fields.findIndex((field: NotionEditableField) =>
+    const fields = getMarkdownEditableFields(document);
+    const currentIndex = fields.findIndex((field: MarkdownEditableField) =>
         sameField(field, event.blockId, "rich_text", event.index));
     const next = currentIndex >= 0 ? fields[ currentIndex + 1 ] : undefined;
     if (next === undefined || next.field !== "rich_text") {return;}
 
-    const nextBlock = getNotionBlock(document, next.blockId);
-    if (nextBlock === undefined || !isNotionTextBearingBlockType(nextBlock.type)) {return;}
+    const nextBlock = getMarkdownBlock(document, next.blockId);
+    if (nextBlock === undefined || !isMarkdownTextBearingBlockType(nextBlock.type)) {return;}
 
     const joinOffset = fieldMarksOf(block, "rich_text", undefined).text.length;
     const mergedFieldMarks = mergeFieldMarks(
-        richTextToFieldMarks(getNotionBlockRichText(block) ?? [ ]),
-        richTextToFieldMarks(getNotionBlockRichText(nextBlock) ?? [ ])
+        richTextToFieldMarks(getMarkdownBlockRichText(block) ?? [ ]),
+        richTextToFieldMarks(getMarkdownBlockRichText(nextBlock) ?? [ ])
     );
     const mergedChildren = [ ...(block.children ?? [ ]), ...(nextBlock.children ?? [ ]) ];
     const nextId = next.blockId;
 
-    store.transact((doc: NotionDocument) =>
+    store.transact((doc: MarkdownDocument) =>
     {
-        const withoutNext = removeNotionBlock(doc, nextId);
-        return updateNotionBlock(withoutNext, event.blockId, (b: NotionBlock) =>
+        const withoutNext = removeMarkdownBlock(doc, nextId);
+        return updateMarkdownBlock(withoutNext, event.blockId, (b: MarkdownBlock) =>
         {
             const withRichText = writeFieldRichText(
                 b,
@@ -544,11 +544,11 @@ function handleDeleteAtEnd(store: NotionEditorStore, event: NotionFieldBoundaryE
  *
  * @since 1.0.0
  */
-function handleVerticalBoundary(store: NotionEditorStore, event: NotionFieldBoundaryEvent): void
+function handleVerticalBoundary(store: MarkdownEditorStore, event: MarkdownFieldBoundaryEvent): void
 {
     const document = store.getDocument();
-    const fields = getNotionEditableFields(document);
-    const currentIndex = fields.findIndex((field: NotionEditableField) =>
+    const fields = getMarkdownEditableFields(document);
+    const currentIndex = fields.findIndex((field: MarkdownEditableField) =>
         sameField(field, event.blockId, event.field, event.index));
     if (currentIndex < 0) {return;}
 
@@ -564,7 +564,7 @@ function handleVerticalBoundary(store: NotionEditorStore, event: NotionFieldBoun
  *
  * @since 1.0.0
  */
-export function handleFieldBoundary(store: NotionEditorStore, event: NotionFieldBoundaryEvent): void
+export function handleFieldBoundary(store: MarkdownEditorStore, event: MarkdownFieldBoundaryEvent): void
 {
     switch (event.kind)
     {
@@ -595,7 +595,7 @@ export function handleFieldBoundary(store: NotionEditorStore, event: NotionField
  *
  * @since 1.0.0
  */
-export function insertTextBlockAfter(store: NotionEditorStore, blockId: string): string
+export function insertTextBlockAfter(store: MarkdownEditorStore, blockId: string): string
 {
     return insertBlockOfType(store, blockId, "paragraph");
 }
@@ -607,15 +607,15 @@ export function insertTextBlockAfter(store: NotionEditorStore, blockId: string):
  * @since 1.0.0
  */
 export function insertBlockOfType(
-    store: NotionEditorStore,
+    store: MarkdownEditorStore,
     afterBlockId: string,
-    type: NotionMarkdownBlockType
+    type: MarkdownBlockType
 ): string
 {
-    const id = generateNotionBlockId();
-    const newBlock = makeNotionBlock(type, id);
-    store.transact((document: NotionDocument) =>
-        insertNotionBlockRelative(document, afterBlockId, newBlock, "after"), "user");
+    const id = generateMarkdownBlockId();
+    const newBlock = makeMarkdownBlock(type, id);
+    store.transact((document: MarkdownDocument) =>
+        insertMarkdownBlockRelative(document, afterBlockId, newBlock, "after"), "user");
     store.setSelection(collapsedSelection(fieldPoint(id, "rich_text", undefined, 0)));
     return id;
 }
@@ -625,9 +625,9 @@ export function insertBlockOfType(
  *
  * @since 1.0.0
  */
-export function deleteBlock(store: NotionEditorStore, blockId: string): void
+export function deleteBlock(store: MarkdownEditorStore, blockId: string): void
 {
-    store.transact((document: NotionDocument) => removeNotionBlock(document, blockId), "user");
+    store.transact((document: MarkdownDocument) => removeMarkdownBlock(document, blockId), "user");
 }
 
 /**
@@ -635,11 +635,11 @@ export function deleteBlock(store: NotionEditorStore, blockId: string): void
  *
  * @since 1.0.0
  */
-export function turnInto(store: NotionEditorStore, blockId: string, type: NotionMarkdownBlockType): void
+export function turnInto(store: MarkdownEditorStore, blockId: string, type: MarkdownBlockType): void
 {
-    store.transact((document: NotionDocument) =>
-        updateNotionBlock(document, blockId, (block: NotionBlock) =>
-            turnNotionBlockInto(block, type)), "user");
+    store.transact((document: MarkdownDocument) =>
+        updateMarkdownBlock(document, blockId, (block: MarkdownBlock) =>
+            turnMarkdownBlockInto(block, type)), "user");
 }
 
 /**
@@ -647,9 +647,9 @@ export function turnInto(store: NotionEditorStore, blockId: string, type: Notion
  *
  * @since 1.0.0
  */
-export function moveBlock(store: NotionEditorStore, blockId: string, direction: "up" | "down"): void
+export function moveBlock(store: MarkdownEditorStore, blockId: string, direction: "up" | "down"): void
 {
-    store.transact((document: NotionDocument) => moveNotionBlock(document, blockId, direction), "user");
+    store.transact((document: MarkdownDocument) => moveMarkdownBlock(document, blockId, direction), "user");
 }
 
 /**
@@ -657,9 +657,9 @@ export function moveBlock(store: NotionEditorStore, blockId: string, direction: 
  *
  * @since 1.0.0
  */
-export function indent(store: NotionEditorStore, blockId: string): void
+export function indent(store: MarkdownEditorStore, blockId: string): void
 {
-    store.transact((document: NotionDocument) => indentNotionBlock(document, blockId), "user");
+    store.transact((document: MarkdownDocument) => indentMarkdownBlock(document, blockId), "user");
 }
 
 /**
@@ -667,9 +667,9 @@ export function indent(store: NotionEditorStore, blockId: string): void
  *
  * @since 1.0.0
  */
-export function outdent(store: NotionEditorStore, blockId: string): void
+export function outdent(store: MarkdownEditorStore, blockId: string): void
 {
-    store.transact((document: NotionDocument) => outdentNotionBlock(document, blockId), "user");
+    store.transact((document: MarkdownDocument) => outdentMarkdownBlock(document, blockId), "user");
 }
 
 /**
@@ -678,16 +678,16 @@ export function outdent(store: NotionEditorStore, blockId: string): void
  * @category Functions
  * @since 1.0.0
  */
-function regenerateBlockIds(block: NotionBlock): NotionBlock
+function regenerateBlockIds(block: MarkdownBlock): MarkdownBlock
 {
-    const id = generateNotionBlockId();
-    const metadata = getNotionMarkdownMetadata(block);
+    const id = generateMarkdownBlockId();
+    const metadata = getMarkdownMetadata(block);
     return {
         ...block,
-        __notion_markdown: { ...metadata, editorId: id },
+        __markdown_markdown: { ...metadata, editorId: id },
         children: block.children?.map(regenerateBlockIds),
         id
-    } as NotionBlock;
+    } as MarkdownBlock;
 }
 
 /**
@@ -696,15 +696,15 @@ function regenerateBlockIds(block: NotionBlock): NotionBlock
  *
  * @since 1.0.0
  */
-export function duplicateBlock(store: NotionEditorStore, blockId: string): string | undefined
+export function duplicateBlock(store: MarkdownEditorStore, blockId: string): string | undefined
 {
     const document = store.getDocument();
-    const block = getNotionBlock(document, blockId);
+    const block = getMarkdownBlock(document, blockId);
     if (block === undefined) {return undefined;}
 
     const clone = regenerateBlockIds(block);
     const cloneId = clone.id;
-    store.transact((doc: NotionDocument) => insertNotionBlockRelative(doc, blockId, clone, "after"), "user");
+    store.transact((doc: MarkdownDocument) => insertMarkdownBlockRelative(doc, blockId, clone, "after"), "user");
     return cloneId;
 }
 
@@ -714,15 +714,15 @@ export function duplicateBlock(store: NotionEditorStore, blockId: string): strin
  * @since 1.0.0
  */
 export function appendChildBlock(
-    store: NotionEditorStore,
+    store: MarkdownEditorStore,
     parentBlockId: string,
-    type: NotionMarkdownBlockType
+    type: MarkdownBlockType
 ): string
 {
-    const id = generateNotionBlockId();
-    const newBlock = makeNotionBlock(type, id);
-    store.transact((document: NotionDocument) =>
-        appendNotionChild(document, parentBlockId, newBlock), "user");
+    const id = generateMarkdownBlockId();
+    const newBlock = makeMarkdownBlock(type, id);
+    store.transact((document: MarkdownDocument) =>
+        appendMarkdownChild(document, parentBlockId, newBlock), "user");
     store.setSelection(collapsedSelection(fieldPoint(id, "rich_text", undefined, 0)));
     return id;
 }
@@ -738,29 +738,29 @@ export function appendChildBlock(
  * @since 1.0.0
  */
 function applyRangeMarkCommand(
-    store: NotionEditorStore,
-    apply: (marks: ReadonlyArray<NotionInlineMark>, start: number, end: number) => Array<NotionInlineMark>
+    store: MarkdownEditorStore,
+    apply: (marks: ReadonlyArray<MarkdownInlineMark>, start: number, end: number) => Array<MarkdownInlineMark>
 ): void
 {
     const selection = store.getSelection();
     if (selection === undefined) {return;}
 
-    store.transact((document: NotionDocument) =>
+    store.transact((document: MarkdownDocument) =>
     {
         const startPos = Math.min(
-            notionSelectionPositionOf(document, selection.anchor),
-            notionSelectionPositionOf(document, selection.focus)
+            markdownSelectionPositionOf(document, selection.anchor),
+            markdownSelectionPositionOf(document, selection.focus)
         );
         const endPos = Math.max(
-            notionSelectionPositionOf(document, selection.anchor),
-            notionSelectionPositionOf(document, selection.focus)
+            markdownSelectionPositionOf(document, selection.anchor),
+            markdownSelectionPositionOf(document, selection.focus)
         );
         if (startPos === endPos) {return document;}
 
         let next = document;
         let cursor = 0;
 
-        for (const field of getNotionEditableFields(document))
+        for (const field of getMarkdownEditableFields(document))
         {
             const fieldStart = cursor;
             const fieldEnd = cursor + field.text.length;
@@ -770,7 +770,7 @@ function applyRangeMarkCommand(
             const overlapEnd = Math.min(endPos, fieldEnd);
             if (overlapStart >= overlapEnd) {continue;}
 
-            const block = getNotionBlock(next, field.blockId);
+            const block = getMarkdownBlock(next, field.blockId);
             if (block === undefined) {continue;}
 
             const currentRichText = readFieldRichText(block, field.field, field.index);
@@ -779,7 +779,7 @@ function applyRangeMarkCommand(
             const flattened = richTextToFieldMarks(currentRichText);
             const nextMarks = apply(flattened.marks, overlapStart - fieldStart, overlapEnd - fieldStart);
             const nextRichText = fieldMarksToRichText(flattened.text, nextMarks);
-            next = updateNotionBlock(next, field.blockId, (b: NotionBlock) =>
+            next = updateMarkdownBlock(next, field.blockId, (b: MarkdownBlock) =>
                 writeFieldRichText(b, field.field, field.index, nextRichText));
         }
 
@@ -794,9 +794,9 @@ function applyRangeMarkCommand(
  *
  * @since 1.0.0
  */
-export function toggleMark(store: NotionEditorStore, kind: NotionFieldRangeMarkKind): void
+export function toggleMark(store: MarkdownEditorStore, kind: MarkdownFieldRangeMarkKind): void
 {
-    applyRangeMarkCommand(store, (marks: ReadonlyArray<NotionInlineMark>, start: number, end: number) =>
+    applyRangeMarkCommand(store, (marks: ReadonlyArray<MarkdownInlineMark>, start: number, end: number) =>
         toggleFieldRangeMark(marks, kind, start, end));
 }
 
@@ -806,9 +806,9 @@ export function toggleMark(store: NotionEditorStore, kind: NotionFieldRangeMarkK
  *
  * @since 1.0.0
  */
-export function setColor(store: NotionEditorStore, color: NotionMarkdownColor | undefined): void
+export function setColor(store: MarkdownEditorStore, color: MarkdownColor | undefined): void
 {
-    applyRangeMarkCommand(store, (marks: ReadonlyArray<NotionInlineMark>, start: number, end: number) =>
+    applyRangeMarkCommand(store, (marks: ReadonlyArray<MarkdownInlineMark>, start: number, end: number) =>
         setFieldValueMark(marks, "color", start, end, color));
 }
 
@@ -817,9 +817,9 @@ export function setColor(store: NotionEditorStore, color: NotionMarkdownColor | 
  *
  * @since 1.0.0
  */
-export function setLink(store: NotionEditorStore, url: string | undefined): void
+export function setLink(store: MarkdownEditorStore, url: string | undefined): void
 {
-    applyRangeMarkCommand(store, (marks: ReadonlyArray<NotionInlineMark>, start: number, end: number) =>
+    applyRangeMarkCommand(store, (marks: ReadonlyArray<MarkdownInlineMark>, start: number, end: number) =>
         setFieldValueMark(marks, "link", start, end, url));
 }
 
@@ -828,7 +828,7 @@ export function setLink(store: NotionEditorStore, url: string | undefined): void
  * ---------------------------------------------------------------------------------------- */
 
 /** A resolved mention candidate ready to insert, typically from a host's "@" search results. */
-export interface NotionMentionCandidate
+export interface MarkdownMentionCandidate
 {
     readonly kind: "user" | "page" | "database" | "data_source" | "agent";
     readonly id: string;
@@ -842,14 +842,14 @@ export interface NotionMentionCandidate
  * @category Functions
  * @since 1.0.0
  */
-function mentionRichTextItem(candidate: NotionMentionCandidate): NotionRichTextItem
+function mentionRichTextItem(candidate: MarkdownMentionCandidate): MarkdownRichTextItem
 {
     const mention = candidate.kind === "user"
         ? { type: "user", user: { id: candidate.id } }
         : { [ candidate.kind ]: { id: candidate.id }, type: candidate.kind };
 
     return {
-        __notion_markdown:
+        __markdown_markdown:
         {
             mention:
             {
@@ -860,7 +860,7 @@ function mentionRichTextItem(candidate: NotionMentionCandidate): NotionRichTextI
         },
         mention,
         type: "mention"
-    } as NotionRichTextItem;
+    } as MarkdownRichTextItem;
 }
 
 /**
@@ -871,9 +871,9 @@ function mentionRichTextItem(candidate: NotionMentionCandidate): NotionRichTextI
  * @since 1.0.0
  */
 export function insertMention(
-    store: NotionEditorStore,
-    point: NotionSelectionPoint,
-    candidate: NotionMentionCandidate,
+    store: MarkdownEditorStore,
+    point: MarkdownSelectionPoint,
+    candidate: MarkdownMentionCandidate,
     selectionEnd: number = point.offset
 ): void
 {
@@ -881,13 +881,13 @@ export function insertMention(
     const start = Math.min(point.offset, selectionEnd);
     const end = Math.max(point.offset, selectionEnd);
 
-    store.transact((document: NotionDocument) =>
-        updateNotionBlock(document, point.blockId, (block: NotionBlock) =>
+    store.transact((document: MarkdownDocument) =>
+        updateMarkdownBlock(document, point.blockId, (block: MarkdownBlock) =>
         {
             const flattened = fieldMarksOf(block, point.field, point.index);
             const [ before, rest ] = splitFieldMarks(flattened.text, flattened.marks, start);
             const [ , after ] = splitFieldMarks(rest.text, rest.marks, end - start);
-            const atomMark: NotionInlineMark =
+            const atomMark: MarkdownInlineMark =
                 { atomKind: "mention", end: 1, item, kind: "atom", label: candidate.label, start: 0 };
             const atom: FieldMarks = { marks: [ atomMark ], text: "￼" };
             const merged = mergeFieldMarks(mergeFieldMarks(before, atom), after);
@@ -903,19 +903,19 @@ export function insertMention(
  * ---------------------------------------------------------------------------------------- */
 
 /** A Markdown shortcut match: convert the block and keep the text typed after the trigger. */
-export interface NotionMarkdownShortcutMatch
+export interface MarkdownShortcutMatch
 {
-    readonly type: NotionMarkdownBlockType;
+    readonly type: MarkdownBlockType;
     readonly remainder: string;
 }
 
-interface NotionMarkdownShortcutRule
+interface MarkdownShortcutRule
 {
     readonly pattern: RegExp;
-    readonly type: NotionMarkdownBlockType;
+    readonly type: MarkdownBlockType;
 }
 
-const markdownShortcuts: ReadonlyArray<NotionMarkdownShortcutRule> = [
+const markdownShortcuts: ReadonlyArray<MarkdownShortcutRule> = [
     { pattern: /^#\s(.*)$/, type: "heading_1" },
     { pattern: /^##\s(.*)$/, type: "heading_2" },
     { pattern: /^###\s(.*)$/, type: "heading_3" },
@@ -932,7 +932,7 @@ const markdownShortcuts: ReadonlyArray<NotionMarkdownShortcutRule> = [
  *
  * @since 1.0.0
  */
-export function matchNotionMarkdownShortcut(plainText: string): NotionMarkdownShortcutMatch | undefined
+export function matchMarkdownShortcut(plainText: string): MarkdownShortcutMatch | undefined
 {
     for (const shortcut of markdownShortcuts)
     {
@@ -950,19 +950,19 @@ export function matchNotionMarkdownShortcut(plainText: string): NotionMarkdownSh
  * @since 1.0.0
  */
 export function applyMarkdownShortcut(
-    store: NotionEditorStore,
+    store: MarkdownEditorStore,
     blockId: string,
-    match: NotionMarkdownShortcutMatch
+    match: MarkdownShortcutMatch
 ): void
 {
-    const remainderRichText: NotionRichText = match.remainder.length === 0
+    const remainderRichText: MarkdownRichText = match.remainder.length === 0
         ? [ ]
-        : [ { text: { content: match.remainder }, type: "text" } as NotionRichTextItem ];
+        : [ { text: { content: match.remainder }, type: "text" } as MarkdownRichTextItem ];
 
-    store.transact((document: NotionDocument) =>
-        updateNotionBlock(document, blockId, (block: NotionBlock) =>
+    store.transact((document: MarkdownDocument) =>
+        updateMarkdownBlock(document, blockId, (block: MarkdownBlock) =>
         {
-            const converted = turnNotionBlockInto(block, match.type);
+            const converted = turnMarkdownBlockInto(block, match.type);
             return writeFieldRichText(converted, "rich_text", undefined, remainderRichText);
         }), "user");
 
@@ -975,29 +975,29 @@ export function applyMarkdownShortcut(
  * ---------------------------------------------------------------------------------------- */
 
 /** The full command surface, bound to one document store. */
-export interface NotionCommands
+export interface MarkdownCommands
 {
-    applyFieldEdit(event: NotionFieldEditEvent): void;
-    handleFieldBoundary(event: NotionFieldBoundaryEvent): void;
+    applyFieldEdit(event: MarkdownFieldEditEvent): void;
+    handleFieldBoundary(event: MarkdownFieldBoundaryEvent): void;
     insertTextBlockAfter(blockId: string): string;
-    insertBlockOfType(afterBlockId: string, type: NotionMarkdownBlockType): string;
-    appendChildBlock(parentBlockId: string, type: NotionMarkdownBlockType): string;
+    insertBlockOfType(afterBlockId: string, type: MarkdownBlockType): string;
+    appendChildBlock(parentBlockId: string, type: MarkdownBlockType): string;
     deleteBlock(blockId: string): void;
-    turnInto(blockId: string, type: NotionMarkdownBlockType): void;
+    turnInto(blockId: string, type: MarkdownBlockType): void;
     moveBlock(blockId: string, direction: "up" | "down"): void;
     indent(blockId: string): void;
     outdent(blockId: string): void;
     duplicateBlock(blockId: string): string | undefined;
-    toggleMark(kind: NotionFieldRangeMarkKind): void;
-    setColor(color: NotionMarkdownColor | undefined): void;
+    toggleMark(kind: MarkdownFieldRangeMarkKind): void;
+    setColor(color: MarkdownColor | undefined): void;
     setLink(url: string | undefined): void;
     insertMention(
-        point: NotionSelectionPoint,
-        candidate: NotionMentionCandidate,
+        point: MarkdownSelectionPoint,
+        candidate: MarkdownMentionCandidate,
         selectionEnd?: number
     ): void;
-    applyMarkdownShortcut(blockId: string, match: NotionMarkdownShortcutMatch): void;
-    setSelection(selection: NotionSelection | undefined): void;
+    applyMarkdownShortcut(blockId: string, match: MarkdownShortcutMatch): void;
+    setSelection(selection: MarkdownSelection | undefined): void;
     undo(): boolean;
     redo(): boolean;
 }
@@ -1007,34 +1007,34 @@ export interface NotionCommands
  *
  * @since 1.0.0
  */
-export function createNotionCommands(store: NotionEditorStore): NotionCommands
+export function createMarkdownCommands(store: MarkdownEditorStore): MarkdownCommands
 {
     return {
-        appendChildBlock: (parentBlockId: string, type: NotionMarkdownBlockType) =>
+        appendChildBlock: (parentBlockId: string, type: MarkdownBlockType) =>
             appendChildBlock(store, parentBlockId, type),
-        applyFieldEdit: (event: NotionFieldEditEvent) => applyFieldEdit(store, event),
-        applyMarkdownShortcut: (blockId: string, match: NotionMarkdownShortcutMatch) =>
+        applyFieldEdit: (event: MarkdownFieldEditEvent) => applyFieldEdit(store, event),
+        applyMarkdownShortcut: (blockId: string, match: MarkdownShortcutMatch) =>
             applyMarkdownShortcut(store, blockId, match),
         deleteBlock: (blockId: string) => deleteBlock(store, blockId),
         duplicateBlock: (blockId: string) => duplicateBlock(store, blockId),
-        handleFieldBoundary: (event: NotionFieldBoundaryEvent) => handleFieldBoundary(store, event),
+        handleFieldBoundary: (event: MarkdownFieldBoundaryEvent) => handleFieldBoundary(store, event),
         indent: (blockId: string) => indent(store, blockId),
-        insertBlockOfType: (afterBlockId: string, type: NotionMarkdownBlockType) =>
+        insertBlockOfType: (afterBlockId: string, type: MarkdownBlockType) =>
             insertBlockOfType(store, afterBlockId, type),
         insertMention: (
-            point: NotionSelectionPoint,
-            candidate: NotionMentionCandidate,
+            point: MarkdownSelectionPoint,
+            candidate: MarkdownMentionCandidate,
             selectionEnd?: number
         ) => insertMention(store, point, candidate, selectionEnd),
         insertTextBlockAfter: (blockId: string) => insertTextBlockAfter(store, blockId),
         moveBlock: (blockId: string, direction: "up" | "down") => moveBlock(store, blockId, direction),
         outdent: (blockId: string) => outdent(store, blockId),
         redo: () => store.redo(),
-        setColor: (color: NotionMarkdownColor | undefined) => setColor(store, color),
+        setColor: (color: MarkdownColor | undefined) => setColor(store, color),
         setLink: (url: string | undefined) => setLink(store, url),
-        setSelection: (selection: NotionSelection | undefined) => store.setSelection(selection),
-        toggleMark: (kind: NotionFieldRangeMarkKind) => toggleMark(store, kind),
-        turnInto: (blockId: string, type: NotionMarkdownBlockType) => turnInto(store, blockId, type),
+        setSelection: (selection: MarkdownSelection | undefined) => store.setSelection(selection),
+        toggleMark: (kind: MarkdownFieldRangeMarkKind) => toggleMark(store, kind),
+        turnInto: (blockId: string, type: MarkdownBlockType) => turnInto(store, blockId, type),
         undo: () => store.undo()
     };
 }

@@ -3,7 +3,7 @@
  * subflows they each `runFlow` into) against the already-built, already-installed
  * debug Storybook app on the `emulator-5554` AVD (`Pixel_10_Pro_XL`) used for local
  * development on this workstation. Every flow deep-links straight to its target story
- * via `notionmarkdownstorybook://open?STORYBOOK_STORY_ID=<id>`
+ * via `markdownstorybook://open?STORYBOOK_STORY_ID=<id>`
  * (`@storybook/react-native`'s built-in Linking-based story override -- see the plan's
  * "Deterministic story navigation" section), so no on-device UI navigation is needed.
  *
@@ -29,7 +29,7 @@ import { spawnSync } from "node:child_process";
 const packageDirectory = dirname(fileURLToPath(import.meta.url));
 const flowsRoot = join(packageDirectory, "maestro", "flows");
 const outputRoot = join(packageDirectory, "output");
-const appId = "com.gagesorrell.notionmarkdown.storybook";
+const appId = "com.gagesorrell.markdown.storybook";
 const emulatorSerial = "emulator-5554";
 
 /* Known absolute install locations on this workstation, used only when the tool isn't

@@ -12,14 +12,14 @@
 /** Favicon loading and fallback icon presentation for arbitrary web links. */
 
 import { Image, Text, View } from "react-native";
-import type { NotionReferenceIconComponent } from "./types.ts";
+import type { MarkdownReferenceIconComponent } from "./types.ts";
 import { createElement, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 
 interface FaviconIconProps
 {
     readonly color: string;
-    readonly fallbackIcon?: NotionReferenceIconComponent;
+    readonly fallbackIcon?: MarkdownReferenceIconComponent;
     readonly size: number;
     readonly textFallback?: string;
     readonly url: string;

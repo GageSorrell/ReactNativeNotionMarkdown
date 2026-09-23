@@ -2,7 +2,7 @@
   "name": "react-native-notion-markdown-monorepo",
   "private": true,
   "version": "1.0.0",
-  "description": "Notion-flavored markdown renderer and WYSIWYG editor.",
+  "description": "Markdown-formatted content renderer and WYSIWYG editor.",
   "author": {
     "email": "gage@sorrell.sh",
     "name": "Gage Sorrell",

@@ -1,5 +1,5 @@
 /**
- * Parser for the tab-indented Notion-enhanced Markdown format.
+ * Parser for the tab-indented Markdown-enhanced content format.
  *
  * @module react-native-notion-markdown/document/parser
  *
@@ -10,16 +10,16 @@
  */
 
 import {
-    NOTION_MARKDOWN_METADATA,
-    type NotionBlock,
-    type NotionDiagnostic,
-    type NotionDocument,
-    type NotionMarkdownBlockType,
-    type NotionMarkdownColor,
-    type NotionMarkdownMetadata,
-    type NotionRichText,
-    type ParseNotionMarkdownOptions,
-    type ParseNotionMarkdownResult
+    MARKDOWN_MARKDOWN_METADATA,
+    type MarkdownBlock,
+    type MarkdownBlockType,
+    type MarkdownColor,
+    type MarkdownDiagnostic,
+    type MarkdownDocument,
+    type MarkdownMetadata,
+    type MarkdownRichText,
+    type ParseMarkdownOptions,
+    type ParseMarkdownResult
 } from "./types.ts";
 import MarkdownIt from "markdown-it";
 import { asRecord } from "../internal.ts";
@@ -42,9 +42,9 @@ interface InlineToken
 interface ParseContext
 {
     readonly lines: Array<SourceLine>;
-    readonly diagnostics: Array<NotionDiagnostic>;
-    readonly idFactory: (path: string, type: NotionMarkdownBlockType) => string;
-    readonly rules: Array<NonNullable<ParseNotionMarkdownOptions["rules"]>[number]>;
+    readonly diagnostics: Array<MarkdownDiagnostic>;
+    readonly idFactory: (path: string, type: MarkdownBlockType) => string;
+    readonly rules: Array<NonNullable<ParseMarkdownOptions["rules"]>[number]>;
 }
 
 /**
@@ -68,7 +68,7 @@ interface AnnotationState
     readonly strikethrough?: boolean;
     readonly underline?: boolean;
     readonly code?: boolean;
-    readonly color?: NotionMarkdownColor;
+    readonly color?: MarkdownColor;
 }
 
 const markdown = new MarkdownIt({
@@ -184,10 +184,10 @@ function attributes(value: string): Record<string, string>
 function blockMetadata(
     line: SourceLine,
     attrs: Record<string, string>,
-    extra: NotionMarkdownMetadata = { }
-): NotionMarkdownMetadata
+    extra: MarkdownMetadata = { }
+): MarkdownMetadata
 {
-    const color = attrs.color as NotionMarkdownColor | undefined;
+    const color = attrs.color as MarkdownColor | undefined;
 
     return {
         ...extra,
@@ -209,16 +209,16 @@ function blockMetadata(
  * @category Functions
  * @since 1.0.0
  */
-function makeBlock<BlockType extends NotionMarkdownBlockType>(
+function makeBlock<BlockType extends MarkdownBlockType>(
     context: ParseContext,
     type: BlockType,
     path: string,
     payload: unknown,
     line: SourceLine,
     attrs: Record<string, string> = { },
-    children?: Array<NotionBlock>,
-    extraMetadata: NotionMarkdownMetadata = { }
-): NotionBlock<BlockType>
+    children?: Array<MarkdownBlock>,
+    extraMetadata: MarkdownMetadata = { }
+): MarkdownBlock<BlockType>
 {
     const key = type as string;
     const generatedId = context.idFactory(path, type);
@@ -226,7 +226,7 @@ function makeBlock<BlockType extends NotionMarkdownBlockType>(
         id: generatedId,
         [ key ]: payload,
         ...(children === undefined ? { } : { children }),
-        [ NOTION_MARKDOWN_METADATA ]: blockMetadata(
+        [ MARKDOWN_MARKDOWN_METADATA ]: blockMetadata(
             line,
             attrs,
             {
@@ -234,7 +234,7 @@ function makeBlock<BlockType extends NotionMarkdownBlockType>(
                 ...extraMetadata
             }),
         type
-    } as NotionBlock<BlockType>;
+    } as MarkdownBlock<BlockType>;
 }
 
 /**
@@ -246,8 +246,8 @@ function makeBlock<BlockType extends NotionMarkdownBlockType>(
 function plainText(
     content: string,
     state: AnnotationState = { },
-    metadata?: NotionMarkdownMetadata
-): NotionRichText[number]
+    metadata?: MarkdownMetadata
+): MarkdownRichText[number]
 {
     const annotations = Object.keys(state).length === 0
         ? undefined
@@ -264,12 +264,12 @@ function plainText(
         text: { content },
         type: "text",
         ...(annotations === undefined ? { } : { annotations }),
-        ...(metadata === undefined ? { } : { [ NOTION_MARKDOWN_METADATA ]: metadata })
-    } as NotionRichText[number];
+        ...(metadata === undefined ? { } : { [ MARKDOWN_MARKDOWN_METADATA ]: metadata })
+    } as MarkdownRichText[number];
 }
 
 /**
- * Extract an identifier of the given kind from a Notion reference URL.
+ * Extract an identifier of the given kind from a Markdown reference URL.
  *
  * @category Functions
  * @since 1.0.0
@@ -297,7 +297,7 @@ function customRichText(
     body: string | undefined,
     context: ParseContext,
     line: SourceLine
-): NotionRichText
+): MarkdownRichText
 {
     const content = body ?? attrs.title ?? "";
 
@@ -314,7 +314,7 @@ function customRichText(
             line,
             {
                 ...(attrs.underline === "true" ? { underline: true } : { }),
-                ...(attrs.color === undefined ? { } : { color: attrs.color as NotionMarkdownColor })
+                ...(attrs.color === undefined ? { } : { color: attrs.color as MarkdownColor })
             }
         );
     }
@@ -354,7 +354,7 @@ function customRichText(
                 type: "date"
             },
             type: "mention"
-        } as NotionRichText[number] ];
+        } as MarkdownRichText[number] ];
     }
 
     const mentionKinds: Readonly<Record<string, string>> =
@@ -371,7 +371,7 @@ function customRichText(
     {
         const url = attrs.url;
         const id = extractId(url, mentionKind.replace("data_source", "data-source"));
-        const metadata: NotionMarkdownMetadata =
+        const metadata: MarkdownMetadata =
             {
                 mention:
                 {
@@ -404,8 +404,8 @@ function customRichText(
 
             return [ {
                 ...mention,
-                [ NOTION_MARKDOWN_METADATA ]: metadata
-            } as NotionRichText[number] ];
+                [ MARKDOWN_MARKDOWN_METADATA ]: metadata
+            } as MarkdownRichText[number] ];
         }
 
         return [ plainText(content || url || tag, { }, metadata) ] as const;
@@ -415,7 +415,7 @@ function customRichText(
     {
         const url = attrs.url;
         const id = extractId(url, tag);
-        const metadata: NotionMarkdownMetadata =
+        const metadata: MarkdownMetadata =
             {
                 mention:
                 {
@@ -429,14 +429,14 @@ function customRichText(
         if (id !== undefined)
         {
             return [ {
-                [ NOTION_MARKDOWN_METADATA ]: metadata,
+                [ MARKDOWN_MARKDOWN_METADATA ]: metadata,
                 mention:
                 {
                     [ tag ]: { id },
                     type: tag
                 },
                 type: "mention"
-            } as NotionRichText[number] ];
+            } as MarkdownRichText[number] ];
         }
         return [ plainText(content || url || tag, {}, metadata) ];
     }
@@ -454,9 +454,9 @@ function parseMarkdownTokens(
     context: ParseContext,
     line: SourceLine,
     state: AnnotationState = { }
-): NotionRichText
+): MarkdownRichText
 {
-    const result: NotionRichText = [ ];
+    const result: MarkdownRichText = [ ];
     const marks: Array<AnnotationState> = [ state ];
     let link: string | undefined;
     const current = (): AnnotationState => marks[marks.length - 1]!;
@@ -475,7 +475,7 @@ function parseMarkdownTokens(
                             ...asRecord((item as unknown as Record<string, unknown>).text),
                             link: { url: link }
                         }
-                    } as NotionRichText[number]);
+                    } as MarkdownRichText[number]);
                 }
                 break;
             case "code_inline":
@@ -488,7 +488,7 @@ function parseMarkdownTokens(
                         ...asRecord((item as unknown as Record<string, unknown>).text),
                         link: { url: link }
                     }
-                } as NotionRichText[number]);
+                } as MarkdownRichText[number]);
                 break;
             }
             case "softbreak":
@@ -543,9 +543,9 @@ function parseInline(
     context: ParseContext,
     line: SourceLine,
     state: AnnotationState = { }
-): NotionRichText
+): MarkdownRichText
 {
-    const result: NotionRichText = [ ];
+    const result: MarkdownRichText = [ ];
     let cursor = 0;
 
     /* eslint-disable-next-line @stylistic/max-len */
@@ -579,7 +579,7 @@ function parseInline(
                 ...(attributes(match[1] ?? "").underline === "true" ? { underline: true } : { }),
                 ...(attributes(match[1] ?? "").color === undefined
                     ? { }
-                    : { color: attributes(match[1] ?? "").color as NotionMarkdownColor }
+                    : { color: attributes(match[1] ?? "").color as MarkdownColor }
                 )
             }));
         }
@@ -633,7 +633,7 @@ function parseInline(
             result.push({
                 equation: { expression: match[12] },
                 type: "equation"
-            } as NotionRichText[number]);
+            } as MarkdownRichText[number]);
         }
         else if (match[13] !== undefined)
         {
@@ -683,6 +683,14 @@ function minChildIndent(
     return indents.length === 0 ? undefined : Math.min(...indents);
 }
 
+/** Extract a code-fence language while tolerating Notion's optional `theme={null}` suffix. */
+function codeFenceLanguage(value: string): string
+{
+    const info = value.slice(3).trim();
+    const language = info.replace(/(?:^|\s+)theme=\{null\}\s*$/, "").trim();
+    return language || "plain text";
+}
+
 /**
  * Find the corresponding closing line for a fenced or delimited block.
  *
@@ -721,7 +729,7 @@ function parseChildren(
     end: number,
     parentIndent: number,
     path: string
-): Array<NotionBlock>
+): Array<MarkdownBlock>
 {
     const indent = minChildIndent(context.lines, start, end, parentIndent);
 
@@ -753,7 +761,7 @@ function followingChildren(
     parentIndent: number,
     path: string
 ): {
-    children: Array<NotionBlock>;
+    children: Array<MarkdownBlock>;
     next: number;
 }
 {
@@ -789,19 +797,19 @@ function parseTable(
     line: SourceLine,
     path: string,
     attrs: Record<string, string>
-): { block: NotionBlock; next: number }
+): { block: MarkdownBlock; next: number }
 {
     const close = findClosing(context.lines, start + 1, end, "table", line.indent);
-    const rows: Array<NotionBlock> = [ ];
+    const rows: Array<MarkdownBlock> = [ ];
     const bodyEnd = close === end ? end : close;
     const rowPattern = /^<tr(?:\s+([^>]*))?>([\s\S]*)<\/tr>$/i;
-    const columnColors: Array<NotionMarkdownColor | undefined> = [];
+    const columnColors: Array<MarkdownColor | undefined> = [];
     const columnPattern = /<col(?:\s+([^>]*))?\s*\/?\s*>/gi;
     const tableBody = context.lines.slice(start + 1, bodyEnd).map((bodyLine) => bodyLine.text).join("\n");
     let columnMatch: RegExpExecArray | null;
     while ((columnMatch = columnPattern.exec(tableBody)) !== null)
     {
-        columnColors.push(attributes(columnMatch[1] ?? "").color as NotionMarkdownColor | undefined);
+        columnColors.push(attributes(columnMatch[1] ?? "").color as MarkdownColor | undefined);
     }
     for (let index = start + 1, rowIndex = 0; index < bodyEnd; index += 1)
     {
@@ -812,25 +820,25 @@ function parseTable(
             continue;
         }
 
-        const cells: Array<NotionRichText> = [ ];
+        const cells: Array<MarkdownRichText> = [ ];
         const cellPattern = /<td(?:\s+([^>]*))?>([\s\S]*?)<\/td>/gi;
         let cellMatch: RegExpExecArray | null;
-        const cellColors: Array<NotionMarkdownColor | undefined> = [ ];
+        const cellColors: Array<MarkdownColor | undefined> = [ ];
 
         while ((cellMatch = cellPattern.exec(rowMatch[2] ?? "")) !== null)
         {
             const cellAttrs = attributes(cellMatch[1] ?? "");
             const cell = parseInline(cellMatch[2]!, context, rowLine);
             cells.push(cell);
-            cellColors.push(cellAttrs.color as NotionMarkdownColor | undefined);
+            cellColors.push(cellAttrs.color as MarkdownColor | undefined);
         }
 
         const rowAttrs = attributes(rowMatch[1] ?? "");
         rows.push(makeBlock(context, "table_row", `${path}.${rowIndex}`, { cells }, rowLine, {}, undefined, {
             table:
             {
-                ...(rowAttrs.color === undefined ? {} : { rowColor: rowAttrs.color as NotionMarkdownColor }),
-                ...(cellColors.some((color: NotionMarkdownColor | undefined) => color !== undefined)
+                ...(rowAttrs.color === undefined ? {} : { rowColor: rowAttrs.color as MarkdownColor }),
+                ...(cellColors.some((color: MarkdownColor | undefined) => color !== undefined)
                     ? { cellColors }
                     : { }
                 )
@@ -852,7 +860,7 @@ function parseTable(
     }
 
     const width = rows.reduce(
-        (maximum: number, row: NotionBlock) =>
+        (maximum: number, row: MarkdownBlock) =>
             Math.max(
                 maximum,
                 (((row as unknown as { readonly table_row: unknown; })
@@ -901,7 +909,7 @@ function parsePipeTable(
     end: number,
     path: string
 ): {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly next: number;
 }
 {
@@ -986,9 +994,9 @@ function parseSequence(
     end: number,
     indent: number,
     path: string
-): Array<NotionBlock>
+): Array<MarkdownBlock>
 {
-    const result: Array<NotionBlock> = [ ];
+    const result: Array<MarkdownBlock> = [ ];
     let index = start;
 
     while (index < end)
@@ -1064,7 +1072,7 @@ function parseSequence(
         }
         if (/^```/.test(value))
         {
-            const language = value.slice(3).trim() || "plain text";
+            const language = codeFenceLanguage(value);
 
             let close = index + 1;
             while (close < end && !/^\s*```\s*$/.test(context.lines[close]!.text)) {close += 1;}
@@ -1160,7 +1168,7 @@ function parseSequence(
             const close = findClosing(context.lines, index + 1, end, tag, indent);
             const bodyEnd = close === end ? end : close;
             const children = parseChildren(context, index + 1, bodyEnd, indent, pathValue);
-            let block: NotionBlock;
+            let block: MarkdownBlock;
             if (tag === "columns" || tag === "column")
             {
                 block = makeBlock(
@@ -1293,7 +1301,7 @@ function parseSequence(
                 "table_of_contents",
                 pathValue,
                 {
-                    color: tocAttrs.color as NotionMarkdownColor | undefined
+                    color: tocAttrs.color as MarkdownColor | undefined
                 },
                 line,
                 tocAttrs
@@ -1322,7 +1330,7 @@ function parseSequence(
 
             result.push(makeBlock(
                 context,
-                `heading_${ level }` as NotionMarkdownBlockType,
+                `heading_${ level }` as MarkdownBlockType,
                 pathValue,
                 {
                     rich_text: parseInline(parsed.text, context, line),
@@ -1471,7 +1479,7 @@ function parseSequence(
 
             result.push(makeBlock(
                 context,
-                mediaTag[1]!.toLowerCase() as NotionMarkdownBlockType,
+                mediaTag[1]!.toLowerCase() as MarkdownBlockType,
                 pathValue,
                 payload,
                 line,
@@ -1545,14 +1553,14 @@ function parseSequence(
 }
 
 /**
- * Parse enhanced Markdown into the versioned Notion document model.
+ * Parse enhanced Markdown into the versioned Markdown document model.
  *
  * @since 1.0.0
  */
-export function parseNotionMarkdown(
+export function parseMarkdown(
     markdownText: string, options
-    : ParseNotionMarkdownOptions = { }
-): ParseNotionMarkdownResult
+    : ParseMarkdownOptions = { }
+): ParseMarkdownResult
 {
     const lines: Array<SourceLine> = markdownText
         .replace(/\r\n?/g, "\n")
@@ -1573,12 +1581,12 @@ export function parseNotionMarkdown(
             diagnostics: [ ],
             idFactory:
                 options.idFactory ??
-                ((path: string, type: NotionMarkdownBlockType) => `md:${ type }:${ path }`),
+                ((path: string, type: MarkdownBlockType) => `md:${ type }:${ path }`),
             lines,
             rules: options.rules ?? [ ]
         };
 
-    const document: NotionDocument =
+    const document: MarkdownDocument =
         {
             blocks: parseSequence(context, 0, lines.length, 0, "0"),
             version: 1

@@ -10,7 +10,7 @@
  * @license   MIT
  */
 
-import type { EditorMessageId, NotionEditorMessageDescriptor, NotionEditorTranslate } from "./messages.ts";
+import type { EditorMessageId, MarkdownEditorMessageDescriptor, MarkdownEditorTranslate } from "./messages.ts";
 import { createContext, createElement, useCallback, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
 import { defaultEditorMessages } from "./messages.ts";
@@ -22,49 +22,49 @@ import { defaultEditorMessages } from "./messages.ts";
  *
  * @since 1.0.0
  */
-export interface NotionEditorLocalization
+export interface MarkdownEditorLocalization
 {
     readonly locale?: string;
-    readonly translate?: NotionEditorTranslate;
+    readonly translate?: MarkdownEditorTranslate;
 }
 
-interface ResolvedNotionEditorLocalization
+interface ResolvedMarkdownEditorLocalization
 {
     readonly locale?: string;
-    readonly translate: NotionEditorTranslate;
+    readonly translate: MarkdownEditorTranslate;
 }
 
-interface NotionEditorConfigContextValue
+interface MarkdownEditorConfigContextValue
 {
-    readonly localization: ResolvedNotionEditorLocalization;
+    readonly localization: ResolvedMarkdownEditorLocalization;
 }
 
-/** Props for {@link NotionEditorConfigProvider}. */
-export interface NotionEditorConfigProviderProps
+/** Props for {@link MarkdownEditorConfigProvider}. */
+export interface MarkdownEditorConfigProviderProps
 {
     readonly children: ReactNode;
-    readonly localization?: NotionEditorLocalization;
+    readonly localization?: MarkdownEditorLocalization;
 }
 
-const englishTranslate: NotionEditorTranslate = (Message: NotionEditorMessageDescriptor) =>
+const englishTranslate: MarkdownEditorTranslate = (Message: MarkdownEditorMessageDescriptor) =>
     Message.defaultMessage;
 
-const defaultContextValue: NotionEditorConfigContextValue =
+const defaultContextValue: MarkdownEditorConfigContextValue =
     {
         localization: { translate: englishTranslate }
     };
 
-const NotionEditorConfigContext = createContext<NotionEditorConfigContextValue>(defaultContextValue);
+const MarkdownEditorConfigContext = createContext<MarkdownEditorConfigContextValue>(defaultContextValue);
 
 /**
  * Configures editor UI concerns -- currently localization -- for descendant editors. Optional:
- * `NotionEditor` renders built-in English when used outside this provider.
+ * `MarkdownEditor` renders built-in English when used outside this provider.
  *
  * @since 1.0.0
  */
-export function NotionEditorConfigProvider({ children, localization }: NotionEditorConfigProviderProps)
+export function MarkdownEditorConfigProvider({ children, localization }: MarkdownEditorConfigProviderProps)
 {
-    const value = useMemo<NotionEditorConfigContextValue>(() => (
+    const value = useMemo<MarkdownEditorConfigContextValue>(() => (
         {
             localization:
             {
@@ -74,22 +74,22 @@ export function NotionEditorConfigProvider({ children, localization }: NotionEdi
         }
     ), [ localization?.locale, localization?.translate ]);
 
-    return createElement(NotionEditorConfigContext.Provider, { value }, children);
+    return createElement(MarkdownEditorConfigContext.Provider, { value }, children);
 }
 
 /** Return the nearest editor UI configuration, or the built-in English default. */
-export function useNotionEditorConfig(): NotionEditorConfigContextValue
+export function useMarkdownEditorConfig(): MarkdownEditorConfigContextValue
 {
-    return useContext(NotionEditorConfigContext);
+    return useContext(MarkdownEditorConfigContext);
 }
 
 /** Return a function that resolves an {@link EditorMessageId} to display text. */
-export function useNotionEditorTranslate(): (
+export function useMarkdownEditorTranslate(): (
     Id: EditorMessageId,
     Values?: Readonly<Record<string, string | number>>
 ) => string
 {
-    const { localization } = useNotionEditorConfig();
+    const { localization } = useMarkdownEditorConfig();
     const { translate } = localization;
 
     return useCallback(

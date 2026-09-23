@@ -1,7 +1,7 @@
 /**
  * Fixture examples retain source ordering and complete Markdown lines.
  *
- * @module notion-markdown-storybook/Stories/Renderer.stories
+ * @module markdown-storybook/Stories/Renderer.stories
  *
  * @file      Renderer.stories.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
@@ -11,11 +11,11 @@
 
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { fromNotionBlocks, parseNotionMarkdown } from "react-native-notion-markdown/renderer";
+import { fromMarkdownBlocks, parseMarkdown } from "react-native-notion-markdown/renderer";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Asset } from "expo-asset";
-import { NotionMarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
-import type { NotionMediaRequest } from "react-native-notion-markdown/renderer/ui";
+import { MarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
+import type { MarkdownMediaRequest } from "react-native-notion-markdown/renderer/ui";
 
 /* eslint-disable @stylistic/max-len */
 const catalog =
@@ -98,7 +98,7 @@ const fixtures: Record<string, number> =
         "fixture://video": require("../fixtures/preview.mp4")
     } as const;
 
-async function resolveFixture(request: NotionMediaRequest): Promise<string | null>
+async function resolveFixture(request: MarkdownMediaRequest): Promise<string | null>
 {
     const module = request.url ? fixtures[request.url] : undefined;
 
@@ -116,7 +116,7 @@ function CatalogStory()
     const [ useDocument, setUseDocument ] = useState(false);
     const [ dark, setDark ] = useState(false);
     const [ diagnostics, setDiagnostics ] = useState(0);
-    const document = useMemo(() => parseNotionMarkdown(catalog).document, []);
+    const document = useMemo(() => parseMarkdown(catalog).document, []);
     const onDiagnostics = useCallback((items: ReadonlyArray<unknown>) => setDiagnostics(items.length), []);
     return <View style={ { flex: 1, backgroundColor: dark ? "#191919" : "#fff" } }>
         <View style={ { flexDirection: "row", gap: 12, padding: 8 } }>
@@ -132,11 +132,11 @@ function CatalogStory()
             </Pressable>
         </View>
         {useDocument
-            ? <NotionMarkdownRenderer colorScheme={ dark ? "dark" : "light" }
+            ? <MarkdownRenderer colorScheme={ dark ? "dark" : "light" }
                 document={ document }
                 onDiagnostics={ onDiagnostics }
                 resolveMediaUrl={ resolveFixture } />
-            : <NotionMarkdownRenderer colorScheme={ dark ? "dark" : "light" }
+            : <MarkdownRenderer colorScheme={ dark ? "dark" : "light" }
                 markdown={ catalog }
                 onDiagnostics={ onDiagnostics }
                 resolveMediaUrl={ resolveFixture } />}
@@ -146,7 +146,7 @@ function CatalogStory()
 function FailureStory()
 {
     const markdown = "# Failure states\n![Missing image](fixture://missing)\n<audio src=\"fixture://missing\">Missing audio</audio>\n<video src=\"fixture://missing\">Missing video</video>\n<file src=\"fixture://missing\">Missing file</file>\n<pdf src=\"fixture://missing\">Missing PDF</pdf>\n$$\n\\invalid{\n$$\n```mermaid\nnot a diagram\n```";
-    return <View style={ { flex: 1 } }><NotionMarkdownRenderer markdown={ markdown }
+    return <View style={ { flex: 1 } }><MarkdownRenderer markdown={ markdown }
         resolveMediaUrl={ resolveFixture } /></View>;
 }
 
@@ -163,9 +163,9 @@ function ResolverStory()
     const resolveSyncedBlock = useCallback(async () =>
     {
         await new Promise((done) => setTimeout(done, 500));
-        return parseNotionMarkdown("Resolved synced text block").document;
+        return parseMarkdown("Resolved synced text block").document;
     }, []);
-    const resolveMediaUrl = useCallback(async (request: NotionMediaRequest) =>
+    const resolveMediaUrl = useCallback(async (request: MarkdownMediaRequest) =>
     {
         if (request.url === "expired://file")
         {
@@ -181,7 +181,7 @@ function ResolverStory()
             style={ { padding: 12 } }>
             <Text>Replace document</Text>
         </Pressable>
-        <NotionMarkdownRenderer markdown={ markdown }
+        <MarkdownRenderer markdown={ markdown }
             resolveMediaUrl={ resolveMediaUrl }
             resolveReference={ resolveReference }
             resolveSyncedBlock={ resolveSyncedBlock } />
@@ -192,29 +192,29 @@ function MediaStory()
 {
     console.log("M3_STORY_RENDER");
     const markdown = "# Offline media previews\n<audio src=\"fixture://audio\">Local audio</audio>\n<video src=\"fixture://video\">Local video</video>\n<file src=\"fixture://pdf\">Local file</file>\n<pdf src=\"fixture://pdf\">Local PDF</pdf>";
-    return <NotionMarkdownRenderer markdown={ markdown }
+    return <MarkdownRenderer markdown={ markdown }
         resolveMediaUrl={ resolveFixture } />;
 }
 
 function MathDiagramStory()
 {
     const markdown = "# Equation and diagram previews\n$$\n\\frac{1}{2}\n$$\n```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```";
-    return <NotionMarkdownRenderer markdown={ markdown } />;
+    return <MarkdownRenderer markdown={ markdown } />;
 }
 
 function LayoutStory()
 {
     const markdown = "# Layout and table precedence\n<columns>\n\t<column>\n\t\tFirst column\n\t</column>\n\t<column>\n\t\tSecond column\n\t</column>\n</columns>\n<table fit-page-width=\"true\" header-row=\"true\" header-column=\"true\">\n\t<colgroup>\n\t\t<col color=\"blue_bg\">\n\t</colgroup>\n\t<tr color=\"green_bg\"><td color=\"red_bg\">Cell wins</td><td>Row wins</td></tr>\n\t<tr><td>Column wins</td><td>Plain cell</td></tr>\n</table>";
-    const imported = useMemo(() => fromNotionBlocks([ { id: "unsupported-demo", type: "widget", widget: { source: "imported fixture" } } ] as unknown as Parameters<typeof fromNotionBlocks>[0]).document, []);
+    const imported = useMemo(() => fromMarkdownBlocks([ { id: "unsupported-demo", type: "widget", widget: { source: "imported fixture" } } ] as unknown as Parameters<typeof fromMarkdownBlocks>[0]).document, []);
     return <ScrollView horizontal>
         <View style={ { width: 320, height: 700, borderRightWidth: 1 } }>
             <Text>Narrow 320 px</Text>
-            <NotionMarkdownRenderer markdown={ markdown } />
-            <NotionMarkdownRenderer document={ imported } />
+            <MarkdownRenderer markdown={ markdown } />
+            <MarkdownRenderer document={ imported } />
         </View>
         <View style={ { width: 800, height: 700 } }>
             <Text>Wide 800 px</Text>
-            <NotionMarkdownRenderer markdown={ markdown } />
+            <MarkdownRenderer markdown={ markdown } />
         </View>
     </ScrollView>;
 }

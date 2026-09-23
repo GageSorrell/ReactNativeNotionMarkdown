@@ -10,7 +10,7 @@
  *
  * Usage: `node scripts/with-env.mjs <command> [...args]`
  *
- * @module notion-markdown-storybook/scripts/with-env
+ * @module markdown-storybook/scripts/with-env
  *
  * @file      with-env.mjs
  * @author    Gage Sorrell <gage@sorrell.sh>

@@ -9,25 +9,25 @@
  * @license   MIT
  */
 
-import type { useNotionMarkdownDevTools as UseNotionMarkdownDevToolsHook } from "./useNotionMarkdownDevTools";
+import type { useMarkdownDevTools as UseMarkdownDevToolsHook } from "./useMarkdownDevTools";
 
 export type {
-  UseNotionMarkdownDevToolsOptions,
-  UseNotionMarkdownDevToolsResult
-} from "./useNotionMarkdownDevTools";
+  UseMarkdownDevToolsOptions,
+  UseMarkdownDevToolsResult
+} from "./useMarkdownDevTools";
 export * from "./protocol";
 
-type UseNotionMarkdownDevToolsHookType = typeof UseNotionMarkdownDevToolsHook;
+type UseMarkdownDevToolsHookType = typeof UseMarkdownDevToolsHook;
 
-declare const require: (moduleId: string) => { useNotionMarkdownDevTools: UseNotionMarkdownDevToolsHookType };
+declare const require: (moduleId: string) => { useMarkdownDevTools: UseMarkdownDevToolsHookType };
 
-export let useNotionMarkdownDevTools: UseNotionMarkdownDevToolsHookType;
+export let useMarkdownDevTools: UseMarkdownDevToolsHookType;
 
 // @ts-expect-error process.env.NODE_ENV is defined by metro transform plugins
 if (process.env.NODE_ENV !== "production") {
-  useNotionMarkdownDevTools = require("./useNotionMarkdownDevTools").useNotionMarkdownDevTools;
+  useMarkdownDevTools = require("./useMarkdownDevTools").useMarkdownDevTools;
 } else {
-  useNotionMarkdownDevTools = () => ({
+  useMarkdownDevTools = () => ({
     reportCommand: () => {},
     reportError: () => {},
     reportEvent: () => {}

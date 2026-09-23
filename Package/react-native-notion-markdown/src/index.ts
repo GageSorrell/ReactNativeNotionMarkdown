@@ -1,5 +1,5 @@
 /**
- * Render and edit Notion-flavored markdown in React Native, including a powerful WYSIWYG editor.",
+ * Render and edit Markdown-formatted content in React Native, including a powerful WYSIWYG editor.",
  *
  * @module react-native-notion-markdown
  *

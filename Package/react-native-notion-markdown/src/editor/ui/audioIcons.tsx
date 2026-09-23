@@ -16,10 +16,10 @@
  */
 
 import { Circle, Path, Rect, Svg } from "react-native-svg";
-import type { NotionEditorIconProps } from "./NotionEditor.tsx";
+import type { MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
 
 /** Render a document-with-audio icon. */
-export function AudioFileIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function AudioFileIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -43,7 +43,7 @@ export function AudioFileIcon({ color, size, strokeWidth }: NotionEditorIconProp
 }
 
 /** Render a microphone icon. */
-export function MicrophoneIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function MicrophoneIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -66,7 +66,7 @@ export function MicrophoneIcon({ color, size, strokeWidth }: NotionEditorIconPro
 }
 
 /** Render a stop icon. */
-export function StopIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function StopIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -84,7 +84,7 @@ export function StopIcon({ color, size, strokeWidth }: NotionEditorIconProps)
 }
 
 /** Render a cancel icon. */
-export function CancelIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function CancelIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -104,7 +104,7 @@ export function CancelIcon({ color, size, strokeWidth }: NotionEditorIconProps)
 }
 
 /** Render a checkmark icon. */
-export function CheckIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function CheckIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -119,7 +119,7 @@ export function CheckIcon({ color, size, strokeWidth }: NotionEditorIconProps)
 }
 
 /** Render a play icon. */
-export function PlayIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function PlayIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"
@@ -133,7 +133,7 @@ export function PlayIcon({ color, size, strokeWidth }: NotionEditorIconProps)
 }
 
 /** Render a pause icon. */
-export function PauseIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+export function PauseIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
     return <Svg height={ size }
         viewBox="0 0 24 24"

@@ -10,9 +10,9 @@ const { config } = Astro.props
   <div class="effect-landing-container relative mx-auto w-full">
     <div class="mb-12 grid grid-cols-1 gap-8 px-4 lg:grid-cols-2 lg:items-center">
       <div><p class="effect-landing-label mb-3">{config.content.codingLabel}</p><h2>{config.content.codingTitle}</h2><p class="effect-landing-section-copy mt-4 max-w-lg">{config.content.codingDescription}</p><a href={config.primaryCta.href} class="effect-landing-secondary-link mt-6">{config.content.codingLinkLabel} <ArrowUpRight class="size-4" aria-hidden="true" /></a></div>
-      <div class="effect-landing-code-window"><div class="effect-landing-static-panel-header"><span class="effect-landing-dot"></span><span class="effect-landing-dot"></span><span class="effect-landing-dot"></span><span>screen.tsx</span></div><pre><code><span>const</span> document = useNotionDocument(source)
+      <div class="effect-landing-code-window"><div class="effect-landing-static-panel-header"><span class="effect-landing-dot"></span><span class="effect-landing-dot"></span><span class="effect-landing-dot"></span><span>screen.tsx</span></div><pre><code><span>const</span> document = useMarkdownDocument(source)
 
-<span>return</span> &lt;NotionMarkdown
+<span>return</span> &lt;Markdown
   document={"{"}document{"}"}
   theme={"{"}appTheme{"}"}
   components={"{"}customBlocks{"}"}

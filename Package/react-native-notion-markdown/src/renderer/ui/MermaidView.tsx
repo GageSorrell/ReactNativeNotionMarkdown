@@ -11,7 +11,7 @@ import { Pressable, Text, View } from "react-native";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import { useCallback, useMemo, useState } from "react";
 import { MERMAID_RUNTIME } from "./mermaidRuntime.ts";
-import type { NotionRendererTheme } from "./types.ts";
+import type { MarkdownRendererTheme } from "./types.ts";
 import type { ShouldStartLoadRequest } from "react-native-webview/lib/WebViewTypes";
 
 /**
@@ -20,10 +20,10 @@ import type { ShouldStartLoadRequest } from "react-native-webview/lib/WebViewTyp
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionMermaidViewProps
+export interface MarkdownMermaidViewProps
 {
     readonly source: string;
-    readonly theme: NotionRendererTheme;
+    readonly theme: MarkdownRendererTheme;
 }
 
 /**
@@ -40,12 +40,12 @@ function htmlFor(source: string): string
     return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <style>body{margin:0;padding:8px;background:transparent;color:#2C2C2B}#diagram{pointer-events:none}svg{max-width:100%;height:auto}</style></head><body><div id="diagram"></div>
-<script>${ MERMAID_RUNTIME }</script><script>(async()=>{try{const svg=await window.__renderNotionMermaid(${safeSource},'notion-mermaid');document.getElementById('diagram').innerHTML=svg;window.ReactNativeWebView.postMessage(JSON.stringify({ok:true,height:Math.max(80,document.body.scrollHeight)}));}catch(error){window.ReactNativeWebView.postMessage(JSON.stringify({ok:false,message:String(error)}));}})();</script></body></html>`;
+<script>${ MERMAID_RUNTIME }</script><script>(async()=>{try{const svg=await window.__renderMarkdownMermaid(${safeSource},'markdown-mermaid');document.getElementById('diagram').innerHTML=svg;window.ReactNativeWebView.postMessage(JSON.stringify({ok:true,height:Math.max(80,document.body.scrollHeight)}));}catch(error){window.ReactNativeWebView.postMessage(JSON.stringify({ok:false,message:String(error)}));}})();</script></body></html>`;
     /* eslint-enable @stylistic/max-len */
 }
 
 /** Offline, preview-only Mermaid WebView. Diagram text never runs as application script. */
-export function NotionMermaidView({ source, theme }: NotionMermaidViewProps)
+export function MarkdownMermaidView({ source, theme }: MarkdownMermaidViewProps)
 {
     const [ active, setActive ] = useState(false);
     const [ error, setError ] = useState<string>();

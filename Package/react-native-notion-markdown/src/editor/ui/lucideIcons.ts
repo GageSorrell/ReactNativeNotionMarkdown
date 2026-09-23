@@ -1,5 +1,5 @@
 /**
- * A ready-made {@link NotionEditorComponents} set backed by `lucide-react-native`.
+ * A ready-made {@link MarkdownEditorComponents} set backed by `lucide-react-native`.
  *
  * This lives in its own module, deliberately never imported by `editor/ui`'s main entry point
  * (`index.ts`), so that Metro only needs to resolve the optional `lucide-react-native` peer for
@@ -33,6 +33,7 @@ import {
     Copy,
     Eraser,
     FileText,
+    FishSymbol,
     Heading1,
     Heading2,
     Heading3,
@@ -46,6 +47,7 @@ import {
     Link2,
     List,
     ListChecks,
+    ListCollapse,
     ListOrdered,
     MessageSquare,
     Mic,
@@ -63,6 +65,7 @@ import {
     Square,
     SquarePlay,
     Strikethrough,
+    Table2,
     TableOfContents,
     Trash2,
     Type,
@@ -74,7 +77,7 @@ import { Line, Rect, Svg } from "react-native-svg";
 import { StyleSheet, View } from "react-native";
 // The type-only relative import is intentionally kept after the runtime dependencies.
 // eslint-disable-next-line sort-imports
-import { type NotionEditorComponents, type NotionEditorIconProps } from "./NotionEditor.tsx";
+import { type MarkdownEditorComponents, type MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
 
 const toggleHeadingIconStyles = StyleSheet.create({
     root:
@@ -89,11 +92,11 @@ const toggleHeadingIconStyles = StyleSheet.create({
 
 /** Compose a small disclosure triangle with one of the regular heading icons. */
 function createToggleHeadingIcon(
-    HeadingIcon: ComponentType<NotionEditorIconProps>
-): ComponentType<NotionEditorIconProps>
+    HeadingIcon: ComponentType<MarkdownEditorIconProps>
+): ComponentType<MarkdownEditorIconProps>
 {
     /** Render a composed toggle-heading icon. */
-    function ToggleHeadingIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+    function ToggleHeadingIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
     {
         return createElement(
             View,
@@ -125,7 +128,7 @@ const ToggleHeading3 = createToggleHeadingIcon(Heading3);
 const ToggleHeading4 = createToggleHeadingIcon(Heading4);
 
 /** Create a columns icon with a bar for each column, while retaining Lucide's rounded-square shape. */
-function createColumnsIcon(columnCount: 2 | 3 | 4 | 5): ComponentType<NotionEditorIconProps>
+function createColumnsIcon(columnCount: 2 | 3 | 4 | 5): ComponentType<MarkdownEditorIconProps>
 {
     const bars: Array<number> = Array.from(
         { length: columnCount - 1 },
@@ -134,8 +137,10 @@ function createColumnsIcon(columnCount: 2 | 3 | 4 | 5): ComponentType<NotionEdit
     );
 
     /** Render a count-specific columns icon. */
-    function ColumnsIcon({ color, size, strokeWidth }: NotionEditorIconProps)
+    function ColumnsIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
     {
+        const columnBarStrokeWidth = columnCount === 5 ? strokeWidth / 2 : strokeWidth;
+
         return createElement(
             Svg,
             { height: size, viewBox: "0 0 24 24", width: size },
@@ -154,12 +159,12 @@ function createColumnsIcon(columnCount: 2 | 3 | 4 | 5): ComponentType<NotionEdit
                 ...bars.map((x: number, index: number) => createElement(Line, {
                     key: index,
                     stroke: color,
-                    strokeLinecap: "round",
-                    strokeWidth,
+                    strokeLinecap: "butt",
+                    strokeWidth: columnBarStrokeWidth,
                     x1: x,
                     x2: x,
-                    y1: "6",
-                    y2: "18"
+                    y1: "3",
+                    y2: "21"
                 }))
             ]
         );
@@ -174,11 +179,11 @@ const Columns4Icon = createColumnsIcon(4);
 const Columns5Icon = createColumnsIcon(5);
 
 export/**
-       * Pass this to `NotionEditor`'s `components` prop for icon buttons instead of plain text labels.
+       * Pass this to `MarkdownEditor`'s `components` prop for icon buttons instead of plain text labels.
        *
        * @since 1.0.0
        */
-const notionEditorLucideIcons: NotionEditorComponents =
+const markdownEditorLucideIcons: MarkdownEditorComponents =
     {
         back: ArrowLeft,
         bold: Bold,
@@ -212,6 +217,7 @@ const notionEditorLucideIcons: NotionEditorComponents =
         italic: Italic,
         link: Link2,
         linkToPage: Link2,
+        mermaid: FishSymbol,
         more: MoreHorizontal,
         moveDown: ArrowDownFromLine,
         moveUp: ArrowUpFromLine,
@@ -229,6 +235,7 @@ const notionEditorLucideIcons: NotionEditorComponents =
         speech: Mic,
         stop: Square,
         strikethrough: Strikethrough,
+        table: Table2,
         tableOfContents: TableOfContents,
         text: Type,
         toDo: ListChecks,
@@ -236,6 +243,7 @@ const notionEditorLucideIcons: NotionEditorComponents =
         toggleHeading2: ToggleHeading2,
         toggleHeading3: ToggleHeading3,
         toggleHeading4: ToggleHeading4,
+        toggleList: ListCollapse,
         turnInto: Repeat,
         underline: Underline,
         undo: Undo2,

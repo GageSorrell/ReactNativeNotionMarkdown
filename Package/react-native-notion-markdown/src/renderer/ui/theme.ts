@@ -9,17 +9,17 @@
  * @license   MIT
  */
 
-import type { NotionMarkdownColor } from "../../document/types.ts";
-import type { NotionRendererTheme } from "./types.ts";
+import type { MarkdownColor } from "../../document/types.ts";
+import type { MarkdownRendererTheme } from "./types.ts";
 import { fromSdkColor } from "../../internal.ts";
 
 export/**
-       * The default light theme used by the Notion renderer.
+       * The default light theme used by the Markdown renderer.
        *
        * @category Constants
        * @since 1.0.0
        */
-const lightRendererTheme: NotionRendererTheme = Object.freeze({
+const lightRendererTheme: MarkdownRendererTheme = Object.freeze({
     accent: "#2f6eab",
     background: "#ffffff",
     border: "#dededb",
@@ -38,12 +38,12 @@ const lightRendererTheme: NotionRendererTheme = Object.freeze({
 } as const);
 
 export/**
-       * The default dark theme used by the Notion renderer.
+       * The default dark theme used by the Markdown renderer.
        *
        * @category Constants
        * @since 1.0.0
        */
-const darkRendererTheme: NotionRendererTheme = Object.freeze({
+const darkRendererTheme: MarkdownRendererTheme = Object.freeze({
     accent: "#81b8e7",
     background: "#191919",
     border: "#414141",
@@ -113,8 +113,8 @@ const darkColors: Record<string, string> =
  * @category Functions
  * @since 1.0.0
  */
-export function notionColor(
-    color: NotionMarkdownColor | string | undefined,
+export function markdownColor(
+    color: MarkdownColor | string | undefined,
     dark: boolean
 ): string | undefined
 {

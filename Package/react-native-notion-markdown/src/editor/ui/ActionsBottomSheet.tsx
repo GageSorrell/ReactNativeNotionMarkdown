@@ -14,20 +14,20 @@ import * as ImagePicker from "expo-image-picker";
 import { CameraIcon, GalleryIcon } from "./mediaIcons.tsx";
 import { CopyActionIcon, TrashActionIcon } from "./actionIcons.tsx";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import type { NotionEditorAudioAction, NotionEditorComponents, NotionEditorIconProps } from "./NotionEditor.tsx";
+import type { MarkdownEditorAudioAction, MarkdownEditorComponents, MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
 import { createElement, type ComponentType } from "react";
-import type { NotionMarkdownColor } from "../../document/types.ts";
+import type { MarkdownColor } from "../../document/types.ts";
 import { useCallback, useMemo, useState } from "react";
 
 /** An action selected in the built-in block-actions sheet. */
-export type NotionEditorBlockAction = "delete" | "duplicate" | "insertAbove" | "insertBelow";
+export type MarkdownEditorBlockAction = "delete" | "duplicate" | "insertAbove" | "insertBelow";
 
 /** Public props for the built-in block-actions sheet. */
 export interface ActionsBottomSheetProps
 {
     /** Translated display name of the target block, e.g. "Divider". */
     readonly blockName: string;
-    readonly components?: NotionEditorComponents;
+    readonly components?: MarkdownEditorComponents;
     readonly dark: boolean;
     readonly labels: {
         readonly delete: string;
@@ -46,19 +46,19 @@ export interface ActionsBottomSheetProps
         readonly takePicture: string;
         readonly title: string;
     };
-    readonly onAction: (action: NotionEditorBlockAction) => void;
+    readonly onAction: (action: MarkdownEditorBlockAction) => void;
     readonly onDismiss: () => void;
     /** Opens the callout emoji picker from the callout action sheet. */
     readonly onEditIcon?: () => void;
     /** Called when a color is selected for a callout. */
-    readonly onColor?: (color: NotionMarkdownColor | undefined) => void;
+    readonly onColor?: (color: MarkdownColor | undefined) => void;
     /** Called with the picked asset's local URI once a replacement image is chosen. */
     readonly onReplaceImage?: (url: string) => void | Promise<void>;
     /** Opens the shared audio workflow in replacement mode. */
-    readonly onReplaceAudio?: (action: NotionEditorAudioAction) => void;
+    readonly onReplaceAudio?: (action: MarkdownEditorAudioAction) => void;
     /** Hidden for block types (the divider) that can't take content above themselves. */
     readonly showInsertAbove: boolean;
-    /** Callout actions use the Notion-specific color/icon layout. */
+    /** Callout actions use the Markdown-specific color/icon layout. */
     readonly showCalloutActions?: boolean;
     /** Shown only for the image block -- offers to replace its source via gallery or camera. */
     readonly showReplaceImage: boolean;
@@ -69,14 +69,14 @@ export interface ActionsBottomSheetProps
 interface ActionOptionProps
 {
     readonly color: string;
-    readonly icon?: ComponentType<NotionEditorIconProps>;
+    readonly icon?: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
     readonly onPress: () => void;
 }
 
-type LucideModule = Record<string, ComponentType<NotionEditorIconProps>> &
+type LucideModule = Record<string, ComponentType<MarkdownEditorIconProps>> &
 {
-    readonly default?: Record<string, ComponentType<NotionEditorIconProps>>;
+    readonly default?: Record<string, ComponentType<MarkdownEditorIconProps>>;
 };
 
 const lucideNames: Readonly<Record<
@@ -119,7 +119,7 @@ function getLucideIcons(): LucideModule | undefined
 
 const actionIconFallbacks: Readonly<Record<
     "copy" | "remove" | "gallery" | "picture" | "color" | "edit" | "back",
-    ComponentType<NotionEditorIconProps>>> =
+    ComponentType<MarkdownEditorIconProps>>> =
     {
         back: CopyActionIcon,
         color: CopyActionIcon,
@@ -134,7 +134,7 @@ const actionIconFallbacks: Readonly<Record<
 function getActionIcon(
     button: "copy" | "remove" | "gallery" | "picture" | "color" | "edit" | "back",
     components: ActionsBottomSheetProps["components"]
-): ComponentType<NotionEditorIconProps>
+): ComponentType<MarkdownEditorIconProps>
 {
     const override = components?.[button];
 
@@ -181,7 +181,7 @@ function ActionOption({ color, icon: Icon, label, onPress }: ActionOptionProps)
 
 interface CalloutColorOption
 {
-    readonly color: NotionMarkdownColor | undefined;
+    readonly color: MarkdownColor | undefined;
     readonly hex?: string;
     readonly label: string;
 }
@@ -286,7 +286,7 @@ export function ActionsBottomSheet({
     const optionSurface = dark ? "#30302F" : "#FFFFFF";
     const divider = dark ? "rgba(255, 255, 255, 0.10)" : "#EEECE9";
     const scrim = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.25)";
-    /* The package's "danger" color -- see NotionRendererTheme.danger -- deliberately the same
+    /* The package's "danger" color -- see MarkdownRendererTheme.danger -- deliberately the same
        hex in both themes, unlike the other colors on this sheet. */
     const danger = "#E56458";
 
@@ -300,13 +300,13 @@ export function ActionsBottomSheet({
         const uri = result.assets?.[ 0 ]?.uri;
         if (uri === undefined) { return; }
 
-        /* Close first, matching MediaBottomSheet: NotionEditor sends a focus command on
+        /* Close first, matching MediaBottomSheet: MarkdownEditor sends a focus command on
            dismissal, so the replace command lands as the final command in the batch. */
         onDismiss();
         await onReplaceImage?.(uri);
     }, [ onDismiss, onReplaceImage ]);
 
-    const handleColor = useCallback((color: NotionMarkdownColor | undefined) =>
+    const handleColor = useCallback((color: MarkdownColor | undefined) =>
     {
         setChoosingColor(false);
         onColor?.(color);

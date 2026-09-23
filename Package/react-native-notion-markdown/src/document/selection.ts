@@ -10,12 +10,12 @@
  */
 
 import {
-    type NotionBlock,
-    type NotionDocument,
-    type NotionEditableField,
-    type NotionSelectionPoint
+    type MarkdownBlock,
+    type MarkdownDocument,
+    type MarkdownEditableField,
+    type MarkdownSelectionPoint
 } from "./types.ts";
-import { asRecord, getNotionBlockPayload, getNotionMarkdownMetadata } from "../internal.ts";
+import { asRecord, getMarkdownBlockPayload, getMarkdownMetadata } from "../internal.ts";
 
 /**
  * Read display text from the given rich-text value.
@@ -43,7 +43,7 @@ function itemText(value: unknown): string
         return String(asRecord(item.equation).expression);
     }
 
-    const mention = asRecord(getNotionMarkdownMetadata(item).mention);
+    const mention = asRecord(getMarkdownMetadata(item).mention);
     return typeof mention.label === "string" ? String(mention.label) : "";
 }
 
@@ -64,9 +64,9 @@ function richTextText(value: unknown): string
  * @category Functions
  * @since 1.0.0
  */
-function editorId(block: NotionBlock): string
+function editorId(block: MarkdownBlock): string
 {
-    const meta = getNotionMarkdownMetadata(block);
+    const meta = getMarkdownMetadata(block);
     return typeof meta.editorId === "string" ? meta.editorId : block.id;
 }
 
@@ -75,7 +75,7 @@ function editorId(block: NotionBlock): string
  *
  * @since 1.0.0
  */
-export function getNotionEditorBlockId(block: NotionBlock): string
+export function getMarkdownEditorBlockId(block: MarkdownBlock): string
 {
     return editorId(block);
 }
@@ -86,11 +86,11 @@ export function getNotionEditorBlockId(block: NotionBlock): string
  * @category Functions
  * @since 1.0.0
  */
-function fields(block: NotionBlock): Array<NotionEditableField>
+function fields(block: MarkdownBlock): Array<MarkdownEditableField>
 {
-    const value = getNotionBlockPayload(block);
+    const value = getMarkdownBlockPayload(block);
 
-    const result: Array<NotionEditableField> = [ ];
+    const result: Array<MarkdownEditableField> = [ ];
 
     if (Array.isArray(value.rich_text))
     {
@@ -120,7 +120,7 @@ function fields(block: NotionBlock): Array<NotionEditableField>
  * @category Functions
  * @since 1.0.0
  */
-function walk(blocks: Array<NotionBlock>, result: Array<NotionEditableField>): void
+function walk(blocks: Array<MarkdownBlock>, result: Array<MarkdownEditableField>): void
 {
     for (const block of blocks)
     {
@@ -134,9 +134,9 @@ function walk(blocks: Array<NotionBlock>, result: Array<NotionEditableField>): v
  *
  * @since 1.0.0
  */
-export function getNotionEditableFields(document: NotionDocument): Array<NotionEditableField>
+export function getMarkdownEditableFields(document: MarkdownDocument): Array<MarkdownEditableField>
 {
-    const result: Array<NotionEditableField> = [ ];
+    const result: Array<MarkdownEditableField> = [ ];
     walk(document.blocks, result);
     return result;
 }
@@ -147,7 +147,7 @@ export function getNotionEditableFields(document: NotionDocument): Array<NotionE
  * @category Functions
  * @since 1.0.0
  */
-function point(field: NotionEditableField, offset: number): NotionSelectionPoint
+function point(field: MarkdownEditableField, offset: number): MarkdownSelectionPoint
 {
     return {
         blockId: field.blockId,
@@ -164,9 +164,9 @@ function point(field: NotionEditableField, offset: number): NotionSelectionPoint
  *
  * @since 1.0.0
  */
-export function notionSelectionPointAt(document: NotionDocument, position: number): NotionSelectionPoint
+export function markdownSelectionPointAt(document: MarkdownDocument, position: number): MarkdownSelectionPoint
 {
-    const fieldsInOrder = getNotionEditableFields(document);
+    const fieldsInOrder = getMarkdownEditableFields(document);
     if (fieldsInOrder.length === 0) {throw new Error("A document needs at least one editable field.");}
     let remaining = Math.max(0, position);
     for (const field of fieldsInOrder)
@@ -185,13 +185,13 @@ export function notionSelectionPointAt(document: NotionDocument, position: numbe
  *
  * @since 1.0.0
  */
-export function notionSelectionPositionOf(
-    document: NotionDocument,
-    selectionPoint: NotionSelectionPoint
+export function markdownSelectionPositionOf(
+    document: MarkdownDocument,
+    selectionPoint: MarkdownSelectionPoint
 ): number
 {
     let position = 0;
-    for (const field of getNotionEditableFields(document))
+    for (const field of getMarkdownEditableFields(document))
     {
         if (
             field.blockId === selectionPoint.blockId &&
@@ -215,13 +215,13 @@ export function notionSelectionPositionOf(
  *
  * @since 1.0.0
  */
-export function mapNotionSelectionPoint(
-    document: NotionDocument,
-    selectionPoint: NotionSelectionPoint
-): NotionSelectionPoint
+export function mapMarkdownSelectionPoint(
+    document: MarkdownDocument,
+    selectionPoint: MarkdownSelectionPoint
+): MarkdownSelectionPoint
 {
-    const fieldsInOrder = getNotionEditableFields(document);
-    const exact = fieldsInOrder.find((field: NotionEditableField) =>
+    const fieldsInOrder = getMarkdownEditableFields(document);
+    const exact = fieldsInOrder.find((field: MarkdownEditableField) =>
         field.blockId === selectionPoint.blockId &&
         field.field === selectionPoint.field &&
         field.index === selectionPoint.index

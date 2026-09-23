@@ -95,6 +95,6 @@ export interface NativeContentSizeEvent
  * @since 1.0.0
  */
 const NativeEditor: ComponentType<NativeEditorProps> =
-    requireNativeViewManager("NotionMarkdown");
+    requireNativeViewManager("Markdown");
 
 export { NativeEditor };

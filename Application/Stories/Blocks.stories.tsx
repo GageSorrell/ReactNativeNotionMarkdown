@@ -1,11 +1,11 @@
 /**
- * One story per Notion-enhanced Markdown block. Each story builds a small Markdown snippet from
+ * One story per Markdown-enhanced content block. Each story builds a small Markdown snippet from
  * its Storybook controls and feeds it straight to the renderer, so every control change is a
  * live demonstration of how that block renders. `table_row` and `column`/`column_list` have no
  * standalone story since they only render meaningfully inside a `table` or `column_list` parent
  * -- the Table and Columns stories exercise them instead.
  *
- * @module notion-markdown-storybook/Stories/Blocks.stories
+ * @module markdown-storybook/Stories/Blocks.stories
  *
  * @file      Blocks.stories.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
@@ -17,13 +17,18 @@
 
 import type { Decorator, Meta, StoryObj } from "@storybook/react-native";
 import { Text as StoryHeaderText, StyleSheet, View, type ViewStyle } from "react-native";
-import { ThemeOverrideProvider, ThemeToggleButton, useEffectiveColorScheme } from "./themeToggle";
+import {
+    KeyboardToggleButton,
+    ThemeOverrideProvider,
+    ThemeToggleButton,
+    useEffectiveColorScheme
+} from "./themeToggle";
 import { useCallback, useMemo } from "react";
-import type { NotionDocument } from "react-native-notion-markdown/document";
-import { NotionMarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
+import type { MarkdownDocument } from "react-native-notion-markdown/document";
+import { MarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
 import type { ReactNode } from "react";
-import { notionMarkdownInterFonts } from "react-native-notion-markdown/renderer/ui/inter-font";
-import { parseNotionMarkdown } from "react-native-notion-markdown/renderer";
+import { markdownInterFonts } from "react-native-notion-markdown/renderer/ui/inter-font";
+import { parseMarkdown } from "react-native-notion-markdown/renderer";
 import { resolveFixture } from "./fixtures";
 import { useFonts } from "expo-font";
 
@@ -106,7 +111,7 @@ function tagColorAttr(color: Color): string
 interface BlockCanvasProps extends ExampleLabelProps
 {
     readonly markdown: string;
-    readonly resolveSyncedBlock?: (url: string) => Promise<NotionDocument | null>;
+    readonly resolveSyncedBlock?: (url: string) => Promise<MarkdownDocument | null>;
 }
 
 interface ExampleLabelProps
@@ -115,7 +120,7 @@ interface ExampleLabelProps
 }
 
 /**
- * Small caption preceding each story's live example -- distinct from the big Notion-style page
+ * Small caption preceding each story's live example -- distinct from the big Markdown-style page
  * title `StoryHeaderFrame` renders above it. React Native Storybook has no Docs/MDX addon here,
  * so there's no built-in way to label multiple examples within one story; this is a plain shared
  * component instead, reusable once per example if a story ever grows to show more than one.
@@ -183,7 +188,7 @@ function BlockCanvas({ Label = "Example", markdown, resolveSyncedBlock }: BlockC
         <View style={ RootStyle }>
             <ExampleLabel Label={ Label } />
             <View style={ { height: "100%" } }>
-                <NotionMarkdownRenderer
+                <MarkdownRenderer
                     colorScheme={ dark ? "dark" : "light" }
                     markdown={ markdown }
                     resolveMediaUrl={ resolveFixture }
@@ -219,16 +224,16 @@ interface StoryHeaderFrameProps
 }
 
 /**
- * A "template page" shared by every story in this file: a fixed header styled like a Notion page
+ * A "template page" shared by every story in this file: a fixed header styled like a Markdown page
  * title, with the story's own render output filling the rest of the screen below it. Loads the
- * optional Inter Black face for that title via {@link notionMarkdownInterFonts} -- while it's
+ * optional Inter Black face for that title via {@link markdownInterFonts} -- while it's
  * loading (or if the optional peers aren't installed at all), the title still reads as bold via
  * `fontWeight`, just in the platform's system font instead of true Inter Black. The upper-right
  * `ThemeToggleButton`, opposite the title, overrides `useColorScheme` for every story canvas.
  */
 function StoryHeaderFrame({ children, name }: StoryHeaderFrameProps)
 {
-    const [ interLoaded ] = useFonts(notionMarkdownInterFonts);
+    const [ interLoaded ] = useFonts(markdownInterFonts);
     const dark = useEffectiveColorScheme() === "dark";
     const titleStyle = useMemo(
         () => [ headerStyles.headerText, interLoaded && headerStyles.headerTextInter ],
@@ -238,7 +243,10 @@ function StoryHeaderFrame({ children, name }: StoryHeaderFrameProps)
     return <View style={ headerStyles.page }>
         <View style={ headerStyles.header }>
             <StoryHeaderText style={ titleStyle }>{ name }</StoryHeaderText>
-            <ThemeToggleButton dark={ dark } />
+            <View style={ headerStyles.actions }>
+                <KeyboardToggleButton dark={ dark } />
+                <ThemeToggleButton dark={ dark } />
+            </View>
         </View>
         <View style={ headerStyles.body }>
             { children }
@@ -267,6 +275,11 @@ const headerStyles = StyleSheet.create({
         justifyContent: "space-between",
         paddingHorizontal: 24,
         paddingTop: 28
+    },
+    actions:
+    {
+        flexDirection: "row",
+        gap: 8
     },
     headerText:
     {
@@ -1085,7 +1098,7 @@ function SyncedBlockReferenceStory({ resolved, resolvedText, url }: SyncedBlockR
     const resolveSyncedBlock = useCallback(async () =>
     {
         if (!resolved) {return null;}
-        return parseNotionMarkdown(resolvedText).document;
+        return parseMarkdown(resolvedText).document;
     }, [ resolved, resolvedText ]);
 
     const markdown = `<synced_block_reference url="${ url }">\n</synced_block_reference>`;

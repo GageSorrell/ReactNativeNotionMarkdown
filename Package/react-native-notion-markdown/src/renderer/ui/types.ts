@@ -9,19 +9,19 @@
 
 import type { ComponentType, ReactNode } from "react";
 import type {
-    NotionBlock,
-    NotionDiagnostic,
-    NotionDocument,
-    NotionMarkdownBlockType
+    MarkdownBlock,
+    MarkdownDiagnostic,
+    MarkdownDocument,
+    MarkdownBlockType
 } from "../../document/types.ts";
 
 /**
- * Colors and typography settings used by the Notion renderer.
+ * Colors and typography settings used by the Markdown renderer.
  *
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionRendererTheme
+export interface MarkdownRendererTheme
 {
     readonly background: string;
     readonly surface: string;
@@ -66,7 +66,7 @@ export interface NotionRendererTheme
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionReferenceRequest
+export interface MarkdownReferenceRequest
 {
     readonly kind: string;
     readonly id?: string;
@@ -80,7 +80,7 @@ export interface NotionReferenceRequest
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionReferenceDisplay
+export interface MarkdownReferenceDisplay
 {
     readonly label?: string;
     readonly icon?: string;
@@ -93,9 +93,9 @@ export interface NotionReferenceDisplay
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionMediaRequest
+export interface MarkdownMediaRequest
 {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly kind: "image" | "audio" | "video" | "file" | "pdf";
     readonly url?: string;
 }
@@ -106,35 +106,35 @@ export interface NotionMediaRequest
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionBlockViewProps
+export interface MarkdownBlockViewProps
 {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly children: ReactNode;
-    readonly theme: NotionRendererTheme;
+    readonly theme: MarkdownRendererTheme;
 }
 
 /**
- * Optional custom components keyed by corresponding Notion block types.
+ * Optional custom components keyed by corresponding Markdown block types.
  *
  * @category Types
  * @since 1.0.0
  */
-export type NotionBlockComponents = Partial<Record<
-    NotionMarkdownBlockType,
-    ComponentType<NotionBlockViewProps>
+export type MarkdownBlockComponents = Partial<Record<
+    MarkdownBlockType,
+    ComponentType<MarkdownBlockViewProps>
 >>;
 
 /** Props passed to a custom checkbox rendered for a to-do block. */
-export interface NotionCheckboxProps
+export interface MarkdownCheckboxProps
 {
     readonly checked: boolean;
 }
 
 /** A checkbox-only component used by the renderer for to-do blocks. */
-export type NotionCheckboxComponent = ComponentType<NotionCheckboxProps>;
+export type MarkdownCheckboxComponent = ComponentType<MarkdownCheckboxProps>;
 
 /** Props for the fallback icon used when a page reference has no fetched page icon. */
-export interface NotionReferenceIconProps
+export interface MarkdownReferenceIconProps
 {
     readonly color: string;
     readonly size: number;
@@ -147,7 +147,7 @@ export interface NotionReferenceIconProps
  * @category Types
  * @since 1.0.0
  */
-export type NotionReferenceIconComponent = ComponentType<NotionReferenceIconProps>;
+export type MarkdownReferenceIconComponent = ComponentType<MarkdownReferenceIconProps>;
 
 export/**
        * The default hint shown inside an empty toggle child.
@@ -163,42 +163,42 @@ const defaultEmptyTogglePlaceholder = "Empty toggle.  Tap to edit.";
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionRendererOptions
+export interface MarkdownRendererOptions
 {
     readonly colorScheme?: "light" | "dark" | "system";
-    readonly theme?: Partial<NotionRendererTheme>;
+    readonly theme?: Partial<MarkdownRendererTheme>;
 
     /**
      * Hint shown when an expanded toggle has no content.
      */
     readonly emptyTogglePlaceholder?: string;
-    readonly components?: NotionBlockComponents;
-    readonly checkboxComponent?: NotionCheckboxComponent;
-    readonly pageReferenceFallbackIcon?: NotionReferenceIconComponent;
+    readonly components?: MarkdownBlockComponents;
+    readonly checkboxComponent?: MarkdownCheckboxComponent;
+    readonly pageReferenceFallbackIcon?: MarkdownReferenceIconComponent;
     /** Icon used when an arbitrary link has no downloadable favicon. */
-    readonly linkFallbackIcon?: NotionReferenceIconComponent;
-    readonly onDiagnostics?: (diagnostics: ReadonlyArray<NotionDiagnostic>) => void;
+    readonly linkFallbackIcon?: MarkdownReferenceIconComponent;
+    readonly onDiagnostics?: (diagnostics: ReadonlyArray<MarkdownDiagnostic>) => void;
     readonly onOpenUrl?: (url: string) => void;
-    readonly resolveReference?: (request: NotionReferenceRequest) => Promise<NotionReferenceDisplay | null>;
-    readonly resolveSyncedBlock?: (url: string) => Promise<NotionDocument | null>;
-    readonly resolveMediaUrl?: (request: NotionMediaRequest) => Promise<string | null>;
+    readonly resolveReference?: (request: MarkdownReferenceRequest) => Promise<MarkdownReferenceDisplay | null>;
+    readonly resolveSyncedBlock?: (url: string) => Promise<MarkdownDocument | null>;
+    readonly resolveMediaUrl?: (request: MarkdownMediaRequest) => Promise<string | null>;
     readonly testID?: string;
 }
 
 /**
- * Props accepted by the Notion Markdown renderer component.
+ * Props accepted by the Markdown renderer component.
  *
  * @category Types
  * @since 1.0.0
  */
-export type NotionMarkdownRendererProps =
-    NotionRendererOptions & (
+export type MarkdownRendererProps =
+    MarkdownRendererOptions & (
         | {
             readonly markdown: string;
             readonly document?: never
         }
         | {
-            readonly document: NotionDocument;
+            readonly document: MarkdownDocument;
             readonly markdown?: never
         }
     );

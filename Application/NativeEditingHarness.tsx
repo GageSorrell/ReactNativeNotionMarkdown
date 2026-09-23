@@ -1,5 +1,5 @@
 /**
- * @module notion-markdown-storybook/NativeEditingHarness
+ * @module markdown-storybook/NativeEditingHarness
  *
  * @file      NativeEditingHarness.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
@@ -14,10 +14,10 @@ import {
     type EditorCommand,
     type EditorEvent
 } from "react-native-notion-markdown";
-import { NotionEditor, type NotionEditorComponents } from "react-native-notion-markdown/editor/ui";
+import { MarkdownEditor, type MarkdownEditorComponents } from "react-native-notion-markdown/editor/ui";
 import { ScrollView, StyleSheet, Text, View, useColorScheme } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNotionMarkdownDevTools } from "@react-native-notion-markdown/devtools-plugin";
+import { useMarkdownDevTools } from "@react-native-notion-markdown/devtools-plugin";
 
 interface DiagnosticButtonProps
 {
@@ -34,7 +34,7 @@ function DiagnosticButton({ label, onPress }: DiagnosticButtonProps)
 }
 
 /** Optional button components accepted by the diagnostic harness host. */
-export type NativeEditingHarnessProps = { components?: NotionEditorComponents };
+export type NativeEditingHarnessProps = { components?: MarkdownEditorComponents };
 
 /** Acceptance harness around the package's configured editor UI. */
 export function NativeEditingHarness({ components }: NativeEditingHarnessProps = {})
@@ -47,7 +47,7 @@ export function NativeEditingHarness({ components }: NativeEditingHarnessProps =
     const dark = useColorScheme() === "dark";
     const foreground = dark ? "#eeeeee" : "#262626";
     const background = dark ? "#191919" : "#ffffff";
-    const devtools = useNotionMarkdownDevTools({
+    const devtools = useMarkdownDevTools({
         dark,
         dispatchCommand: (action: EditorCommand["action"]) => send(action),
         onReplaceDocument: (blocks?: Array<EditorBlock>) => resetDocument(blocks),
@@ -185,7 +185,7 @@ export function NativeEditingHarness({ components }: NativeEditingHarnessProps =
                 <DiagnosticButton label="Soft break"
                     onPress={ handleSoftBreak } />
             </ScrollView>
-            <NotionEditor
+            <MarkdownEditor
                 command={ command }
                 components={ components }
                 dark={ dark }

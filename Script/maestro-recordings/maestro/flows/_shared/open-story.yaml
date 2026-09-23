@@ -1,5 +1,5 @@
 # Shared sub-flow: force-stops the app (if running) and opens it fresh via the
-# `notionmarkdownstorybook://open?STORYBOOK_STORY_ID=<id>` deep link, which
+# `markdownstorybook://open?STORYBOOK_STORY_ID=<id>` deep link, which
 # `@storybook/react-native`'s `getStorybookUI` reads from the *initial* URL and uses to
 # override whatever story `AsyncStorage` last persisted (see the plan's "Deterministic
 # story navigation" section). Force-stopping first guarantees the link is the app's
@@ -10,10 +10,10 @@
 #   STORY_ID    - Storybook story id, e.g. "editor--default"
 #   ASSERT_TEXT - text/accessibility-label visible only once that story has rendered;
 #                 used to fail fast on a broken link instead of recording a stale screen
-appId: com.gagesorrell.notionmarkdown.storybook
+appId: com.gagesorrell.markdown.storybook
 ---
 - stopApp
-- openLink: "notionmarkdownstorybook://open?STORYBOOK_STORY_ID=${STORY_ID}"
+- openLink: "markdownstorybook://open?STORYBOOK_STORY_ID=${STORY_ID}"
 - extendedWaitUntil:
     visible: "${ASSERT_TEXT}"
     timeout: 15000

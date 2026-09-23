@@ -1,4 +1,4 @@
-appId: com.gagesorrell.notionmarkdown.storybook
+appId: com.gagesorrell.markdown.storybook
 ---
 # The checkbox is a plain View (not tappable in-canvas); toggling `checked` needs the
 # Controls addon (deferred). Shows the default unchecked state.

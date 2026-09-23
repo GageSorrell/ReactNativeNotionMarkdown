@@ -17,7 +17,7 @@ export type BlocksPanelProps = { snapshot: EditorSnapshot | undefined };
 
 /**
  * Renders the current EditorSnapshot's block list. This is the full "block tree" available before
- * milestone 2's Notion AST lands — the message shape (blocks: Array<...>) is designed to stay
+ * milestone 2's Markdown AST lands — the message shape (blocks: Array<...>) is designed to stay
  * the extension point once a real parser exists.
  */
 export function BlocksPanel({ snapshot }: BlocksPanelProps)

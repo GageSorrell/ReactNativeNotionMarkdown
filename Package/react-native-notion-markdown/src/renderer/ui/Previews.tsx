@@ -8,13 +8,13 @@
  */
 
 import { Image, Pressable, Text, View } from "react-native";
-import type { NotionBlock, NotionRichText } from "../../document/types.ts";
-import type { NotionMediaRequest, NotionRendererTheme } from "./types.ts";
+import type { MarkdownBlock, MarkdownRichText } from "../../document/types.ts";
+import type { MarkdownMediaRequest, MarkdownRendererTheme } from "./types.ts";
 import { type StatusChangeEventPayload, VideoView, useVideoPlayer } from "expo-video";
-import { asRecord, getNotionBlockPayload } from "../../internal.ts";
+import { asRecord, getMarkdownBlockPayload } from "../../internal.ts";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { NotionRichTextView } from "./RichText.tsx";
+import { MarkdownRichTextView } from "./RichText.tsx";
 import Pdf from "react-native-pdf";
 
 /**
@@ -23,7 +23,7 @@ import Pdf from "react-native-pdf";
  * @category Types
  * @since 1.0.0
  */
-export type MediaKind = NotionMediaRequest["kind"];
+export type MediaKind = MarkdownMediaRequest["kind"];
 
 /**
  * Props for rendering media belonging to a given block.
@@ -31,14 +31,14 @@ export type MediaKind = NotionMediaRequest["kind"];
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionMediaViewProps
+export interface MarkdownMediaViewProps
 {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly kind: MediaKind;
-    readonly theme: NotionRendererTheme;
+    readonly theme: MarkdownRendererTheme;
     readonly dark: boolean;
     readonly onOpenUrl?: (url: string) => void;
-    readonly resolveMediaUrl?: (request: NotionMediaRequest) => Promise<string | null>;
+    readonly resolveMediaUrl?: (request: MarkdownMediaRequest) => Promise<string | null>;
 }
 
 /**
@@ -47,12 +47,12 @@ export interface NotionMediaViewProps
  * @category Functions
  * @since 1.0.0
  */
-function sourceOf(block: NotionBlock): { url?: string; caption?: NotionRichText }
+function sourceOf(block: MarkdownBlock): { url?: string; caption?: MarkdownRichText }
 {
-    const data = getNotionBlockPayload(block);
+    const data = getMarkdownBlockPayload(block);
     const source = asRecord(data.file).url ?? asRecord(data.external).url ?? data.url;
     return {
-        caption: Array.isArray(data.caption) ? data.caption as NotionRichText : undefined,
+        caption: Array.isArray(data.caption) ? data.caption as MarkdownRichText : undefined,
         url: typeof source === "string" ? source : undefined
     } as const;
 }
@@ -65,7 +65,7 @@ function sourceOf(block: NotionBlock): { url?: string; caption?: NotionRichText 
  */
 function Message({ text, theme, retry }: {
     readonly text: string;
-    readonly theme: NotionRendererTheme;
+    readonly theme: MarkdownRendererTheme;
     readonly retry?: () => void
 })
 {
@@ -113,7 +113,7 @@ function Message({ text, theme, retry }: {
  */
 function AudioPreview({ url, theme, onUnavailable }: {
     readonly url: string;
-    readonly theme: NotionRendererTheme;
+    readonly theme: MarkdownRendererTheme;
     readonly onUnavailable: () => void;
 })
 {
@@ -195,14 +195,14 @@ function VideoPreview({ url, onUnavailable }: { readonly url: string; readonly o
 }
 
 /** On-demand native media adapter. Unmounting the child releases its playback/PDF resources. */
-export function NotionMediaView({
+export function MarkdownMediaView({
     block,
     kind,
     theme,
     dark,
     onOpenUrl,
     resolveMediaUrl
-}: NotionMediaViewProps)
+}: MarkdownMediaViewProps)
 {
     const source = sourceOf(block);
     const activeKey = `${block.id}:${kind}:${source.url ?? ""}`;
@@ -443,7 +443,7 @@ export function NotionMediaView({
             }
             {
                 source.caption && (
-                    <NotionRichTextView
+                    <MarkdownRichTextView
                         dark={ dark }
                         items={ source.caption }
                         onOpenUrl={ onOpenUrl }

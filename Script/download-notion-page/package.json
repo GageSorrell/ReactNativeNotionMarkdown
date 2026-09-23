@@ -1,0 +1,21 @@
+{
+  "name": "@react-native-notion-markdown/download-notion-page",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Download a Notion page as enhanced markdown into the monorepo's Local directory.",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@notionhq/client": "5.26.0",
+    "@effect/platform-node": "4.0.0-rc.115",
+    "effect": "4.0.0-rc.115"
+  },
+  "author": {
+    "email": "gage@sorrell.sh",
+    "name": "Gage Sorrell",
+    "url": "https://sorrell.sh"
+  },
+  "license": "MIT"
+}

@@ -26,7 +26,7 @@ import {
     View,
     useColorScheme
 } from "react-native";
-import type { NotionEditorLinkResult } from "./NotionEditor.tsx";
+import type { MarkdownEditorLinkResult } from "./MarkdownEditor.tsx";
 import { useMemo, useState } from "react";
 
 interface LinkBottomSheetProps
@@ -42,7 +42,7 @@ interface LinkBottomSheetProps
         readonly url: string;
     };
     readonly onDismiss: () => void;
-    readonly onSubmit: (result: NotionEditorLinkResult) => void;
+    readonly onSubmit: (result: MarkdownEditorLinkResult) => void;
 }
 
 /** Normalize a user-entered URL, accepting hostnames without a scheme. */

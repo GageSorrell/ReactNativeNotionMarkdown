@@ -1,4 +1,4 @@
-package expo.modules.notionmarkdown
+package expo.modules.markdown
 
 import android.content.ClipData
 import android.content.ClipDescription
@@ -64,10 +64,10 @@ import kotlin.math.sin
 private const val FRAGMENT_MIME = "application/vnd.react-native-notion-markdown.editor+json"
 private const val AUDIO_WAVEFORM_BAR_COUNT = 32
 
-/** Relative text size applied to each heading level's span, matching Notion's own descending scale. */
+/** Relative text size applied to each heading level's span, matching Markdown's own descending scale. */
 private val headingScale = mapOf(1 to 1.875f, 2 to 1.5f, 3 to 1.25f, 4 to 1.125f)
 
-/** Solid text colors -- the same nine named colors and RGB values as `NotionTextFieldView`'s
+/** Solid text colors -- the same nine named colors and RGB values as `MarkdownTextFieldView`'s
  *  inline `markColors`, kept in sync manually since this is a block-level, not inline, span. */
 private val editorTextColors: Map<String, Int> = mapOf(
   "gray" to Color.rgb(120, 119, 116),
@@ -103,13 +103,13 @@ private val editorValidBlockTypes = listOf(
 private val editorValidColors = editorTextColors.keys + editorBackgroundColors.keys
 
 /** Block types with mergeable text content -- eligible on either side of an atomic-block-skipping
- *  backspace merge (see [NotionEditorView.handleAtomicBlockBackspace]). */
+ *  backspace merge (see [MarkdownEditorView.handleAtomicBlockBackspace]). */
 private val editorMergeableBlockTypes = setOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4",
   "bulleted_list_item", "numbered_list_item", "to_do", "callout", "quote"
 )
 
-/** Block types with no navigable text of their own -- see [NotionEditorView.handleAtomicBlockBackspace]. */
+/** Block types with no navigable text of their own -- see [MarkdownEditorView.handleAtomicBlockBackspace]. */
 private val editorAtomicBlockTypes = setOf("divider", "image", "audio", "video", "file")
 
 /** A checked to-do's checkbox fill and its unchecked border, matching the renderer's theme accent. */
@@ -242,9 +242,9 @@ private class EditorInlineMarkSpan(val kind: String, val url: String? = null) : 
 /**
  * Adds a block's top/bottom padding and a one-eighth natural-height gap between wrapped lines.
  * [blockStart] and [blockEnd] are the block's own fixed offsets at span-creation time (recomputed
- * every [NotionEditorView.styleBlocks] pass), compared against the line range Android passes to
+ * every [MarkdownEditorView.styleBlocks] pass), compared against the line range Android passes to
  * [chooseHeight] to tell a block's boundary line from an interior wrapped line.
- * This also implements [UpdateLayout] because [NotionEditorView.styleBlocks] replaces these spans
+ * This also implements [UpdateLayout] because [MarkdownEditorView.styleBlocks] replaces these spans
  * after edits; DynamicLayout only recalculates existing lines when a changed span has that marker.
  */
 private class BlockPaddingSpan(
@@ -550,7 +550,7 @@ private fun blendAudioColors(from: Int, to: Int, amount: Float): Int {
   return Color.rgb(red, green, blue)
 }
 
-/** Draws a compact, atomic audio card. Playback is owned by [NotionEditorView] so every audio
+/** Draws a compact, atomic audio card. Playback is owned by [MarkdownEditorView] so every audio
  * block in one editor shares one player and tapping the card can distinguish play from select. */
 private class EditorAudioSpan(
   private val input: EditText,
@@ -1045,7 +1045,7 @@ private class ListMarkerSpan(
 }
 
 /**
- * A callout's rounded background box is drawn directly in [NotionEditorView.EditorInput.onDraw],
+ * A callout's rounded background box is drawn directly in [MarkdownEditorView.EditorInput.onDraw],
  * before the base [EditText] draws its text and cursor -- not as a [LineBackgroundSpan]. Android
  * runs a `LineBackgroundSpan` in the same pass that positions the text cursor, and an opaque
  * fill drawn there can end up layered over the cursor instead of under it, hiding it while the
@@ -1156,7 +1156,7 @@ private class CollapsedBlockSpan : ReplacementSpan() {
  * This deliberately proves Android's continuous handles/IME path before separate mounted
  * fields, atomic spans, and heterogeneous blocks are introduced in later milestones.
  */
-class NotionEditorView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
+class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
   private val onEdit by EventDispatcher()
   private val onPageReferencePress by EventDispatcher()
@@ -2203,7 +2203,7 @@ class NotionEditorView(context: Context, appContext: AppContext) : ExpoView(cont
       .replace(EMPTY_BLOCK_TEXT, "")
       .replace('\u2028', '\n')
     // A single item exposes interoperable text plus private structured data, not two pasted items.
-    clipboard().setPrimaryClip(ClipData(ClipDescription("Notion document fragment", arrayOf("text/plain", FRAGMENT_MIME)),
+    clipboard().setPrimaryClip(ClipData(ClipDescription("Markdown document fragment", arrayOf("text/plain", FRAGMENT_MIME)),
       ClipData.Item(plain, null, intent, null)))
     if (cut) replaceSelection("")
     scheduleEvent(if (cut) "structured-cut" else "structured-copy")

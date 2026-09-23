@@ -1,5 +1,5 @@
 /**
- * React bindings for the pure Notion editor store.
+ * React bindings for the pure Markdown editor store.
  *
  * @module react-native-notion-markdown/editor/state
  *
@@ -12,11 +12,11 @@
 import { createContext, createElement, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import {
-    createNotionEditor,
-    type CreateNotionEditorOptions,
-    type NotionEditorStore
+    createMarkdownEditor,
+    type CreateMarkdownEditorOptions,
+    type MarkdownEditorStore
 } from "../document/store.ts";
-import type { NotionDocumentInput, NotionEditorState } from "../document/types.ts";
+import type { MarkdownDocumentInput, MarkdownEditorState } from "../document/types.ts";
 
 /**
  * Props accepted by the editor state provider.
@@ -24,35 +24,35 @@ import type { NotionDocumentInput, NotionEditorState } from "../document/types.t
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionEditorProviderProps
+export interface MarkdownEditorProviderProps
 {
     readonly children: ReactNode;
-    readonly initial?: NotionDocumentInput;
-    readonly options?: CreateNotionEditorOptions;
-    readonly store?: NotionEditorStore;
+    readonly initial?: MarkdownDocumentInput;
+    readonly options?: CreateMarkdownEditorOptions;
+    readonly store?: MarkdownEditorStore;
 }
 
-const NotionEditorContext = createContext<NotionEditorStore | undefined>(undefined);
+const MarkdownEditorContext = createContext<MarkdownEditorStore | undefined>(undefined);
 
 /** Provide a shared document store to composable editor primitives. */
-export function NotionEditorProvider({ children, initial = "", options, store }: NotionEditorProviderProps)
+export function MarkdownEditorProvider({ children, initial = "", options, store }: MarkdownEditorProviderProps)
 {
-    const ownedStore = useMemo(() => store ?? createNotionEditor(initial, options), [ initial, options, store ]);
-    return createElement(NotionEditorContext.Provider, { value: ownedStore }, children);
+    const ownedStore = useMemo(() => store ?? createMarkdownEditor(initial, options), [ initial, options, store ]);
+    return createElement(MarkdownEditorContext.Provider, { value: ownedStore }, children);
 }
 
-/** Return the nearest Notion editor store. */
-export function useNotionEditor(): NotionEditorStore
+/** Return the nearest Markdown editor store. */
+export function useMarkdownEditor(): MarkdownEditorStore
 {
-    const store = useContext(NotionEditorContext);
-    if (store === undefined) throw new Error("useNotionEditor must be used inside NotionEditorProvider.");
+    const store = useContext(MarkdownEditorContext);
+    if (store === undefined) throw new Error("useMarkdownEditor must be used inside MarkdownEditorProvider.");
     return store;
 }
 
 /** Subscribe a component to immutable editor state snapshots. */
-export function useNotionEditorState(): NotionEditorState
+export function useMarkdownEditorState(): MarkdownEditorState
 {
-    const store = useNotionEditor();
+    const store = useMarkdownEditor();
     return useSyncExternalStore(
         (onStoreChange) => store.subscribe(() => onStoreChange()),
         () => store.getState(),

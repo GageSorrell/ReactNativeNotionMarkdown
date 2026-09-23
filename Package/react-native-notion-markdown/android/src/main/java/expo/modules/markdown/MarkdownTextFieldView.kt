@@ -1,4 +1,4 @@
-package expo.modules.notionmarkdown
+package expo.modules.markdown
 
 import android.content.ClipData
 import android.content.ClipDescription
@@ -50,23 +50,23 @@ private val markColors: Map<String, Int> = mapOf(
 
 /**
  * One editable rich-text field: a single block's `rich_text`, `caption`, or table `cell`,
- * never a whole document. This supersedes the milestone-one [NotionEditorView] shared buffer
+ * never a whole document. This supersedes the milestone-one [MarkdownEditorView] shared buffer
  * with the multi-field architecture described for milestone four: many of these mount
- * simultaneously (one per editable field currently on screen), and [NotionEditorCoordinator]
+ * simultaneously (one per editable field currently on screen), and [MarkdownEditorCoordinator]
  * tracks them by session for cross-field navigation and selection.
  *
  * Structural operations this field cannot resolve alone -- Enter, Backspace at the start,
  * Delete at the end, and vertical arrows at an edge line -- are reported as boundary events
  * instead of handled locally, so the real command layer decides list continuation, merges,
  * and cross-block navigation. Atomic inline elements (mentions, citations, custom emoji,
- * equations) occupy exactly one `NOTION_ATOM_PLACEHOLDER` character, so Android's ordinary
+ * equations) occupy exactly one `MARKDOWN_ATOM_PLACEHOLDER` character, so Android's ordinary
  * per-codepoint caret and delete behavior is already atomic for them.
  *
  * IME safety reuses the epoch-guarded [InputConnectionWrapper] pattern proven in
- * [NotionEditorView]: every connection method rejects once its captured epoch is stale, so an
+ * [MarkdownEditorView]: every connection method rejects once its captured epoch is stale, so an
  * in-flight composition from a replaced document can never leak back into the new one.
  */
-class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
+class MarkdownTextFieldView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
   private val onEdit by EventDispatcher()
   private val onBoundary by EventDispatcher()
@@ -129,7 +129,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     if (sessionId.isNotEmpty() && !registered) {
-      NotionEditorCoordinator.register(sessionId, this)
+      MarkdownEditorCoordinator.register(sessionId, this)
       registered = true
     }
     if (keyboardRequestPending) input.post(showKeyboardRunnable)
@@ -140,7 +140,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
     keyboardShowAttempts = 0
     input.removeCallbacks(showKeyboardRunnable)
     if (registered) {
-      NotionEditorCoordinator.unregister(sessionId, this)
+      MarkdownEditorCoordinator.unregister(sessionId, this)
       registered = false
     }
     super.onDetachedFromWindow()
@@ -221,11 +221,11 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
     fieldIndex = (value["index"] as? Number)?.toInt()
 
     if (nextSession != sessionId) {
-      if (registered) NotionEditorCoordinator.unregister(sessionId, this)
+      if (registered) MarkdownEditorCoordinator.unregister(sessionId, this)
       sessionId = nextSession
       registered = false
       if (isAttachedToWindow) {
-        NotionEditorCoordinator.register(sessionId, this)
+        MarkdownEditorCoordinator.register(sessionId, this)
         registered = true
       }
     }
@@ -290,7 +290,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
     editable.getSpans(0, editable.length, TypefaceSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ForegroundColorSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, InlineCodeSpan::class.java).forEach { editable.removeSpan(it) }
-    editable.getSpans(0, editable.length, NotionAtomSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, MarkdownAtomSpan::class.java).forEach { editable.removeSpan(it) }
   }
 
   private fun applyMarks(marks: List<*>) {
@@ -319,7 +319,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
           val label = mark["label"] as? String ?: ""
           @Suppress("UNCHECKED_CAST")
           val item = mark["item"] as? Map<String, Any?>
-          editable.setSpan(NotionAtomSpan(atomKind, label, item, dark), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(MarkdownAtomSpan(atomKind, label, item, dark), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
       }
     }
@@ -346,7 +346,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
       val name = markColors.entries.firstOrNull { it.value == span.foregroundColor }?.key
       result.add(mapOf("kind" to "color", "start" to editable.getSpanStart(span), "end" to editable.getSpanEnd(span), "color" to name))
     }
-    editable.getSpans(0, editable.length, NotionAtomSpan::class.java).forEach { span ->
+    editable.getSpans(0, editable.length, MarkdownAtomSpan::class.java).forEach { span ->
       result.add(
         mapOf(
           "kind" to "atom",
@@ -424,7 +424,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
     val plain = input.text.subSequence(start, end).toString()
     clipboard().setPrimaryClip(
       ClipData(
-        ClipDescription("Notion field fragment", arrayOf("text/plain", FIELD_FRAGMENT_MIME)),
+        ClipDescription("Markdown field fragment", arrayOf("text/plain", FIELD_FRAGMENT_MIME)),
         ClipData.Item(plain, null, intent, null)
       )
     )
@@ -467,7 +467,7 @@ class NotionTextFieldView(context: Context, appContext: AppContext) : ExpoView(c
               editable.setSpan(ForegroundColorSpan(it), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             "atom" -> editable.setSpan(
-              NotionAtomSpan(mark.optString("atomKind"), mark.optString("label"), jsonToMap(mark.optJSONObject("item")), dark),
+              MarkdownAtomSpan(mark.optString("atomKind"), mark.optString("label"), jsonToMap(mark.optJSONObject("item")), dark),
               markStart,
               markEnd,
               Spanned.SPAN_EXCLUSIVE_EXCLUSIVE

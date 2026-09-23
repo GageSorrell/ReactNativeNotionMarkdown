@@ -8,10 +8,10 @@ sidebar:
 After installing the package, give the renderer a markdown string or parsed document and place it in your screen.
 
 ```tsx
-import { NotionMarkdown } from "react-native-notion-markdown"
+import { MarkdownRenderer } from "react-native-notion-markdown/renderer/ui"
 
 export function NotesScreen() {
-  return <NotionMarkdown markdown="# Hello\n\nA document rendered in React Native." />
+  return <MarkdownRenderer markdown="# Hello\n\nA document rendered in React Native." />
 }
 ```
 

@@ -10,17 +10,18 @@
  */
 
 import type {
-    NotionDocument,
-    NotionDocumentInput,
-    NotionEditorListener,
-    NotionEditorState,
-    NotionSelection,
-    NotionTransaction,
-    NotionTransactionOrigin
+    MarkdownDocument,
+    MarkdownDocumentInput,
+    MarkdownEditorListener,
+    MarkdownEditorState,
+    MarkdownSelection,
+    MarkdownTransaction,
+    MarkdownTransactionOrigin,
+    SerializeMarkdownOptions
 } from "./types.ts";
-import { mapNotionSelectionPoint } from "./selection.ts";
-import { parseNotionMarkdown } from "./parser.ts";
-import { serializeNotionMarkdown } from "./serializer.ts";
+import { mapMarkdownSelectionPoint } from "./selection.ts";
+import { parseMarkdown } from "./parser.ts";
+import { serializeMarkdown } from "./serializer.ts";
 
 /**
  * Options for creating a document editor store.
@@ -28,7 +29,7 @@ import { serializeNotionMarkdown } from "./serializer.ts";
  * @category Interfaces
  * @since 1.0.0
  */
-export interface CreateNotionEditorOptions
+export interface CreateMarkdownEditorOptions
 {
     readonly historyLimit?: number;
 }
@@ -39,16 +40,19 @@ export interface CreateNotionEditorOptions
  * @category Interfaces
  * @since 1.0.0
  */
-export interface NotionEditorStore
+export interface MarkdownEditorStore
 {
-    getState(): NotionEditorState;
-    getDocument(): NotionDocument;
-    getMarkdown(): string;
-    getSelection(): NotionSelection | undefined;
-    subscribe(listener: NotionEditorListener): () => void;
-    replaceDocument(input: NotionDocumentInput, origin?: NotionTransactionOrigin): void;
-    transact(update: (document: NotionDocument) => NotionDocument, origin?: NotionTransactionOrigin): void;
-    setSelection(selection: NotionSelection | undefined): void;
+    getState(): MarkdownEditorState;
+    getDocument(): MarkdownDocument;
+    getMarkdown(options?: SerializeMarkdownOptions): string;
+    getSelection(): MarkdownSelection | undefined;
+    subscribe(listener: MarkdownEditorListener): () => void;
+    replaceDocument(input: MarkdownDocumentInput, origin?: MarkdownTransactionOrigin): void;
+    transact(
+        update: (document: MarkdownDocument) => MarkdownDocument,
+        origin?: MarkdownTransactionOrigin
+    ): void;
+    setSelection(selection: MarkdownSelection | undefined): void;
     undo(): boolean;
     redo(): boolean;
 }
@@ -59,7 +63,7 @@ export interface NotionEditorStore
  * @category Functions
  * @since 1.0.0
  */
-function cloneDocument(document: NotionDocument): NotionDocument
+function cloneDocument(document: MarkdownDocument): MarkdownDocument
 {
     return {
         blocks: document.blocks,
@@ -73,9 +77,9 @@ function cloneDocument(document: NotionDocument): NotionDocument
  * @category Functions
  * @since 1.0.0
  */
-function inputDocument(input: NotionDocumentInput): NotionDocument
+function inputDocument(input: MarkdownDocumentInput): MarkdownDocument
 {
-    return typeof input === "string" ? parseNotionMarkdown(input).document : input;
+    return typeof input === "string" ? parseMarkdown(input).document : input;
 }
 
 /**
@@ -83,32 +87,32 @@ function inputDocument(input: NotionDocumentInput): NotionDocument
  *
  * @since 1.0.0
  */
-export function createNotionEditor(
-    input: NotionDocumentInput = "",
-    options: CreateNotionEditorOptions = { }
-): NotionEditorStore
+export function createMarkdownEditor(
+    input: MarkdownDocumentInput = "",
+    options: CreateMarkdownEditorOptions = { }
+): MarkdownEditorStore
 {
     let document = cloneDocument(inputDocument(input));
-    let selection: NotionSelection | undefined;
+    let selection: MarkdownSelection | undefined;
     let revision = 0;
-    const undoStack: Array<NotionDocument> = [ ];
-    const redoStack: Array<NotionDocument> = [ ];
-    const listeners = new Set<NotionEditorListener>();
+    const undoStack: Array<MarkdownDocument> = [ ];
+    const redoStack: Array<MarkdownDocument> = [ ];
+    const listeners = new Set<MarkdownEditorListener>();
     const limit = Math.max(1, options.historyLimit ?? 100);
-    let lastHistoryOrigin: NotionTransactionOrigin | undefined;
-    const state = (): NotionEditorState => ({
+    let lastHistoryOrigin: MarkdownTransactionOrigin | undefined;
+    const state = (): MarkdownEditorState => ({
         document,
         revision,
         ...(selection === undefined ? { } : { selection }),
         canRedo: redoStack.length > 0,
         canUndo: undoStack.length > 0
     });
-    const notify = (transaction?: NotionTransaction): void =>
+    const notify = (transaction?: MarkdownTransaction): void =>
     {
         const current = state();
-        listeners.forEach((listener: NotionEditorListener) => listener(current, transaction));
+        listeners.forEach((listener: MarkdownEditorListener) => listener(current, transaction));
     };
-    const commit = (next: NotionDocument, origin: NotionTransactionOrigin, saveHistory: boolean): void =>
+    const commit = (next: MarkdownDocument, origin: MarkdownTransactionOrigin, saveHistory: boolean): void =>
     {
         if (next === document) {return;}
         const before = document;
@@ -134,8 +138,8 @@ export function createNotionEditor(
         {
             selection =
                 {
-                    anchor: mapNotionSelectionPoint(document, selection.anchor),
-                    focus: mapNotionSelectionPoint(document, selection.focus)
+                    anchor: mapMarkdownSelectionPoint(document, selection.anchor),
+                    focus: mapMarkdownSelectionPoint(document, selection.focus)
                 };
         }
 
@@ -148,7 +152,8 @@ export function createNotionEditor(
     };
     return {
         getDocument: () => document,
-        getMarkdown: () => serializeNotionMarkdown(document),
+        getMarkdown: (serializationOptions?: SerializeMarkdownOptions) =>
+            serializeMarkdown(document, serializationOptions),
         getSelection: () => selection,
         getState: state,
         redo: () =>
@@ -164,8 +169,8 @@ export function createNotionEditor(
             {
                 selection =
                     {
-                        anchor: mapNotionSelectionPoint(document, selection.anchor),
-                        focus: mapNotionSelectionPoint(document, selection.focus)
+                        anchor: mapMarkdownSelectionPoint(document, selection.anchor),
+                        focus: mapMarkdownSelectionPoint(document, selection.focus)
                     };
             }
 
@@ -179,10 +184,10 @@ export function createNotionEditor(
             return true;
         },
         replaceDocument: (
-            inputValue: NotionDocumentInput,
+            inputValue: MarkdownDocumentInput,
             origin: string | undefined = "system"
         ) => commit(inputDocument(inputValue), origin, true),
-        setSelection: (next: NotionSelection | undefined) =>
+        setSelection: (next: MarkdownSelection | undefined) =>
         {
             if (next === undefined)
             {
@@ -193,19 +198,19 @@ export function createNotionEditor(
 
             selection =
                 {
-                    anchor: mapNotionSelectionPoint(document, next.anchor),
-                    focus: mapNotionSelectionPoint(document, next.focus)
+                    anchor: mapMarkdownSelectionPoint(document, next.anchor),
+                    focus: mapMarkdownSelectionPoint(document, next.focus)
                 };
 
             notify();
         },
-        subscribe: (listener: NotionEditorListener) =>
+        subscribe: (listener: MarkdownEditorListener) =>
         {
             listeners.add(listener);
             return () => listeners.delete(listener);
         },
         transact: (
-            update: (Document: NotionDocument) => NotionDocument,
+            update: (Document: MarkdownDocument) => MarkdownDocument,
             origin: string | undefined = "user"
         ) => commit(update(document), origin, true),
         undo: () =>
@@ -220,8 +225,8 @@ export function createNotionEditor(
             if (selection !== undefined)
             {
                 selection = {
-                    anchor: mapNotionSelectionPoint(document, selection.anchor),
-                    focus: mapNotionSelectionPoint(document, selection.focus)
+                    anchor: mapMarkdownSelectionPoint(document, selection.anchor),
+                    focus: mapMarkdownSelectionPoint(document, selection.focus)
                 };
             }
 

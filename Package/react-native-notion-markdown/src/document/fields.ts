@@ -1,9 +1,9 @@
 /**
  * Transport shapes and pure conversions between the document's rich text and the flat
  * (text + marks) representation a native editable field understands. Native fields never
- * interpret Notion SDK shapes directly -- they only edit text and track mark ranges, which
+ * interpret Markdown SDK shapes directly -- they only edit text and track mark ranges, which
  * Android's own Spannable already reflows as text changes. These functions are the boundary
- * where that flat shape is translated to and from real `NotionRichText`.
+ * where that flat shape is translated to and from real `MarkdownRichText`.
  *
  * Also home to the split/merge/toggle operations the milestone-four command layer needs on
  * this same (text, marks) representation -- splitting a field for Enter, merging two for
@@ -19,32 +19,32 @@
  */
 
 import {
-    NOTION_MARKDOWN_METADATA,
-    type NotionBlock,
-    type NotionMarkdownColor,
-    type NotionMarkdownMetadata,
-    type NotionRichText,
-    type NotionRichTextItem,
-    type NotionSelection,
-    type NotionSelectionPoint
+    MARKDOWN_MARKDOWN_METADATA,
+    type MarkdownBlock,
+    type MarkdownColor,
+    type MarkdownMetadata,
+    type MarkdownRichText,
+    type MarkdownRichTextItem,
+    type MarkdownSelection,
+    type MarkdownSelectionPoint
 } from "./types.ts";
 import { asRecord } from "../internal.ts";
 
 /* eslint-disable @typescript-eslint/naming-convention */
 
 export/** One UTF-16 code unit stands in for an entire atomic inline element in field text. */
-const NOTION_ATOM_PLACEHOLDER = "￼";
+const MARKDOWN_ATOM_PLACEHOLDER = "￼";
 
 /* eslint-enable @typescript-eslint/naming-convention */
 
 /** A kind of editable text field within a block. */
-export type NotionFieldKind =
+export type MarkdownFieldKind =
     | "rich_text"
     | "caption"
     | "cell";
 
 /** A non-atomic inline formatting range within a field's flattened text. */
-export interface NotionInlineRangeMark
+export interface MarkdownInlineRangeMark
 {
     readonly kind:
         | "bold"
@@ -56,12 +56,12 @@ export interface NotionInlineRangeMark
         | "link";
     readonly start: number;
     readonly end: number;
-    readonly color?: NotionMarkdownColor;
+    readonly color?: MarkdownColor;
     readonly url?: string;
 }
 
 /** One atomic inline element (mention, citation, custom emoji, or equation). */
-export interface NotionInlineAtomMark
+export interface MarkdownInlineAtomMark
 {
     readonly kind: "atom";
     readonly start: number;
@@ -72,38 +72,38 @@ export interface NotionInlineAtomMark
         | "citation"
         | "emoji";
     readonly label: string;
-    readonly item: NotionRichTextItem;
+    readonly item: MarkdownRichTextItem;
 }
 
 /** A formatting or atomic range over a field's flattened text. */
-export type NotionInlineMark =
-    | NotionInlineRangeMark
-    | NotionInlineAtomMark;
+export type MarkdownInlineMark =
+    | MarkdownInlineRangeMark
+    | MarkdownInlineAtomMark;
 
 /** The native description of one editable field, supplied by the host document. */
-export interface NotionFieldDescriptor
+export interface MarkdownFieldDescriptor
 {
     readonly sessionId: string;
     readonly order: number;
     readonly blockId: string;
-    readonly field: NotionFieldKind;
+    readonly field: MarkdownFieldKind;
     readonly index?: number;
     readonly text: string;
-    readonly marks: ReadonlyArray<NotionInlineMark>;
+    readonly marks: ReadonlyArray<MarkdownInlineMark>;
     readonly epoch: number;
     readonly revision: number;
     readonly placeholder?: string;
 }
 
 /** An explicit start/end range within one field. */
-export interface NotionFieldSelection
+export interface MarkdownFieldSelection
 {
     readonly start: number;
     readonly end: number;
 }
 
 /** Actions understood by a native editable field. */
-export type NotionFieldAction =
+export type MarkdownFieldAction =
     | "focus"
     | "dismiss"
     | "selectAll"
@@ -113,22 +113,22 @@ export type NotionFieldAction =
     | "paste";
 
 /** A uniquely identified command sent to one native field. */
-export interface NotionFieldCommand
+export interface MarkdownFieldCommand
 {
     readonly id: number;
     readonly epoch: number;
-    readonly action: NotionFieldAction;
-    readonly selection?: NotionFieldSelection;
+    readonly action: MarkdownFieldAction;
+    readonly selection?: MarkdownFieldSelection;
 }
 
 /** A revisioned edit reported by a native field. */
-export interface NotionFieldEditEvent
+export interface MarkdownFieldEditEvent
 {
     readonly blockId: string;
-    readonly field: NotionFieldKind;
+    readonly field: MarkdownFieldKind;
     readonly index?: number;
     readonly text: string;
-    readonly marks: ReadonlyArray<NotionInlineMark>;
+    readonly marks: ReadonlyArray<MarkdownInlineMark>;
     readonly selectionStart: number;
     readonly selectionEnd: number;
     readonly composingStart: number;
@@ -139,7 +139,7 @@ export interface NotionFieldEditEvent
 }
 
 /** A structural signal a field cannot resolve locally; the command layer decides the outcome. */
-export type NotionFieldBoundaryKind =
+export type MarkdownFieldBoundaryKind =
     | "enter"
     | "backspace-at-start"
     | "delete-at-end"
@@ -147,26 +147,26 @@ export type NotionFieldBoundaryKind =
     | "arrow-down-at-bottom";
 
 /** A boundary event reported by a native field. */
-export interface NotionFieldBoundaryEvent extends NotionSelectionPoint
+export interface MarkdownFieldBoundaryEvent extends MarkdownSelectionPoint
 {
-    readonly kind: NotionFieldBoundaryKind;
+    readonly kind: MarkdownFieldBoundaryKind;
     readonly hasSelection: boolean;
     readonly epoch: number;
 }
 
 /** A focus/blur signal reported by a native field. */
-export interface NotionFieldFocusEvent
+export interface MarkdownFieldFocusEvent
 {
     readonly blockId: string;
-    readonly field: NotionFieldKind;
+    readonly field: MarkdownFieldKind;
     readonly index?: number;
 }
 
-/** A cross-field selection reported by the selection overlay. Structurally a `NotionSelection`. */
-export type NotionCrossFieldSelectionEvent = NotionSelection;
+/** A cross-field selection reported by the selection overlay. Structurally a `MarkdownSelection`. */
+export type MarkdownCrossFieldSelectionEvent = MarkdownSelection;
 
 /** A request from the selection overlay to scroll the host's list while dragging a handle. */
-export interface NotionAutoScrollEvent
+export interface MarkdownAutoScrollEvent
 {
     readonly direction: "up" | "down";
     readonly proximity: number;
@@ -178,10 +178,10 @@ export interface NotionAutoScrollEvent
  * @category Functions
  * @since 1.0.0
  */
-function atomKindOf(item: NotionRichTextItem): NotionInlineAtomMark[ "atomKind" ] | undefined
+function atomKindOf(item: MarkdownRichTextItem): MarkdownInlineAtomMark[ "atomKind" ] | undefined
 {
     const asObject = asRecord(item);
-    const meta = asObject[ NOTION_MARKDOWN_METADATA ] as NotionMarkdownMetadata | undefined;
+    const meta = asObject[ MARKDOWN_MARKDOWN_METADATA ] as MarkdownMetadata | undefined;
 
     if (asObject.type === "mention")
     {
@@ -212,10 +212,10 @@ function atomKindOf(item: NotionRichTextItem): NotionInlineAtomMark[ "atomKind" 
  * @category Functions
  * @since 1.0.0
  */
-function atomLabel(item: NotionRichTextItem, atomKind: NotionInlineAtomMark[ "atomKind" ]): string
+function atomLabel(item: MarkdownRichTextItem, atomKind: MarkdownInlineAtomMark[ "atomKind" ]): string
 {
     const asObject = asRecord(item);
-    const meta = asObject[ NOTION_MARKDOWN_METADATA ] as NotionMarkdownMetadata | undefined;
+    const meta = asObject[ MARKDOWN_MARKDOWN_METADATA ] as MarkdownMetadata | undefined;
 
     if (atomKind === "mention")
     {
@@ -242,7 +242,7 @@ function atomLabel(item: NotionRichTextItem, atomKind: NotionInlineAtomMark[ "at
  * @category Functions
  * @since 1.0.0
  */
-function AsPlainText(item: NotionRichTextItem): string
+function AsPlainText(item: MarkdownRichTextItem): string
 {
     const asObject = asRecord(item);
 
@@ -262,7 +262,7 @@ function AsPlainText(item: NotionRichTextItem): string
  * @category Functions
  * @since 1.0.0
  */
-function AsLink(item: NotionRichTextItem): string | undefined
+function AsLink(item: MarkdownRichTextItem): string | undefined
 {
     const link = asRecord(asRecord(item).text).link;
     const url = asRecord(link).url;
@@ -286,19 +286,19 @@ const annotationKinds = Object.freeze([
 export interface FieldMarks
 {
     readonly text: string;
-    readonly marks: Array<NotionInlineMark>;
+    readonly marks: Array<MarkdownInlineMark>;
 }
 
 /**
  * Flatten a block's rich text into plain text plus formatting/atom marks for a native field.
- * Each atomic element occupies exactly one `NOTION_ATOM_PLACEHOLDER` character.
+ * Each atomic element occupies exactly one `MARKDOWN_ATOM_PLACEHOLDER` character.
  *
  * @since 1.0.0
  */
-export function richTextToFieldMarks(richText: NotionRichText): FieldMarks
+export function richTextToFieldMarks(richText: MarkdownRichText): FieldMarks
 {
     let text = "";
-    const marks: Array<NotionInlineMark> = [ ];
+    const marks: Array<MarkdownInlineMark> = [ ];
 
     for (const item of richText)
     {
@@ -307,7 +307,7 @@ export function richTextToFieldMarks(richText: NotionRichText): FieldMarks
         if (atomKind !== undefined)
         {
             const start = text.length;
-            text += NOTION_ATOM_PLACEHOLDER;
+            text += MARKDOWN_ATOM_PLACEHOLDER;
             const label = atomLabel(item, atomKind);
             marks.push({ atomKind, end: start + 1, item, kind: "atom", label, start });
             continue;
@@ -336,7 +336,7 @@ export function richTextToFieldMarks(richText: NotionRichText): FieldMarks
         if (typeof annotations?.color === "string" && annotations.color !== "default")
         {
             marks.push({
-                color: annotations.color as NotionMarkdownColor,
+                color: annotations.color as MarkdownColor,
                 end,
                 kind: "color",
                 start
@@ -366,14 +366,14 @@ export function richTextToFieldMarks(richText: NotionRichText): FieldMarks
  *
  * @since 1.0.0
  */
-export function fieldMarksToRichText(text: string, marks: ReadonlyArray<NotionInlineMark>): NotionRichText
+export function fieldMarksToRichText(text: string, marks: ReadonlyArray<MarkdownInlineMark>): MarkdownRichText
 {
-    const result: NotionRichText = [ ];
+    const result: MarkdownRichText = [ ];
     let cursor = 0;
 
     while (cursor < text.length)
     {
-        const atom = marks.find((mark: NotionInlineMark): mark is NotionInlineAtomMark =>
+        const atom = marks.find((mark: MarkdownInlineMark): mark is MarkdownInlineAtomMark =>
             mark.kind === "atom" && mark.start === cursor);
 
         if (atom !== undefined)
@@ -384,11 +384,11 @@ export function fieldMarksToRichText(text: string, marks: ReadonlyArray<NotionIn
         }
 
         const nextAtomStart = marks
-            .filter((mark: NotionInlineMark): mark is NotionInlineAtomMark =>
+            .filter((mark: MarkdownInlineMark): mark is MarkdownInlineAtomMark =>
                 mark.kind === "atom" && mark.start > cursor)
-            .reduce((min: number, mark: NotionInlineAtomMark) => Math.min(min, mark.start), text.length);
+            .reduce((min: number, mark: MarkdownInlineAtomMark) => Math.min(min, mark.start), text.length);
 
-        const runMarks = marks.filter((mark: NotionInlineMark): mark is NotionInlineRangeMark =>
+        const runMarks = marks.filter((mark: MarkdownInlineMark): mark is MarkdownInlineRangeMark =>
             mark.kind !== "atom" && mark.start < nextAtomStart && mark.end > cursor);
 
         const boundaries = new Set<number>([ cursor, nextAtomStart ]);
@@ -412,10 +412,10 @@ export function fieldMarksToRichText(text: string, marks: ReadonlyArray<NotionIn
             const segmentEnd = points[ index + 1 ]!;
             if (segmentStart === segmentEnd) {continue;}
 
-            const active = runMarks.filter((mark: NotionInlineRangeMark) =>
+            const active = runMarks.filter((mark: MarkdownInlineRangeMark) =>
                 mark.start <= segmentStart && mark.end >= segmentEnd);
             const annotations: Record<string, boolean> = { };
-            let color: NotionMarkdownColor | undefined;
+            let color: MarkdownColor | undefined;
             let url: string | undefined;
 
             for (const mark of active)
@@ -448,7 +448,7 @@ export function fieldMarksToRichText(text: string, marks: ReadonlyArray<NotionIn
                         }
                     }
                     : { })
-            } as NotionRichTextItem);
+            } as MarkdownRichTextItem);
         }
 
         cursor = nextAtomStart;
@@ -463,13 +463,13 @@ export function fieldMarksToRichText(text: string, marks: ReadonlyArray<NotionIn
  * @category Functions
  * @since 1.0.0
  */
-function ShiftMark(mark: NotionInlineMark, delta: number): NotionInlineMark
+function ShiftMark(mark: MarkdownInlineMark, delta: number): MarkdownInlineMark
 {
     return {
         ...mark,
         end: mark.end + delta,
         start: mark.start + delta
-    } as NotionInlineMark;
+    } as MarkdownInlineMark;
 }
 
 /**
@@ -481,13 +481,13 @@ function ShiftMark(mark: NotionInlineMark, delta: number): NotionInlineMark
  */
 export function splitFieldMarks(
     text: string,
-    marks: ReadonlyArray<NotionInlineMark>,
+    marks: ReadonlyArray<MarkdownInlineMark>,
     offset: number
 ): [ FieldMarks, FieldMarks ]
 {
     const at = Math.max(0, Math.min(text.length, offset));
-    const before: Array<NotionInlineMark> = [ ];
-    const after: Array<NotionInlineMark> = [ ];
+    const before: Array<MarkdownInlineMark> = [ ];
+    const after: Array<MarkdownInlineMark> = [ ];
 
     for (const mark of marks)
     {
@@ -501,8 +501,8 @@ export function splitFieldMarks(
         }
         else
         {
-            before.push({ ...mark, end: at } as NotionInlineMark);
-            after.push(ShiftMark({ ...mark, start: at } as NotionInlineMark, -at));
+            before.push({ ...mark, end: at } as MarkdownInlineMark);
+            after.push(ShiftMark({ ...mark, start: at } as MarkdownInlineMark, -at));
         }
     }
 
@@ -522,13 +522,13 @@ export function mergeFieldMarks(first: FieldMarks, second: FieldMarks): FieldMar
 {
     const offset = first.text.length;
     return {
-        marks: [ ...first.marks, ...second.marks.map((mark: NotionInlineMark) => ShiftMark(mark, offset)) ],
+        marks: [ ...first.marks, ...second.marks.map((mark: MarkdownInlineMark) => ShiftMark(mark, offset)) ],
         text: first.text + second.text
     };
 }
 
 /** Boolean formatting marks that toggle on/off over a range, as opposed to carrying a value. */
-export type NotionFieldRangeMarkKind =
+export type MarkdownFieldRangeMarkKind =
     | "bold"
     | "italic"
     | "underline"
@@ -627,18 +627,18 @@ function SubtractRange(intervals: ReadonlyArray<RangeInterval>, range: RangeInte
  * @since 1.0.0
  */
 export function toggleFieldRangeMark(
-    marks: ReadonlyArray<NotionInlineMark>,
-    kind: NotionFieldRangeMarkKind,
+    marks: ReadonlyArray<MarkdownInlineMark>,
+    kind: MarkdownFieldRangeMarkKind,
     start: number,
     end: number
-): Array<NotionInlineMark>
+): Array<MarkdownInlineMark>
 {
     if (start >= end) {return [ ...marks ];}
 
-    const others = marks.filter((mark: NotionInlineMark) => mark.kind !== kind);
+    const others = marks.filter((mark: MarkdownInlineMark) => mark.kind !== kind);
     const existing = marks
-        .filter((mark: NotionInlineMark): mark is NotionInlineRangeMark => mark.kind === kind)
-        .map((mark: NotionInlineRangeMark): RangeInterval => [ mark.start, mark.end ]);
+        .filter((mark: MarkdownInlineMark): mark is MarkdownInlineRangeMark => mark.kind === kind)
+        .map((mark: MarkdownInlineRangeMark): RangeInterval => [ mark.start, mark.end ]);
 
     const nextIntervals = CoversRange(existing, [ start, end ])
         ? SubtractRange(existing, [ start, end ])
@@ -646,7 +646,7 @@ export function toggleFieldRangeMark(
 
     return [
         ...others,
-        ...nextIntervals.map((interval: RangeInterval): NotionInlineMark =>
+        ...nextIntervals.map((interval: RangeInterval): MarkdownInlineMark =>
             ({ end: interval[ 1 ], kind, start: interval[ 0 ] }))
     ];
 }
@@ -658,49 +658,49 @@ export function toggleFieldRangeMark(
  * @since 1.0.0
  */
 export function setFieldValueMark(
-    marks: ReadonlyArray<NotionInlineMark>,
+    marks: ReadonlyArray<MarkdownInlineMark>,
     kind: "color" | "link",
     start: number,
     end: number,
     value: string | undefined
-): Array<NotionInlineMark>
+): Array<MarkdownInlineMark>
 {
     if (start >= end) {return [ ...marks ];}
 
-    const clipped = marks.flatMap((mark: NotionInlineMark): Array<NotionInlineMark> =>
+    const clipped = marks.flatMap((mark: MarkdownInlineMark): Array<MarkdownInlineMark> =>
     {
         if (mark.kind !== kind) {return [ mark ];}
 
         return SubtractRange([ [ mark.start, mark.end ] ], [ start, end ]).map(
-            (piece: RangeInterval): NotionInlineMark =>
-                ({ ...mark, end: piece[ 1 ], start: piece[ 0 ] }) as NotionInlineMark
+            (piece: RangeInterval): MarkdownInlineMark =>
+                ({ ...mark, end: piece[ 1 ], start: piece[ 0 ] }) as MarkdownInlineMark
         );
     });
 
     if (value === undefined) {return clipped;}
 
-    const applied: NotionInlineMark = kind === "color"
-        ? { color: value as NotionMarkdownColor, end, kind: "color", start }
+    const applied: MarkdownInlineMark = kind === "color"
+        ? { color: value as MarkdownColor, end, kind: "color", start }
         : { end, kind: "link", start, url: value };
 
     return [ ...clipped, applied ];
 }
 
 /** A structured clipboard fragment carrying one field's rich text selection. */
-export interface NotionFieldClipboardFragment
+export interface MarkdownFieldClipboardFragment
 {
     readonly version: 1;
     readonly kind: "field";
     readonly text: string;
-    readonly marks: ReadonlyArray<NotionInlineMark>;
+    readonly marks: ReadonlyArray<MarkdownInlineMark>;
 }
 
 /** A structured clipboard fragment carrying whole blocks, for cross-field selections. */
-export interface NotionBlockClipboardFragment
+export interface MarkdownBlockClipboardFragment
 {
     readonly version: 1;
     readonly kind: "blocks";
-    readonly blocks: ReadonlyArray<NotionBlock>;
+    readonly blocks: ReadonlyArray<MarkdownBlock>;
 }
 
 /**
@@ -708,10 +708,10 @@ export interface NotionBlockClipboardFragment
  *
  * @since 1.0.0
  */
-export function encodeNotionFieldClipboard(richText: NotionRichText): string
+export function encodeMarkdownFieldClipboard(richText: MarkdownRichText): string
 {
     const { marks, text } = richTextToFieldMarks(richText);
-    const fragment: NotionFieldClipboardFragment = { kind: "field", marks, text, version: 1 };
+    const fragment: MarkdownFieldClipboardFragment = { kind: "field", marks, text, version: 1 };
     return JSON.stringify(fragment);
 }
 
@@ -720,13 +720,13 @@ export function encodeNotionFieldClipboard(richText: NotionRichText): string
  *
  * @since 1.0.0
  */
-export function decodeNotionFieldClipboard(json: string): NotionRichText | undefined
+export function decodeMarkdownFieldClipboard(json: string): MarkdownRichText | undefined
 {
     if (json.length > 1_000_000) {return undefined;}
 
     try
     {
-        const parsed = JSON.parse(json) as Partial<NotionFieldClipboardFragment>;
+        const parsed = JSON.parse(json) as Partial<MarkdownFieldClipboardFragment>;
         const isValid =
             parsed.version === 1 &&
             parsed.kind === "field" &&
@@ -738,7 +738,7 @@ export function decodeNotionFieldClipboard(json: string): NotionRichText | undef
             return undefined;
         }
 
-        return fieldMarksToRichText(parsed.text, parsed.marks as ReadonlyArray<NotionInlineMark>);
+        return fieldMarksToRichText(parsed.text, parsed.marks as ReadonlyArray<MarkdownInlineMark>);
     }
     catch
     {
@@ -751,9 +751,9 @@ export function decodeNotionFieldClipboard(json: string): NotionRichText | undef
  *
  * @since 1.0.0
  */
-export function encodeNotionBlockClipboard(blocks: ReadonlyArray<NotionBlock>): string
+export function encodeMarkdownBlockClipboard(blocks: ReadonlyArray<MarkdownBlock>): string
 {
-    const fragment: NotionBlockClipboardFragment = { blocks, kind: "blocks", version: 1 };
+    const fragment: MarkdownBlockClipboardFragment = { blocks, kind: "blocks", version: 1 };
     return JSON.stringify(fragment);
 }
 
@@ -762,13 +762,13 @@ export function encodeNotionBlockClipboard(blocks: ReadonlyArray<NotionBlock>): 
  *
  * @since 1.0.0
  */
-export function decodeNotionBlockClipboard(json: string): Array<NotionBlock> | undefined
+export function decodeMarkdownBlockClipboard(json: string): Array<MarkdownBlock> | undefined
 {
     if (json.length > 1_000_000) {return undefined;}
 
     try
     {
-        const parsed = JSON.parse(json) as Partial<NotionBlockClipboardFragment>;
+        const parsed = JSON.parse(json) as Partial<MarkdownBlockClipboardFragment>;
         const isValid =
             parsed.version === 1 &&
             parsed.kind === "blocks" &&
@@ -780,7 +780,7 @@ export function decodeNotionBlockClipboard(json: string): Array<NotionBlock> | u
             return undefined;
         }
 
-        return parsed.blocks as Array<NotionBlock>;
+        return parsed.blocks as Array<MarkdownBlock>;
     }
     catch
     {

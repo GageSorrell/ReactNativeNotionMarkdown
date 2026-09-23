@@ -1,22 +1,22 @@
 /**
- * @module react-native-notion-markdown/renderer/ui/NotionMarkdownRenderer
+ * @module react-native-notion-markdown/renderer/ui/MarkdownRenderer
  *
- * @file      NotionMarkdownRenderer.tsx
+ * @file      MarkdownRenderer.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
  */
 
 import type {
-    NotionBlock,
-    NotionDocument,
-    NotionRichText,
-    NotionRichTextItem
+    MarkdownBlock,
+    MarkdownDocument,
+    MarkdownRichText,
+    MarkdownRichTextItem
 } from "../../document/types.ts";
 import type {
-    NotionMarkdownRendererProps,
-    NotionReferenceDisplay,
-    NotionRendererTheme
+    MarkdownRendererProps,
+    MarkdownReferenceDisplay,
+    MarkdownRendererTheme
 } from "./types.ts";
 import {
     Pressable,
@@ -27,18 +27,18 @@ import {
     useColorScheme,
     useWindowDimensions
 } from "react-native";
-import { asRecord, getNotionBlockPayload, getNotionMarkdownMetadata } from "../../internal.ts";
+import { asRecord, getMarkdownBlockPayload, getMarkdownMetadata } from "../../internal.ts";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { darkRendererTheme, lightRendererTheme, notionColor } from "./theme.ts";
+import { darkRendererTheme, lightRendererTheme, markdownColor } from "./theme.ts";
 import { FaviconIcon } from "./FaviconIcon.tsx";
-import { NotionMathView } from "./MathView.tsx";
-import { NotionMediaView } from "./Previews.tsx";
-import { NotionMermaidView } from "./MermaidView.tsx";
-import { NotionRichTextView } from "./RichText.tsx";
+import { MarkdownMathView } from "./MathView.tsx";
+import { MarkdownMediaView } from "./Previews.tsx";
+import { MarkdownMermaidView } from "./MermaidView.tsx";
+import { MarkdownRichTextView } from "./RichText.tsx";
 import type { ReactNode } from "react";
 import { defaultEmptyTogglePlaceholder } from "./types.ts";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
-import { parseNotionMarkdown } from "../../document/parser.ts";
+import { parseMarkdown } from "../../document/parser.ts";
 
 /**
  * Read rich text from the given unknown block payload.
@@ -46,12 +46,12 @@ import { parseNotionMarkdown } from "../../document/parser.ts";
  * @category Functions
  * @since 1.0.0
  */
-function rich(value: unknown): NotionRichText
+function rich(value: unknown): MarkdownRichText
 {
-    return Array.isArray(value) ? value as NotionRichText : [ ];
+    return Array.isArray(value) ? value as MarkdownRichText : [ ];
 }
 
-const emptyDocument: NotionDocument =
+const emptyDocument: MarkdownDocument =
     {
         blocks: [ ],
         version: 1
@@ -65,7 +65,7 @@ const emptyDocument: NotionDocument =
  */
 function plain(value: unknown): string
 {
-    return rich(value).map((item: NotionRichTextItem) =>
+    return rich(value).map((item: MarkdownRichTextItem) =>
     {
         const itemValue = asRecord(item);
         return String(asRecord(itemValue.text).content ?? itemValue.plain_text ?? "");
@@ -78,16 +78,16 @@ function plain(value: unknown): string
  * @category Functions
  * @since 1.0.0
  */
-function blockColor(block: NotionBlock): string | undefined
+function blockColor(block: MarkdownBlock): string | undefined
 {
-    const payloadColor = getNotionBlockPayload(block).color;
-    return getNotionMarkdownMetadata(block).color ??
+    const payloadColor = getMarkdownBlockPayload(block).color;
+    return getMarkdownMetadata(block).color ??
         (typeof payloadColor === "string" ? payloadColor : undefined);
 }
 
 interface HeadingEntry
 {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly depth: number;
     readonly text: string;
 }
@@ -98,11 +98,11 @@ interface HeadingEntry
  * @category Functions
  * @since 1.0.0
  */
-function collectHeadings(blocks: ReadonlyArray<NotionBlock>, depth: number = 0): Array<HeadingEntry>
+function collectHeadings(blocks: ReadonlyArray<MarkdownBlock>, depth: number = 0): Array<HeadingEntry>
 {
-    return blocks.flatMap((block: NotionBlock) => [
+    return blocks.flatMap((block: MarkdownBlock) => [
         ...(block.type.startsWith("heading_")
-            ? [ { block, depth, text: plain(getNotionBlockPayload(block).rich_text) } ]
+            ? [ { block, depth, text: plain(getMarkdownBlockPayload(block).rich_text) } ]
             : [ ]),
         ...collectHeadings(block.children ?? [ ], depth + 1)
     ]);
@@ -115,13 +115,13 @@ function collectHeadings(blocks: ReadonlyArray<NotionBlock>, depth: number = 0):
  * @since 1.0.0
  */
 function collectSynced(
-    blocks: ReadonlyArray<NotionBlock>,
-    found: Map<string, ReadonlyArray<NotionBlock>> = new Map<string, ReadonlyArray<NotionBlock>>()
-): Map<string, ReadonlyArray<NotionBlock>>
+    blocks: ReadonlyArray<MarkdownBlock>,
+    found: Map<string, ReadonlyArray<MarkdownBlock>> = new Map<string, ReadonlyArray<MarkdownBlock>>()
+): Map<string, ReadonlyArray<MarkdownBlock>>
 {
     for (const block of blocks)
     {
-        const url = getNotionMarkdownMetadata(block).referenceUrl;
+        const url = getMarkdownMetadata(block).referenceUrl;
         if (block.type === "synced_block" && url && block.children) {found.set(url, block.children);}
         collectSynced(block.children ?? [ ], found);
     }
@@ -131,21 +131,21 @@ function collectSynced(
 
 interface RenderContext
 {
-    readonly document: NotionDocument;
-    readonly props: NotionMarkdownRendererProps;
-    readonly theme: NotionRendererTheme;
+    readonly document: MarkdownDocument;
+    readonly props: MarkdownRendererProps;
+    readonly theme: MarkdownRendererTheme;
     readonly dark: boolean;
     readonly narrow: boolean;
     readonly availableWidth: number;
     readonly headings: ReadonlyArray<HeadingEntry>;
-    readonly synced: ReadonlyMap<string, ReadonlyArray<NotionBlock>>;
+    readonly synced: ReadonlyMap<string, ReadonlyArray<MarkdownBlock>>;
     readonly registerHeading: (id: string, view: View | null) => void;
     readonly goToHeading: (id: string) => void;
     readonly targetHeading?: string;
 }
 
 /** Count consecutive numbered siblings ending at this index. */
-function numberedOrdinal(blocks: ReadonlyArray<NotionBlock>, index: number): number
+function numberedOrdinal(blocks: ReadonlyArray<MarkdownBlock>, index: number): number
 {
     if (blocks[index]?.type !== "numbered_list_item") {return 0;}
     let start = index;
@@ -158,7 +158,7 @@ function numberedOrdinal(blocks: ReadonlyArray<NotionBlock>, index: number): num
  * collapse the space between adjacent list items of one list down to 4px while keeping the
  * 8px edge above the first item and below the last.
  */
-function listItemRunPosition(blocks: ReadonlyArray<NotionBlock>, index: number):
+function listItemRunPosition(blocks: ReadonlyArray<MarkdownBlock>, index: number):
 { readonly first: boolean; readonly last: boolean; }
 {
     const type = blocks[index]?.type;
@@ -174,9 +174,9 @@ function listItemRunPosition(blocks: ReadonlyArray<NotionBlock>, index: number):
  * @category Functions
  * @since 1.0.0
  */
-function containsHeading(blocks: ReadonlyArray<NotionBlock>, id: string): boolean
+function containsHeading(blocks: ReadonlyArray<MarkdownBlock>, id: string): boolean
 {
-    return blocks.some((block: NotionBlock) => block.id === id || containsHeading(block.children ?? [ ], id));
+    return blocks.some((block: MarkdownBlock) => block.id === id || containsHeading(block.children ?? [ ], id));
 }
 
 /**
@@ -206,7 +206,7 @@ function Rich({ value, context, size, color, weight, family, lineHeight, striket
     }), [ color, family, lineHeight, size, strikethrough, weight ]);
 
     return (
-        <NotionRichTextView
+        <MarkdownRichTextView
             dark={ context.dark }
             items={ rich(value) }
             linkFallbackIcon={ context.props.linkFallbackIcon }
@@ -225,7 +225,7 @@ function Rich({ value, context, size, color, weight, family, lineHeight, striket
  * @since 1.0.0
  */
 function BlockList({ blocks, context, depth = 0, seen = new Set<string>() }: {
-    readonly blocks: ReadonlyArray<NotionBlock>;
+    readonly blocks: ReadonlyArray<MarkdownBlock>;
     readonly context: RenderContext;
     readonly depth?: number;
     readonly seen?: ReadonlySet<string>;
@@ -234,15 +234,15 @@ function BlockList({ blocks, context, depth = 0, seen = new Set<string>() }: {
     return (
         <View>
             {
-                blocks.map((block: NotionBlock, index: number) =>
+                blocks.map((block: MarkdownBlock, index: number) =>
                 {
                     const ordinal = numberedOrdinal(blocks, index);
                     const listItemPosition = listItemRunPosition(blocks, index);
                     return (
-                        <NotionBlockView block={ block }
+                        <MarkdownBlockView block={ block }
                             context={ context }
                             depth={ depth }
-                            key={ getNotionMarkdownMetadata(block).editorId ?? block.id }
+                            key={ getMarkdownMetadata(block).editorId ?? block.id }
                             listItemPosition={ listItemPosition }
                             ordinal={ ordinal }
                             seen={ seen }
@@ -261,7 +261,7 @@ function BlockList({ blocks, context, depth = 0, seen = new Set<string>() }: {
  * @since 1.0.0
  */
 function Children({ block, context, depth, seen }: {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly context: RenderContext;
     readonly depth: number;
     readonly seen: ReadonlySet<string>;
@@ -281,11 +281,11 @@ function Children({ block, context, depth, seen }: {
 /**
  * Return whether the given block is the empty child of a toggle.
  */
-function isEmptyToggleChild(block: NotionBlock): boolean
+function isEmptyToggleChild(block: MarkdownBlock): boolean
 {
     return block.type === "paragraph" &&
         !block.children?.length &&
-        plain(getNotionBlockPayload(block).rich_text).length === 0;
+        plain(getMarkdownBlockPayload(block).rich_text).length === 0;
 }
 
 /**
@@ -295,14 +295,14 @@ function isEmptyToggleChild(block: NotionBlock): boolean
  * @since 1.0.0
  */
 function ToggleContent({ block, context, depth, seen, title }: {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly context: RenderContext;
     readonly depth: number;
     readonly seen: ReadonlySet<string>;
     readonly title: ReactNode;
 })
 {
-    const [ localExpansion, setLocalExpansion ] = useState<{ block: NotionBlock; value: boolean }>();
+    const [ localExpansion, setLocalExpansion ] = useState<{ block: MarkdownBlock; value: boolean }>();
 
     const revealed = context.targetHeading
         ? containsHeading(block.children ?? [ ], context.targetHeading)
@@ -374,25 +374,25 @@ function ToggleContent({ block, context, depth, seen, title }: {
  * @since 1.0.0
  */
 function ReferenceCard({ block, context }: {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly context: RenderContext
 })
 {
-    const metadata = getNotionMarkdownMetadata(block);
-    const payload = getNotionBlockPayload(block);
+    const metadata = getMarkdownMetadata(block);
+    const payload = getMarkdownBlockPayload(block);
     const kind = metadata.mention?.kind ?? (payload.database_id ? "database" : block.type);
     const rawUrl = metadata.referenceUrl ?? payload.url ?? payload.page_id ?? payload.database_id;
     const url = typeof rawUrl === "string" ? rawUrl : undefined;
     const label = metadata.mention?.label ?? String(payload.title ?? kind);
     const resolver = context.props.resolveReference;
     const requestKey = `${kind}:${url ?? ""}:${label}`;
-    const [ resolved, setResolved ] = useState<{ key: string; value: NotionReferenceDisplay | null }>();
+    const [ resolved, setResolved ] = useState<{ key: string; value: MarkdownReferenceDisplay | null }>();
     useEffect(() =>
     {
         if (!resolver) {return;}
         let live = true;
         void resolver({ kind, label, url })
-            .then((value: NotionReferenceDisplay | null) =>
+            .then((value: MarkdownReferenceDisplay | null) =>
             {
                 if (live)
                 {
@@ -510,16 +510,16 @@ function ReferenceCard({ block, context }: {
  * @since 1.0.0
  */
 function SyncedContent({ block, context, depth, seen }: {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly context: RenderContext;
     readonly depth: number;
     readonly seen: ReadonlySet<string>;
 })
 {
-    const url = getNotionMarkdownMetadata(block).referenceUrl;
+    const url = getMarkdownMetadata(block).referenceUrl;
     const local = url ? context.synced.get(url) : undefined;
     const own = block.children?.length ? block.children : undefined;
-    const [ resolved, setResolved ] = useState<{ key: string; value: NotionDocument | null }>();
+    const [ resolved, setResolved ] = useState<{ key: string; value: MarkdownDocument | null }>();
     const [ retry, setRetry ] = useState(0);
     const cycle = url ? seen.has(url) : false;
     const resolver = context.props.resolveSyncedBlock;
@@ -531,7 +531,7 @@ function SyncedContent({ block, context, depth, seen }: {
             return;
         }
         let live = true;
-        void resolver(url).then((value: NotionDocument | null) =>
+        void resolver(url).then((value: MarkdownDocument | null) =>
         {
             if (live)
             {
@@ -672,18 +672,18 @@ function TableCell({
  * @category Functions
  * @since 1.0.0
  */
-function TableView({ block, context }: { readonly block: NotionBlock; readonly context: RenderContext })
+function TableView({ block, context }: { readonly block: MarkdownBlock; readonly context: RenderContext })
 {
-    const table = getNotionMarkdownMetadata(block).table;
-    const payload = getNotionBlockPayload(block);
-    const rows = (block.children ?? [ ]).filter((row: NotionBlock) => row.type === "table_row");
+    const table = getMarkdownMetadata(block).table;
+    const payload = getMarkdownBlockPayload(block);
+    const rows = (block.children ?? [ ]).filter((row: MarkdownBlock) => row.type === "table_row");
     const headerRow = table?.headerRow ?? payload.has_column_header === true;
     const headerColumn = table?.headerColumn ?? payload.has_row_header === true;
     const width = typeof payload.table_width === "number"
         ? payload.table_width
-        : Math.max(0, ...rows.map((row: NotionBlock) =>
+        : Math.max(0, ...rows.map((row: MarkdownBlock) =>
         {
-            const cells = getNotionBlockPayload(row).cells;
+            const cells = getMarkdownBlockPayload(row).cells;
             return Array.isArray(cells) ? cells.length : 0;
         }));
     const cellWidth = table?.fitPageWidth ? Math.max(64, context.availableWidth / Math.max(1, width)) : 140;
@@ -710,13 +710,13 @@ function TableView({ block, context }: { readonly block: NotionBlock; readonly c
             style={ RootStyle }>
             <View>
                 {
-                    rows.map((row: NotionBlock, rowIndex: number) =>
+                    rows.map((row: MarkdownBlock, rowIndex: number) =>
                     {
-                        const cells = Array.isArray(getNotionBlockPayload(row).cells)
-                            ? getNotionBlockPayload(row).cells as Array<unknown>
+                        const cells = Array.isArray(getMarkdownBlockPayload(row).cells)
+                            ? getMarkdownBlockPayload(row).cells as Array<unknown>
                             : [ ];
 
-                        const rowMeta = getNotionMarkdownMetadata(row).table;
+                        const rowMeta = getMarkdownMetadata(row).table;
 
                         return (
                             <View
@@ -731,7 +731,7 @@ function TableView({ block, context }: { readonly block: NotionBlock; readonly c
                                             table?.columnColors?.[columnIndex];
 
                                         const backgroundColor =
-                                            notionColor(color, context.dark) ??
+                                            markdownColor(color, context.dark) ??
                                             ((headerRow && rowIndex === 0) ||
                                             (headerColumn && columnIndex === 0)
                                                 ? context.theme.surface
@@ -793,7 +793,7 @@ function TableOfContentsEntry({ entry, entryRowStyle, entryTextStyle, context }:
 }
 
 /** Reusable recursive block presentation. */
-export function NotionBlockView({
+export function MarkdownBlockView({
     block,
     context,
     depth = 0,
@@ -801,7 +801,7 @@ export function NotionBlockView({
     ordinal = 0,
     seen = new Set<string>()
 }: {
-    readonly block: NotionBlock;
+    readonly block: MarkdownBlock;
     readonly context: RenderContext;
     readonly depth?: number;
     readonly listItemPosition?: { readonly first: boolean; readonly last: boolean };
@@ -809,10 +809,10 @@ export function NotionBlockView({
     readonly seen?: ReadonlySet<string>;
 })
 {
-    const payload = getNotionBlockPayload(block);
-    const metadata = getNotionMarkdownMetadata(block);
+    const payload = getMarkdownBlockPayload(block);
+    const metadata = getMarkdownMetadata(block);
     const color = blockColor(block);
-    const mapped = notionColor(color, context.dark);
+    const mapped = markdownColor(color, context.dark);
     const backgroundColor = color?.endsWith("_bg") || color?.endsWith("_background") ? mapped : undefined;
     const foreground = backgroundColor ? undefined : mapped;
     const override = context.props.components?.[block.type];
@@ -1199,7 +1199,7 @@ export function NotionBlockView({
             const source = plain(payload.rich_text);
             if (payload.language === "mermaid")
             {
-                return <NotionMermaidView source={ source }
+                return <MarkdownMermaidView source={ source }
                     theme={ context.theme } />;
             }
             return (
@@ -1215,7 +1215,7 @@ export function NotionBlockView({
                 </View>
             );
         }
-        case "equation": return <View style={ base }><NotionMathView display
+        case "equation": return <View style={ base }><MarkdownMathView display
             expression={ String(payload.expression ?? "") }
             theme={ context.theme } /></View>;
         case "divider":
@@ -1228,11 +1228,11 @@ export function NotionBlockView({
             return (
                 <View style={ columnListStyle }>
                     {
-                        (block.children ?? [ ]).map((column: NotionBlock) => (
+                        (block.children ?? [ ]).map((column: MarkdownBlock) => (
                             <View
                                 key={ column.id }
                                 style={ columnItemStyle }>
-                                <NotionBlockView
+                                <MarkdownBlockView
                                     block={ column }
                                     context={ context }
                                     depth={ depth + 1 }
@@ -1281,7 +1281,7 @@ export function NotionBlockView({
         case "file":
         case "pdf":
             return (
-                <NotionMediaView
+                <MarkdownMediaView
                     block={ block }
                     dark={ context.dark }
                     kind={ block.type }
@@ -1319,7 +1319,7 @@ export function NotionBlockView({
 }
 
 /** Render enhanced Markdown or a supplied document without mutating the AST. */
-export function NotionMarkdownRenderer(props: NotionMarkdownRendererProps)
+export function MarkdownRenderer(props: MarkdownRendererProps)
 {
     useEffect(() =>
     {
@@ -1330,7 +1330,7 @@ export function NotionMarkdownRenderer(props: NotionMarkdownRendererProps)
     }, [ ]);
     const parsed = useMemo(() => props.markdown === undefined
         ? undefined
-        : parseNotionMarkdown(props.markdown),
+        : parseMarkdown(props.markdown),
     [ props.markdown ]
     );
     const document = useMemo(
@@ -1351,7 +1351,7 @@ export function NotionMarkdownRenderer(props: NotionMarkdownRendererProps)
     const scroll = useRef<ScrollView>(null);
     const content = useRef<View>(null);
     const headings = useRef(new Map<string, View>());
-    const [ target, setTarget ] = useState<{ document: NotionDocument; id: string }>();
+    const [ target, setTarget ] = useState<{ document: MarkdownDocument; id: string }>();
     const targetHeading = target?.document === document ? target.id : undefined;
     const registerHeading = (id: string, view: View | null) =>
     {
@@ -1401,7 +1401,7 @@ export function NotionMarkdownRenderer(props: NotionMarkdownRendererProps)
         <ScrollView
             ref={ scroll }
             style={ scrollStyle }
-            testID={ props.testID ?? "notion-markdown-renderer" }>
+            testID={ props.testID ?? "markdown-renderer" }>
             <View
                 ref={ content }
                 style={ contentStyle }>

@@ -1,4 +1,4 @@
-package expo.modules.notionmarkdown
+package expo.modules.markdown
 
 import android.content.Context
 import android.graphics.Canvas
