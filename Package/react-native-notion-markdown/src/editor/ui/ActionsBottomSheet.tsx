@@ -22,6 +22,21 @@ import { useCallback, useMemo, useState } from "react";
 /** An action selected in the built-in block-actions sheet. */
 export type MarkdownEditorBlockAction = "delete" | "duplicate" | "insertAbove" | "insertBelow";
 
+/** An action selected in the built-in table-actions section. */
+export type MarkdownEditorTableAction =
+    | "fitTableWidth"
+    | "toggleHeaderRow"
+    | "toggleHeaderColumn"
+    | "insertTableRowAbove"
+    | "insertTableRowBelow"
+    | "insertTableColumnLeft"
+    | "insertTableColumnRight"
+    | "duplicateTableRow"
+    | "duplicateTableColumn"
+    | "deleteTableRow"
+    | "deleteTableColumn"
+    | "clearTableContents";
+
 /** Public props for the built-in block-actions sheet. */
 export interface ActionsBottomSheetProps
 {
@@ -32,6 +47,18 @@ export interface ActionsBottomSheetProps
     readonly labels: {
         readonly delete: string;
         readonly duplicate: string;
+        readonly fitTableWidth: string;
+        readonly headerRow: string;
+        readonly headerColumn: string;
+        readonly insertTableRowAbove: string;
+        readonly insertTableRowBelow: string;
+        readonly insertTableColumnLeft: string;
+        readonly insertTableColumnRight: string;
+        readonly duplicateTableRow: string;
+        readonly duplicateTableColumn: string;
+        readonly deleteTableRow: string;
+        readonly deleteTableColumn: string;
+        readonly clearTableContents: string;
         readonly color: string;
         readonly editIcon: string;
         readonly chooseColor: string;
@@ -47,6 +74,8 @@ export interface ActionsBottomSheetProps
         readonly title: string;
     };
     readonly onAction: (action: MarkdownEditorBlockAction) => void;
+    readonly onTableAction?: (action: MarkdownEditorTableAction) => void;
+    readonly onTableColor?: (color: MarkdownColor | undefined) => void;
     readonly onDismiss: () => void;
     /** Opens the callout emoji picker from the callout action sheet. */
     readonly onEditIcon?: () => void;
@@ -60,6 +89,8 @@ export interface ActionsBottomSheetProps
     readonly showInsertAbove: boolean;
     /** Callout actions use the Markdown-specific color/icon layout. */
     readonly showCalloutActions?: boolean;
+    /** Shows the built-in table operations for a table block. */
+    readonly showTableActions?: boolean;
     /** Shown only for the image block -- offers to replace its source via gallery or camera. */
     readonly showReplaceImage: boolean;
     /** Shown only for audio blocks. */
@@ -268,6 +299,8 @@ export function ActionsBottomSheet({
     dark,
     labels,
     onAction,
+    onTableAction,
+    onTableColor,
     onDismiss,
     onEditIcon,
     onColor,
@@ -275,11 +308,13 @@ export function ActionsBottomSheet({
     onReplaceAudio,
     showInsertAbove,
     showCalloutActions = false,
+    showTableActions = false,
     showReplaceImage,
     showReplaceAudio = false
 }: ActionsBottomSheetProps)
 {
     const [ choosingColor, setChoosingColor ] = useState(false);
+    const [ choosingTableColor, setChoosingTableColor ] = useState(false);
     const foreground = dark ? "#F5F5F5" : "#2C2C2B";
     const muted = dark ? "#D0CDC7" : "#45433F";
     const surface = dark ? "#202020" : "#F9F8F6";
@@ -309,8 +344,21 @@ export function ActionsBottomSheet({
     const handleColor = useCallback((color: MarkdownColor | undefined) =>
     {
         setChoosingColor(false);
-        onColor?.(color);
-    }, [ onColor ]);
+        if (choosingTableColor)
+        {
+            setChoosingTableColor(false);
+            onTableColor?.(color);
+        }
+        else
+        {
+            onColor?.(color);
+        }
+    }, [ choosingTableColor, onColor, onTableColor ]);
+    const handleTableColor = useCallback(() =>
+    {
+        setChoosingTableColor(true);
+        setChoosingColor(true);
+    }, [ ]);
     const handleEditIcon = useCallback(() => onEditIcon?.(), [ onEditIcon ]);
 
     const colorOptions = useMemo(() => ({
@@ -413,6 +461,77 @@ export function ActionsBottomSheet({
                                             onPress={ handleEditIcon } />
                                     </View> }
                                 { showCalloutActions && <View style={ styles.groupGap } /> }
+                                {
+                                    showTableActions && <>
+                                        <View style={ styles.groupGap } />
+                                        <View style={ optionsStyle }>
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.fitTableWidth }
+                                                onPress={ () => onTableAction?.("fitTableWidth") } />
+                                            <View style={ dividerStyle } />
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.headerRow }
+                                                onPress={ () => onTableAction?.("toggleHeaderRow") } />
+                                            <View style={ dividerStyle } />
+                            <ActionOption
+                                color={ muted }
+                                label={ labels.headerColumn }
+                                onPress={ () => onTableAction?.("toggleHeaderColumn") } />
+                            <View style={ dividerStyle } />
+                            <ActionOption
+                                color={ muted }
+                                label={ labels.color }
+                                onPress={ handleTableColor } />
+                            <View style={ dividerStyle } />
+                            <ActionOption
+                                color={ muted }
+                                label={ labels.insertTableRowAbove }
+                                                onPress={ () => onTableAction?.("insertTableRowAbove") } />
+                                            <View style={ dividerStyle } />
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.insertTableRowBelow }
+                                                onPress={ () => onTableAction?.("insertTableRowBelow") } />
+                                            <View style={ dividerStyle } />
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.insertTableColumnLeft }
+                                                onPress={ () => onTableAction?.("insertTableColumnLeft") } />
+                                            <View style={ dividerStyle } />
+                            <ActionOption
+                                color={ muted }
+                                label={ labels.insertTableColumnRight }
+                                onPress={ () => onTableAction?.("insertTableColumnRight") } />
+                            <View style={ dividerStyle } />
+                            <ActionOption
+                                color={ muted }
+                                label={ labels.duplicateTableRow }
+                                onPress={ () => onTableAction?.("duplicateTableRow") } />
+                            <View style={ dividerStyle } />
+                            <ActionOption
+                                color={ muted }
+                                label={ labels.duplicateTableColumn }
+                                onPress={ () => onTableAction?.("duplicateTableColumn") } />
+                            <View style={ dividerStyle } />
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.deleteTableRow }
+                                                onPress={ () => onTableAction?.("deleteTableRow") } />
+                                            <View style={ dividerStyle } />
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.deleteTableColumn }
+                                                onPress={ () => onTableAction?.("deleteTableColumn") } />
+                                            <View style={ dividerStyle } />
+                                            <ActionOption
+                                                color={ muted }
+                                                label={ labels.clearTableContents }
+                                                onPress={ () => onTableAction?.("clearTableContents") } />
+                                        </View>
+                                    </>
+                                }
                                 <View style={ optionsStyle }>
                                     {
                                         showInsertAbove && <ActionOption

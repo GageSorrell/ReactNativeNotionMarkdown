@@ -40,6 +40,7 @@ import android.text.style.UpdateLayout
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
@@ -50,6 +51,9 @@ import android.view.inputmethod.CompletionInfo
 import android.view.inputmethod.CorrectionInfo
 import android.view.inputmethod.TextAttribute
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
@@ -58,6 +62,7 @@ import org.json.JSONObject
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -97,7 +102,7 @@ private val editorBackgroundColors: Map<String, Int> = mapOf(
 
 private val editorValidBlockTypes = listOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
-  "numbered_list_item", "to_do", "callout", "quote", "divider", "table_of_contents", "column_list", "image", "audio", "video", "file",
+  "numbered_list_item", "to_do", "callout", "quote", "table", "divider", "table_of_contents", "column_list", "image", "audio", "video", "file",
   "link_to_page"
 )
 private val editorValidColors = editorTextColors.keys + editorBackgroundColors.keys
@@ -110,7 +115,7 @@ private val editorMergeableBlockTypes = setOf(
 )
 
 /** Block types with no navigable text of their own -- see [MarkdownEditorView.handleAtomicBlockBackspace]. */
-private val editorAtomicBlockTypes = setOf("divider", "image", "audio", "video", "file")
+private val editorAtomicBlockTypes = setOf("divider", "table", "image", "audio", "video", "file")
 
 /** A checked to-do's checkbox fill and its unchecked border, matching the renderer's theme accent. */
 private fun editorAccentColor(dark: Boolean) = if (dark) Color.rgb(0x81, 0xB8, 0xE7) else Color.rgb(0x2F, 0x6E, 0xAB)
@@ -130,6 +135,7 @@ private const val DIVIDER_TEXT = "\u200B"
 private const val TABLE_OF_CONTENTS_TEXT = "\u200B"
 private const val COLUMNS_TEXT = "\u200B"
 private const val EMPTY_BLOCK_TEXT = "\u200B"
+private const val TABLE_TEXT = "\uFFFC"
 private const val MEDIA_TEXT = "\uFFFC"
 private const val TABLE_OF_CONTENTS_LABEL = "Table of contents"
 private const val DEFAULT_EMPTY_TOGGLE_PLACEHOLDER = "Empty toggle.  Tap to add text or create a new block."
@@ -146,6 +152,27 @@ private const val CALLOUT_BLOCK_PADDING_DP =
   CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP + 6
 private const val QUOTE_BAR_WIDTH_DP = 3
 private const val QUOTE_TEXT_INDENT_DP = 12
+private const val TABLE_CELL_HEIGHT_DP = 44
+private const val TABLE_CELL_HORIZONTAL_PADDING_DP = 7
+private const val TABLE_CELL_VERTICAL_PADDING_DP = 2
+
+/** Returns the table's rendered width, keeping non-fitting tables content-sized when possible. */
+private fun tableDisplayWidthPx(input: EditText, table: EditorTable): Int {
+  val density = input.resources.displayMetrics.density
+  val pageWidth = (input.width - input.paddingLeft - input.paddingRight).coerceAtLeast(1)
+  if (table.fitPageWidth) return pageWidth
+  val columnCount = maxOf(1, table.rows.maxOfOrNull { it.cells.size } ?: 1)
+  val minimumColumnWidth = (96 * density).roundToInt()
+  val padding = (TABLE_CELL_HORIZONTAL_PADDING_DP * density * 2).roundToInt()
+  val columnWidths = MutableList(columnCount) { minimumColumnWidth }
+  table.rows.forEach { row ->
+    row.cells.forEachIndexed { column, cell ->
+      val measured = input.paint.measureText(cell.text).roundToInt() + padding
+      columnWidths[column] = maxOf(columnWidths[column], measured)
+    }
+  }
+  return columnWidths.sum().coerceAtMost(pageWidth).coerceAtLeast(minimumColumnWidth)
+}
 
 private fun editorHeadingLevel(type: String): Int? = when (type) {
   "heading_1" -> 1
@@ -172,7 +199,8 @@ private data class EditorBlock(
   var mimeType: String? = null,
   var fileName: String? = null,
   var fileSize: Double? = null,
-  var waveform: List<Float>? = null
+  var waveform: List<Float>? = null,
+  var table: EditorTable? = null
 ) {
   fun payload(): Map<String, Any?> {
     val base = mutableMapOf<String, Any?>("id" to id, "type" to type, "text" to text)
@@ -194,6 +222,7 @@ private data class EditorBlock(
     if (type == "audio") {
       waveform?.takeIf { it.isNotEmpty() }?.let { base["waveform"] = it }
     }
+    table?.let { base["table"] = it.payload() }
     if (type == "link_to_page" || type == "callout") {
       icon?.let { base["icon"] = it }
     }
@@ -211,11 +240,99 @@ private data class EditorBlock(
   }
 }
 
+private data class EditorTableCell(
+  var text: String,
+  val marks: MutableList<EditorMark> = mutableListOf(),
+  var color: String? = null
+) {
+  fun payload(): Map<String, Any?> = mapOf(
+    "text" to text,
+    "marks" to marks.map { mark ->
+      mapOf("kind" to mark.kind, "start" to mark.start, "end" to mark.end, "url" to mark.url)
+        .filterValues { value -> value != null }
+    },
+    "color" to color
+  ).filterValues { value -> value != null }
+}
+
+private data class EditorTableRow(
+  val cells: MutableList<EditorTableCell>,
+  var color: String? = null
+) {
+  fun payload(): Map<String, Any?> = mapOf("cells" to cells.map { it.payload() }, "color" to color)
+    .filterValues { value -> value != null }
+}
+
+private data class EditorTable(
+  val rows: MutableList<EditorTableRow>,
+  val columnColors: MutableList<String?> = mutableListOf(),
+  var tableColor: String? = null,
+  var fitPageWidth: Boolean = false,
+  var headerRow: Boolean = false,
+  var headerColumn: Boolean = false
+) {
+  fun payload(): Map<String, Any?> = mapOf(
+    "rows" to rows.map { it.payload() },
+    "columnColors" to columnColors,
+    "tableColor" to tableColor,
+    "fitPageWidth" to fitPageWidth,
+    "headerRow" to headerRow,
+    "headerColumn" to headerColumn
+  )
+}
+
+private fun parseEditorTable(value: Any?): EditorTable? {
+  val source = value as? Map<*, *> ?: return null
+  val rawRows = source["rows"] as? List<*> ?: return null
+  if (rawRows.isEmpty()) return null
+  val rows = rawRows.mapNotNull { rawRow ->
+    val row = rawRow as? Map<*, *> ?: return@mapNotNull null
+    val rawCells = row["cells"] as? List<*> ?: return@mapNotNull null
+    val cells = rawCells.mapNotNull { rawCell ->
+      val cell = rawCell as? Map<*, *> ?: return@mapNotNull null
+      val text = cell["text"] as? String ?: return@mapNotNull null
+      if (text.contains('\n')) return@mapNotNull null
+      val marks = mutableListOf<EditorMark>()
+      (cell["marks"] as? List<*>)?.forEach { rawMark ->
+        val mark = rawMark as? Map<*, *> ?: return@forEach
+        val kind = mark["kind"] as? String ?: return@forEach
+        val start = (mark["start"] as? Number)?.toInt() ?: return@forEach
+        val end = (mark["end"] as? Number)?.toInt() ?: return@forEach
+        val url = (mark["url"] as? String)?.takeIf { kind == "link" }
+        if (start >= 0 && end > start && end <= text.length &&
+          (kind in listOf("bold", "italic", "strikethrough", "underline", "code") ||
+            (kind == "link" && !url.isNullOrBlank()))) marks.add(EditorMark(kind, start, end, url))
+      }
+      EditorTableCell(text, marks, (cell["color"] as? String)?.takeIf { it in editorValidColors })
+    }
+    if (cells.size != rawCells.size) return@mapNotNull null
+    EditorTableRow(cells.toMutableList(), (row["color"] as? String)?.takeIf { it in editorValidColors })
+  }
+  if (rows.size != rawRows.size || rows.any { it.cells.isEmpty() }) return null
+  val width = rows.first().cells.size
+  if (rows.any { it.cells.size != width }) return null
+  val colors = (source["columnColors"] as? List<*>)?.map { (it as? String)?.takeIf { value -> value in editorValidColors } }?.toMutableList() ?: mutableListOf()
+  return EditorTable(
+    rows.toMutableList(),
+    colors,
+    (source["tableColor"] as? String)?.takeIf { it in editorValidColors },
+    source["fitPageWidth"] as? Boolean ?: false,
+    source["headerRow"] as? Boolean ?: false,
+    source["headerColumn"] as? Boolean ?: false
+  )
+}
+
 private data class EditorMark(
   val kind: String,
   var start: Int,
   var end: Int,
   val url: String? = null
+)
+
+private data class TableCellAddress(
+  val blockIndex: Int,
+  val row: Int,
+  val column: Int
 )
 
 private data class EditorPasteBlock(
@@ -299,6 +416,7 @@ private class BlockPaddingSpan(
 
 /** Keeps non-rendering blocks measurable while Android applies spans to their caret lines. */
 private fun EditorBlock.nativeText(): String = when {
+  type == "table" -> TABLE_TEXT
   type == "image" || type == "audio" || type == "video" || type == "file" -> MEDIA_TEXT
   text.isEmpty() -> EMPTY_BLOCK_TEXT
   else -> text
@@ -824,6 +942,80 @@ private class ColumnsSpan(private val columnCount: Int) : ReplacementSpan() {
   }
 }
 
+/** Draws an atomic table preview while the text editor keeps the document transport stable. */
+private class TableSpan(
+  private val input: EditText,
+  private val table: EditorTable,
+  private val dark: Boolean
+) : ReplacementSpan() {
+  private val density = input.resources.displayMetrics.density
+  private val rowHeight = (TABLE_CELL_HEIGHT_DP * density).roundToInt().coerceAtLeast(1)
+  private val border = if (dark) Color.rgb(65, 65, 65) else Color.rgb(222, 222, 219)
+  private val surface = if (dark) Color.rgb(45, 45, 44) else Color.rgb(247, 247, 245)
+  private val background = if (dark) Color.rgb(25, 25, 25) else Color.WHITE
+
+  private fun width(): Int = tableDisplayWidthPx(input, table)
+  private fun columnCount(): Int = maxOf(1, table.rows.maxOfOrNull { it.cells.size } ?: 1)
+  private fun height(): Int = table.rows.size * rowHeight + density.roundToInt()
+  private fun namedColor(value: String?): Int? = when (value) {
+    "gray" -> Color.rgb(120, 119, 116)
+    "brown" -> Color.rgb(159, 107, 83)
+    "orange" -> Color.rgb(217, 115, 13)
+    "yellow" -> Color.rgb(203, 145, 47)
+    "green" -> Color.rgb(68, 131, 97)
+    "blue" -> Color.rgb(51, 126, 169)
+    "purple" -> Color.rgb(144, 101, 176)
+    "pink" -> Color.rgb(193, 76, 138)
+    "red" -> Color.rgb(212, 76, 71)
+    "gray_bg" -> Color.rgb(233, 233, 231)
+    "brown_bg" -> Color.rgb(238, 224, 214)
+    "orange_bg" -> Color.rgb(249, 225, 204)
+    "yellow_bg" -> Color.rgb(249, 237, 197)
+    "green_bg" -> Color.rgb(218, 236, 223)
+    "blue_bg" -> Color.rgb(217, 234, 250)
+    "purple_bg" -> Color.rgb(233, 223, 241)
+    "pink_bg" -> Color.rgb(244, 220, 232)
+    "red_bg" -> Color.rgb(248, 222, 221)
+    else -> null
+  }
+
+  override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+    val h = height()
+    fm?.let { it.top = -h; it.ascent = -h; it.descent = 0; it.bottom = 0 }
+    return width()
+  }
+
+  override fun draw(canvas: Canvas, text: CharSequence, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+    val previousColor = paint.color
+    val previousStyle = paint.style
+    val previousTextSize = paint.textSize
+    val columns = columnCount()
+    val cellWidth = width().toFloat() / columns
+    val tableTop = (y - height()).toFloat()
+    table.rows.forEachIndexed { rowIndex, row ->
+      repeat(columns) { columnIndex ->
+        val cell = row.cells.getOrNull(columnIndex)
+        val color = cell?.color ?: row.color ?: table.columnColors.getOrNull(columnIndex)
+        val isBackground = color?.endsWith("_bg") == true
+        val fill = if (isBackground) namedColor(color) else if (table.headerRow && rowIndex == 0 || table.headerColumn && columnIndex == 0) surface else background
+        paint.style = Paint.Style.FILL
+        paint.color = fill ?: background
+        val left = x + columnIndex * cellWidth
+        val cellTop = tableTop + rowIndex * rowHeight
+        canvas.drawRect(left, cellTop, left + cellWidth, cellTop + rowHeight, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = maxOf(1f, density / 2f)
+        paint.color = border
+        canvas.drawRect(left, cellTop, left + cellWidth, cellTop + rowHeight, paint)
+        // Cell text is rendered by the overlaid native EditText for direct IME editing.
+      }
+    }
+    paint.color = previousColor
+    paint.style = previousStyle
+    paint.textSize = previousTextSize
+  }
+}
+
 /**
  * Draws the hint for an empty child created under a toggle heading without changing its text.
  */
@@ -1179,6 +1371,11 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   // Android may dispatch selection callbacks while the inner EditText is still being constructed.
   private var inputInitialized = false
   private val input = EditorInput(context)
+  private val tableOverlay = TableOverlay(context)
+  private val inputContainer = FrameLayout(context)
+  private var activeTableCell: TableCellAddress? = null
+  private var activeTableEditor: TableCellEditor? = null
+  private var syncingTableEditor = false
   private var removed = ""
   private var editBlock = 0
   private var probeConnection: InputConnection? = null
@@ -1214,7 +1411,19 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     input.setPadding(horizontalPadding, 0, horizontalPadding, 0)
     input.setBackgroundColor(Color.TRANSPARENT)
     input.contentDescription = "Three-block native editor"
-    addView(input, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    inputContainer.addView(
+      input,
+      FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+    )
+    tableOverlay.setWillNotDraw(true)
+    tableOverlay.isClickable = false
+    tableOverlay.isFocusable = false
+    tableOverlay.contentDescription = "Editable table cells"
+    inputContainer.addView(
+      tableOverlay,
+      FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+    )
+    addView(inputContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     input.addTextChangedListener(object : TextWatcher {
       override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
         if (applying) return
@@ -1244,6 +1453,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           } else if (blocks[index].type == "divider"
             || blocks[index].type == "table_of_contents" || blocks[index].type == "column_list") {
             text
+          } else if (blocks[index].type == "table") {
+            ""
           } else {
             text.replace(EMPTY_BLOCK_TEXT, "")
           }
@@ -1305,9 +1516,11 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         }
       }
       val columnCount = (block["columnCount"] as? Number)?.toInt()?.takeIf { it in 2..5 }
+      val table = parseEditorTable(block["table"])
       if (text.contains('\n') || type !in editorValidBlockTypes
+        || (type == "table" && table == null) || (type != "table" && block["table"] != null)
         || ((type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file") && url.isNullOrBlank())) null
-      else EditorBlock(id, type, text, color, depth, toggle, collapsed, marks, checked, url, icon, columnCount, duration, mimeType, fileName, fileSize, waveform)
+      else EditorBlock(id, type, text, color, depth, toggle, collapsed, marks, checked, url, icon, columnCount, duration, mimeType, fileName, fileSize, waveform, table)
     }
     if (nextBlocks.isEmpty() || nextBlocks.size != supplied.size || nextBlocks.map { it.id }.distinct().size != nextBlocks.size) return
     applying = true
@@ -1321,6 +1534,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     input.setSelection(0)
     styleBlocks()
     applying = false
+    tableOverlay.post { tableOverlay.sync() }
     // Replacing the document invalidates the old connection's composition and surrounding text.
     if (input.hasFocus()) inputMethodManager().restartInput(input)
     scheduleEvent("replacement")
@@ -1489,7 +1703,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         input.removeCallbacks(showKeyboardRunnable)
         inputMethodManager().hideSoftInputFromWindow(input.windowToken, 0)
       }
-      "selectAll" -> input.selectAll()
+      "selectAll" -> (activeTableEditor?.takeIf { it.hasFocus() } ?: input).selectAll()
       "copy" -> copy(false)
       "cut" -> copy(true)
       "paste" -> paste()
@@ -1497,6 +1711,22 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       "bulletedList" -> insertList("bulleted_list_item")
       "numberedList" -> insertList("numbered_list_item")
       "divider" -> insertDivider()
+      "insertTable" -> insertTable()
+      "fitTableWidth" -> tableAction(value) { table -> table.fitPageWidth = !table.fitPageWidth }
+      "toggleHeaderRow" -> tableAction(value) { table -> table.headerRow = !table.headerRow }
+      "toggleHeaderColumn" -> tableAction(value) { table -> table.headerColumn = !table.headerColumn }
+      "insertTableRowAbove" -> tableRowAction(value, below = false, delete = false)
+      "insertTableRowBelow" -> tableRowAction(value, below = true, delete = false)
+      "insertTableColumnLeft" -> tableColumnAction(value, right = false, delete = false)
+      "insertTableColumnRight" -> tableColumnAction(value, right = true, delete = false)
+      "duplicateTableRow" -> tableRowAction(value, below = true, delete = false, duplicate = true)
+      "duplicateTableColumn" -> tableColumnAction(value, right = true, delete = false, duplicate = true)
+      "deleteTableRow" -> tableRowAction(value, below = false, delete = true)
+      "deleteTableColumn" -> tableColumnAction(value, right = false, delete = true)
+      "clearTableContents" -> clearTableAction(value)
+      "tableColor", "rowColor", "columnColor", "cellColor" -> colorTableAction(value)
+      "duplicateTable" -> duplicateBlockById(value["blockId"] as? String)
+      "deleteTable" -> deleteBlockById(value["blockId"] as? String)
       "tableOfContents" -> insertTableOfContents()
       "columns" -> insertColumns((value["columnCount"] as? Number)?.toInt() ?: 2)
       "insertImage" -> insertMedia("image", value["url"] as? String)
@@ -1611,11 +1841,98 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private fun newId() = "editor:${UUID.randomUUID()}"
 
   private fun replaceSelection(text: String) {
+    val cellEditor = activeTableEditor?.takeIf { it.hasFocus() }
+    if (cellEditor != null) {
+      val start = minOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
+      val end = maxOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
+      cellEditor.text.replace(start, end, text.replace('\n', ' '))
+      cellEditor.setSelection((start + text.length).coerceAtMost(cellEditor.text.length))
+      return
+    }
     if (selectedBlockRange()?.any { blocks[it].type == "link_to_page" } == true) return
     val start = minOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
     val end = maxOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
     input.text.replace(start, end, text)
     input.setSelection(start + text.length)
+  }
+
+  private fun activeCellRange(): Pair<TableCellEditor, Pair<Int, Int>>? {
+    val editor = activeTableEditor?.takeIf { it.hasFocus() } ?: return null
+    var start = minOf(editor.selectionStart, editor.selectionEnd).coerceAtLeast(0)
+    var end = maxOf(editor.selectionStart, editor.selectionEnd).coerceAtLeast(0)
+    if (start == end) {
+      val word = wordRangeAt(editor.text, start) ?: return null
+      start = word.first
+      end = word.second
+    }
+    return editor to (start to end)
+  }
+
+  private fun toggleCellFormat(kind: String) {
+    val target = activeCellRange() ?: return
+    val editor = target.first
+    val range = target.second
+    val cell = tableCell(editor.address) ?: return
+    val remove = cell.marks.filter { it.kind == kind }.fold(range.first) { cursor, mark ->
+      if (mark.start <= cursor) maxOf(cursor, mark.end) else cursor
+    } >= range.second
+    val next = mutableListOf<EditorMark>()
+    cell.marks.forEach { mark ->
+      if (mark.kind != kind || mark.end <= range.first || mark.start >= range.second) {
+        next.add(mark)
+      } else if (remove) {
+        if (mark.start < range.first) next.add(EditorMark(mark.kind, mark.start, range.first, mark.url))
+        if (mark.end > range.second) next.add(EditorMark(mark.kind, range.second, mark.end, mark.url))
+      } else {
+        next.add(mark)
+      }
+    }
+    if (!remove) next.add(EditorMark(kind, range.first, range.second))
+    cell.marks.clear()
+    cell.marks.addAll(next.filter { it.start < it.end }
+      .sortedWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind }))
+    applyCellSpans(editor, cell)
+    scheduleEvent("format")
+  }
+
+  private fun clearCellFormat() {
+    val target = activeCellRange() ?: return
+    val editor = target.first
+    val range = target.second
+    val cell = tableCell(editor.address) ?: return
+    val next = mutableListOf<EditorMark>()
+    cell.marks.forEach { mark ->
+      if (mark.end <= range.first || mark.start >= range.second) {
+        next.add(mark)
+      } else {
+        if (mark.start < range.first) next.add(EditorMark(mark.kind, mark.start, range.first, mark.url))
+        if (mark.end > range.second) next.add(EditorMark(mark.kind, range.second, mark.end, mark.url))
+      }
+    }
+    cell.marks.clear()
+    cell.marks.addAll(next)
+    applyCellSpans(editor, cell)
+    scheduleEvent("clear-format")
+  }
+
+  private fun applyCellLink(rawUrl: String?, requestedLabel: String?) {
+    val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    val target = activeCellRange() ?: return
+    val editor = target.first
+    val start = target.second.first
+    val originalEnd = target.second.second
+    val label = requestedLabel?.takeIf { it.isNotEmpty() }
+    if (label != null && editor.text.substring(start, originalEnd) != label) {
+      editor.text.replace(start, originalEnd, label)
+      editor.setSelection(start, start + label.length)
+    }
+    val end = start + (label?.length ?: originalEnd - start)
+    val cell = tableCell(editor.address) ?: return
+    cell.marks.removeAll { it.kind == "link" && it.end > start && it.start < end }
+    cell.marks.add(EditorMark("link", start, end, url))
+    cell.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+    applyCellSpans(editor, cell)
+    scheduleEvent("link")
   }
 
   /**
@@ -1626,6 +1943,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
    */
   private fun toggleFormat(kind: String?) {
     if (kind == null) return
+    if (activeTableEditor?.hasFocus() == true) {
+      toggleCellFormat(kind)
+      return
+    }
     val localRanges = selectedFormatRanges() ?: return
     val remove = localRanges.all { (index, range) ->
       coversMarkRange(blocks[index], kind, range.first, range.last)
@@ -1660,6 +1981,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
   /** Remove every inline mark from the selected text or the word touched by a collapsed cursor. */
   private fun clearFormat() {
+    if (activeTableEditor?.hasFocus() == true) {
+      clearCellFormat()
+      return
+    }
     val localRanges = selectedFormatRanges() ?: return
     localRanges.forEach { (index, range) ->
       clearMarkRange(blocks[index], range.first, range.last)
@@ -1670,6 +1995,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
   /** Apply a URL to the selected text, replacing its displayed label when requested. */
   private fun applyLink(rawUrl: String?, requestedLabel: String?) {
+    if (activeTableEditor?.hasFocus() == true) {
+      applyCellLink(rawUrl, requestedLabel)
+      return
+    }
     val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
     val bounds = linkSelectionBounds() ?: return
     val start = bounds.first
@@ -1803,6 +2132,138 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     blocks.add(index, EditorBlock(newId(), "table_of_contents", TABLE_OF_CONTENTS_TEXT))
     replaceNativeTextAndSelect(index + 1)
     scheduleEvent("insert-table-of-contents")
+  }
+
+  /** Insert a blank 3×3 table after the current selection. */
+  private fun insertTable() {
+    replaceSelection("\n")
+    val index = input.text.take(input.selectionStart).count { it == '\n' }
+    if (index !in 0..blocks.size) return
+    val rows = MutableList(3) {
+      EditorTableRow(MutableList(3) { EditorTableCell("") })
+    }
+    blocks.add(index, EditorBlock(newId(), "table", TABLE_TEXT, table = EditorTable(rows)))
+    replaceNativeTextAndSelect(index + 1)
+    scheduleEvent("insert-table")
+  }
+
+  private fun tableSelectionBounds(value: Map<String, Any?>): IntArray {
+    val selection = value["selection"] as? Map<*, *>
+    val anchor = selection?.get("anchor") as? Map<*, *>
+    val focus = selection?.get("focus") as? Map<*, *>
+    val anchorRow = (anchor?.get("row") as? Number)?.toInt() ?: (value["row"] as? Number)?.toInt() ?: 0
+    val anchorColumn = (anchor?.get("column") as? Number)?.toInt() ?: (value["column"] as? Number)?.toInt() ?: 0
+    val focusRow = (focus?.get("row") as? Number)?.toInt() ?: anchorRow
+    val focusColumn = (focus?.get("column") as? Number)?.toInt() ?: anchorColumn
+    return intArrayOf(minOf(anchorRow, focusRow), maxOf(anchorRow, focusRow), minOf(anchorColumn, focusColumn), maxOf(anchorColumn, focusColumn))
+  }
+
+  private fun tableAction(value: Map<String, Any?>, update: (EditorTable) -> Unit) {
+    val index = blockIndexById(value["blockId"] as? String) ?: return
+    val table = blocks[index].table ?: return
+    update(table)
+    replaceNativeTextAndSelect(index)
+    scheduleEvent("table-action")
+  }
+
+  private fun tableRowAction(
+    value: Map<String, Any?>,
+    below: Boolean,
+    delete: Boolean,
+    duplicate: Boolean = false
+  ) {
+    tableAction(value) { table ->
+      if (delete && table.rows.size <= 1) return@tableAction
+      val bounds = tableSelectionBounds(value)
+      val index = (value["row"] as? Number)?.toInt() ?: bounds[0]
+      val safeIndex = index.coerceIn(0, table.rows.lastIndex)
+      if (delete) table.rows.removeAt(safeIndex)
+      else if (duplicate) {
+        val source = table.rows[safeIndex]
+        val copy = EditorTableRow(
+          source.cells.map { cell ->
+            EditorTableCell(cell.text, cell.marks.map { it.copy() }.toMutableList(), cell.color)
+          }.toMutableList(),
+          source.color
+        )
+        table.rows.add((safeIndex + 1).coerceAtMost(table.rows.size), copy)
+      }
+      else {
+        val width = table.rows.maxOfOrNull { it.cells.size } ?: 1
+        val insertAt = (safeIndex + if (below) 1 else 0).coerceIn(0, table.rows.size)
+        table.rows.add(insertAt, EditorTableRow(MutableList(width) { EditorTableCell("") }))
+      }
+    }
+  }
+
+  private fun tableColumnAction(
+    value: Map<String, Any?>,
+    right: Boolean,
+    delete: Boolean,
+    duplicate: Boolean = false
+  ) {
+    tableAction(value) { table ->
+      val width = table.rows.maxOfOrNull { it.cells.size } ?: 1
+      if (delete && width <= 1) return@tableAction
+      val bounds = tableSelectionBounds(value)
+      val index = (value["column"] as? Number)?.toInt() ?: bounds[2]
+      val safeIndex = index.coerceIn(0, width - 1)
+      val target = (safeIndex + if (right && !delete) 1 else 0).coerceIn(0, width)
+      table.rows.forEach { row ->
+        if (delete) row.cells.removeAt(index.coerceIn(0, row.cells.lastIndex))
+        else if (duplicate) {
+          val source = row.cells[safeIndex]
+          row.cells.add(
+            (safeIndex + 1).coerceAtMost(row.cells.size),
+            EditorTableCell(source.text, source.marks.map { it.copy() }.toMutableList(), source.color)
+          )
+        }
+        else row.cells.add(target, EditorTableCell(""))
+      }
+      if (delete) {
+        if (safeIndex < table.columnColors.size) table.columnColors.removeAt(safeIndex)
+      } else if (duplicate) {
+        table.columnColors.add(
+          (safeIndex + 1).coerceAtMost(table.columnColors.size),
+          table.columnColors.getOrNull(safeIndex)
+        )
+      } else {
+        table.columnColors.add(target.coerceAtMost(table.columnColors.size), null)
+      }
+    }
+  }
+
+  private fun clearTableAction(value: Map<String, Any?>) {
+    tableAction(value) { table ->
+      val bounds = tableSelectionBounds(value)
+      table.rows.forEachIndexed { rowIndex, row ->
+        if (rowIndex in bounds[0]..bounds[1]) row.cells.forEachIndexed { columnIndex, cell ->
+          if (columnIndex in bounds[2]..bounds[3]) {
+            cell.text = ""
+            cell.marks.clear()
+          }
+        }
+      }
+    }
+  }
+
+  private fun colorTableAction(value: Map<String, Any?>) {
+    val color = (value["color"] as? String)?.takeIf { it in editorValidColors }
+    val scope = value["action"] as? String ?: return
+    tableAction(value) { table ->
+      val bounds = tableSelectionBounds(value)
+      when (scope) {
+        "tableColor" -> table.tableColor = color
+        "rowColor" -> for (row in bounds[0]..bounds[1]) table.rows.getOrNull(row)?.color = color
+        "columnColor" -> for (column in bounds[2]..bounds[3]) {
+          while (table.columnColors.size <= column) table.columnColors.add(null)
+          table.columnColors[column] = color
+        }
+        "cellColor" -> for (row in bounds[0]..bounds[1]) for (column in bounds[2]..bounds[3]) {
+          table.rows.getOrNull(row)?.cells?.getOrNull(column)?.color = color
+        }
+      }
+    }
   }
 
   /** Insert a two-column composite block after the current cursor/selection. */
@@ -2073,7 +2534,21 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private fun duplicateBlockById(id: String?) {
     val index = blockIndexById(id) ?: return
     val source = blocks[index]
-    val copy = source.copy(id = newId(), marks = source.marks.map { it.copy() }.toMutableList())
+    val copiedTable = source.table?.let { table ->
+      EditorTable(
+        table.rows.map { row ->
+          EditorTableRow(row.cells.map { cell ->
+            EditorTableCell(cell.text, cell.marks.map { it.copy() }.toMutableList(), cell.color)
+          }.toMutableList(), row.color)
+        }.toMutableList(),
+        table.columnColors.toMutableList(),
+        table.tableColor,
+        table.fitPageWidth,
+        table.headerRow,
+        table.headerColumn
+      )
+    }
+    val copy = source.copy(id = newId(), marks = source.marks.map { it.copy() }.toMutableList(), table = copiedTable)
     blocks.add(index + 1, copy)
     replaceNativeTextAndSelect(index + 1, copy.text.length)
     scheduleEvent("duplicate-block")
@@ -2150,6 +2625,20 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   }
 
   private fun copy(cut: Boolean): Boolean {
+    val cellEditor = activeTableEditor?.takeIf { it.hasFocus() }
+    if (cellEditor != null) {
+      val start = minOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
+      val end = maxOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
+      if (start == end) return true
+      val selected = cellEditor.text.subSequence(start, end).toString()
+      clipboard().setPrimaryClip(ClipData.newPlainText("Markdown table cell", selected))
+      if (cut) {
+        cellEditor.text.delete(start, end)
+        cellEditor.setSelection(start)
+      }
+      scheduleEvent(if (cut) "table-cut" else "table-copy")
+      return true
+    }
     val start = minOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
     val end = maxOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
     if (start == end) return true
@@ -2211,6 +2700,18 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   }
 
   private fun paste(): Boolean {
+    val cellEditor = activeTableEditor?.takeIf { it.hasFocus() }
+    if (cellEditor != null) {
+      val clip = clipboard().primaryClip ?: return true
+      if (clip.itemCount == 0) return true
+      val pasted = clip.getItemAt(0).coerceToText(context).toString().replace('\r', ' ').replace('\n', ' ')
+      val start = minOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
+      val end = maxOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
+      cellEditor.text.replace(start, end, pasted)
+      cellEditor.setSelection(start + pasted.length)
+      scheduleEvent("table-paste")
+      return true
+    }
     val clip = clipboard().primaryClip ?: return true
     if (clip.itemCount == 0) return true
     val item = clip.getItemAt(0)
@@ -2456,6 +2957,17 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   }
 
   private fun pointAt(position: Int): Map<String, Any> {
+    val cellEditor = activeTableEditor?.takeIf { it.hasFocus() }
+    val cellAddress = activeTableCell
+    if (cellEditor != null && cellAddress != null && tableCell(cellAddress) != null) {
+      return mapOf(
+        "blockId" to blocks[cellAddress.blockIndex].id,
+        "field" to "cell",
+        "row" to cellAddress.row,
+        "column" to cellAddress.column,
+        "offset" to cellEditor.selectionStart.coerceAtLeast(0)
+      )
+    }
     var remaining = position.coerceAtLeast(0)
     blocks.forEach { block ->
       if (remaining <= block.nativeText().length) {
@@ -2501,6 +3013,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     editable.getSpans(0, editable.length, EditorFileSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TableOfContentsSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ColumnsSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, TableSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, EmptyBlockPlaceholderSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, PageReferenceSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TodoCheckboxSpan::class.java).forEach { editable.removeSpan(it) }
@@ -2588,7 +3101,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
           )
         }
-        if (block.type == "table_of_contents") {
+          if (block.type == "table") {
+            block.table?.let { editable.setSpan(TableSpan(input, it, dark), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+          } else if (block.type == "table_of_contents") {
           editable.setSpan(TableOfContentsSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (block.type == "column_list") {
@@ -2754,6 +3269,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       if (block.toggle && block.collapsed) collapsedDepth = block.depth
       start = end + 1
     }
+    tableOverlay.sync()
     input.post { reportContentSize() }
   }
 
@@ -2791,12 +3307,459 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         return@post
       }
       revision += 1
+      val tablePoints = tableOverlay.eventPoints()
       onEdit(mapOf(
         "epoch" to epoch, "revision" to revision, "blocks" to blocks.map { it.payload() },
-        "anchor" to pointAt(input.selectionStart), "focus" to pointAt(input.selectionEnd),
-        "composingStart" to BaseInputConnection.getComposingSpanStart(input.text),
-        "composingEnd" to BaseInputConnection.getComposingSpanEnd(input.text), "source" to source
+        "anchor" to (tablePoints?.first ?: pointAt(input.selectionStart)),
+        "focus" to (tablePoints?.second ?: pointAt(input.selectionEnd)),
+        "composingStart" to (activeTableEditor?.let { BaseInputConnection.getComposingSpanStart(it.text) }
+          ?: BaseInputConnection.getComposingSpanStart(input.text)),
+        "composingEnd" to (activeTableEditor?.let { BaseInputConnection.getComposingSpanEnd(it.text) }
+          ?: BaseInputConnection.getComposingSpanEnd(input.text)), "source" to source
       ))
+    }
+  }
+
+  private fun tableCell(address: TableCellAddress): EditorTableCell? =
+    blocks.getOrNull(address.blockIndex)?.table?.rows?.getOrNull(address.row)?.cells?.getOrNull(address.column)
+
+  private fun tableRowHeightPx(): Int =
+    (TABLE_CELL_HEIGHT_DP * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
+
+  private fun tableHeightPx(table: EditorTable): Int =
+    table.rows.size * tableRowHeightPx() + resources.displayMetrics.density.roundToInt().coerceAtLeast(1)
+
+  private fun tableColorValue(value: String?): Int? = when (value) {
+    "gray" -> editorTextColors["gray"]
+    "brown" -> editorTextColors["brown"]
+    "orange" -> editorTextColors["orange"]
+    "yellow" -> editorTextColors["yellow"]
+    "green" -> editorTextColors["green"]
+    "blue" -> editorTextColors["blue"]
+    "purple" -> editorTextColors["purple"]
+    "pink" -> editorTextColors["pink"]
+    "red" -> editorTextColors["red"]
+    else -> null
+  }
+
+  private fun tableCellTextColor(address: TableCellAddress): Int {
+    val block = blocks.getOrNull(address.blockIndex)
+    val table = block?.table
+    val cell = tableCell(address)
+    val color = cell?.color ?: table?.rows?.getOrNull(address.row)?.color
+      ?: table?.columnColors?.getOrNull(address.column) ?: table?.tableColor
+    return if (color?.endsWith("_bg") == true) {
+      if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+    } else {
+      tableColorValue(color) ?: if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+    }
+  }
+
+  private fun updateCellMarksAfterEdit(
+    cell: EditorTableCell,
+    start: Int,
+    before: Int,
+    after: Int,
+    newLength: Int
+  ) {
+    val delta = after - before
+    val editEnd = start + before
+    cell.marks.removeAll { mark ->
+      when {
+        mark.end <= start -> false
+        mark.start >= editEnd -> {
+          mark.start += delta
+          mark.end += delta
+          false
+        }
+        else -> {
+          mark.end = (mark.end + delta).coerceAtMost(newLength).coerceAtLeast(mark.start + 1)
+          mark.start >= newLength || mark.end <= mark.start
+        }
+      }
+    }
+  }
+
+  private fun applyCellSpans(editor: TableCellEditor, cell: EditorTableCell) {
+    val value = android.text.SpannableStringBuilder(cell.text)
+    val fullEnd = value.length
+    if (fullEnd > 0 && blocks.getOrNull(editor.address.blockIndex)?.table?.let { table ->
+        table.headerRow && editor.address.row == 0 || table.headerColumn && editor.address.column == 0
+      } == true) {
+      value.setSpan(StyleSpan(Typeface.BOLD), 0, fullEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    cell.marks.forEach { mark ->
+      val start = mark.start.coerceIn(0, fullEnd)
+      val end = mark.end.coerceIn(start, fullEnd)
+      if (start >= end) return@forEach
+      when (mark.kind) {
+        "bold" -> value.setSpan(StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        "italic" -> value.setSpan(StyleSpan(Typeface.ITALIC), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        "underline" -> value.setSpan(UnderlineSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        "strikethrough" -> value.setSpan(StrikethroughSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        "code" -> value.setSpan(TypefaceSpan("monospace"), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        "link" -> {
+          value.setSpan(ForegroundColorSpan(editorAccentColor(dark)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          value.setSpan(UnderlineSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+      }
+    }
+    syncingTableEditor = true
+    val selectionStart = editor.selectionStart.coerceAtLeast(0)
+    val selectionEnd = editor.selectionEnd.coerceAtLeast(0)
+    editor.setText(value, android.widget.TextView.BufferType.SPANNABLE)
+    editor.setSelection(selectionStart.coerceAtMost(value.length), selectionEnd.coerceAtMost(value.length))
+    syncingTableEditor = false
+  }
+
+  private inner class TableCellEditor(
+    context: Context,
+    val address: TableCellAddress
+  ) : EditText(context) {
+    private var editStart = 0
+    private var editBefore = 0
+    private var rangeDrag = false
+    private var downX = 0f
+    private var downY = 0f
+    private var downTime = 0L
+
+    init {
+      setSingleLine(true)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+      gravity = Gravity.CENTER_VERTICAL or Gravity.START
+      includeFontPadding = true
+      val horizontal = (TABLE_CELL_HORIZONTAL_PADDING_DP * resources.displayMetrics.density).roundToInt()
+      val vertical = (TABLE_CELL_VERTICAL_PADDING_DP * resources.displayMetrics.density).roundToInt()
+      setPadding(horizontal, vertical, horizontal, vertical)
+      inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+        InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+      contentDescription = "Table cell row ${address.row + 1}, column ${address.column + 1}"
+      setSelectAllOnFocus(false)
+      setOnLongClickListener {
+        val block = blocks.getOrNull(address.blockIndex)
+        if (block != null) {
+          onBlockActionsPress(mapOf(
+            "id" to block.id,
+            "type" to block.type,
+            "scope" to "cells",
+            "selection" to tableOverlay.selectionPayload(address)
+          ))
+        }
+        true
+      }
+      addTextChangedListener(object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+          editStart = start
+          editBefore = count
+        }
+
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+        override fun afterTextChanged(s: Editable?) {
+          if (syncingTableEditor) return
+          val cell = tableCell(address) ?: return
+          val nextText = s?.toString()?.replace('\n', ' ') ?: ""
+          val oldLength = cell.text.length
+          updateCellMarksAfterEdit(
+            cell,
+            editStart,
+            editBefore,
+            nextText.length - oldLength + editBefore,
+            nextText.length
+          )
+          cell.text = nextText
+          scheduleEvent("table-text")
+          invalidate()
+        }
+      })
+    }
+
+    fun syncFromModel() {
+      val cell = tableCell(address) ?: return
+      applyCellSpans(this, cell)
+      setTextColor(tableCellTextColor(address))
+      val selected = tableOverlay.isCellInRange(address)
+      val stroke = if (hasFocus() || selected) editorAccentColor(dark) else Color.TRANSPARENT
+      background = GradientDrawable().apply {
+        setColor(Color.TRANSPARENT)
+        setStroke(
+          (if (hasFocus() || selected) 2 else 1)
+            * resources.displayMetrics.density.roundToInt().coerceAtLeast(1),
+          stroke
+        )
+      }
+    }
+
+    override fun onFocusChanged(focused: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
+      super.onFocusChanged(focused, direction, previouslyFocusedRect)
+      if (focused) {
+        if (!tableOverlay.isCellInRange(address)) tableOverlay.clearRange()
+        activeTableCell = address
+        activeTableEditor = this
+        post { inputMethodManager().showSoftInput(this, InputMethodManager.SHOW_IMPLICIT) }
+        scheduleEvent("selection")
+      } else if (activeTableEditor === this) {
+        activeTableEditor = null
+        activeTableCell = null
+      }
+      tableOverlay.refreshChrome()
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+      when (event.actionMasked) {
+        MotionEvent.ACTION_DOWN -> {
+          rangeDrag = false
+          downX = event.x
+          downY = event.y
+          downTime = event.eventTime
+        }
+        MotionEvent.ACTION_MOVE -> {
+          val density = resources.displayMetrics.density
+          val edge = 14 * density
+          val fromEdge = downX <= edge || downX >= width - edge || downY <= edge || downY >= height - edge
+          val moved = hypot((event.x - downX).toDouble(), (event.y - downY).toDouble())
+          if (!rangeDrag && fromEdge && event.eventTime - downTime >= 300
+            && moved >= ViewConfiguration.get(context).scaledTouchSlop) {
+            rangeDrag = true
+            tableOverlay.beginRange(address)
+            parent?.requestDisallowInterceptTouchEvent(true)
+          }
+          if (rangeDrag) tableOverlay.updateRangeFrom(this, event.x, event.y)
+        }
+        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+          if (rangeDrag) {
+            tableOverlay.updateRangeFrom(this, event.x, event.y)
+            parent?.requestDisallowInterceptTouchEvent(false)
+            rangeDrag = false
+            scheduleEvent("selection")
+            return true
+          }
+        }
+      }
+      return super.onTouchEvent(event)
+    }
+
+    override fun onSelectionChanged(start: Int, end: Int) {
+      super.onSelectionChanged(start, end)
+      if (hasFocus() && inputInitialized) scheduleEvent("selection")
+    }
+  }
+
+  private inner class TableOverlay(context: Context) : FrameLayout(context) {
+    private val editors = mutableListOf<TableCellEditor>()
+    private val startHandle = TableSelectionHandle(context, true)
+    private val endHandle = TableSelectionHandle(context, false)
+    private var rangeAnchor: TableCellAddress? = null
+    private var rangeFocus: TableCellAddress? = null
+
+    private inner class TableSelectionHandle(
+      context: Context,
+      val anchorHandle: Boolean
+    ) : View(context) {
+      private var dragging = false
+
+      init {
+        val size = (12 * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
+        minimumWidth = size
+        minimumHeight = size
+        contentDescription = if (anchorHandle) "Table selection start" else "Table selection end"
+        background = GradientDrawable().apply {
+          shape = GradientDrawable.OVAL
+          setColor(editorAccentColor(dark))
+        }
+        setOnTouchListener { view, event ->
+          when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+              dragging = true
+              view.parent?.requestDisallowInterceptTouchEvent(true)
+              true
+            }
+            MotionEvent.ACTION_MOVE -> {
+              if (dragging) updateHandleRange(this, event.x, event.y)
+              true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+              if (dragging) {
+                updateHandleRange(this, event.x, event.y)
+                view.parent?.requestDisallowInterceptTouchEvent(false)
+                scheduleEvent("selection")
+              }
+              dragging = false
+              true
+            }
+            else -> true
+          }
+        }
+      }
+    }
+
+    fun clearRange() {
+      if (rangeAnchor == null && rangeFocus == null) return
+      rangeAnchor = null
+      rangeFocus = null
+      refreshChrome()
+    }
+
+    fun beginRange(address: TableCellAddress) {
+      rangeAnchor = address
+      rangeFocus = address
+      refreshChrome()
+    }
+
+    fun isCellInRange(address: TableCellAddress): Boolean {
+      val anchor = rangeAnchor ?: return false
+      val focus = rangeFocus ?: return false
+      if (anchor.blockIndex != address.blockIndex || focus.blockIndex != address.blockIndex) return false
+      return address.row in minOf(anchor.row, focus.row)..maxOf(anchor.row, focus.row)
+        && address.column in minOf(anchor.column, focus.column)..maxOf(anchor.column, focus.column)
+    }
+
+    fun selectionPayload(fallback: TableCellAddress): Map<String, Any> {
+      val anchor = rangeAnchor ?: fallback
+      val focus = rangeFocus ?: fallback
+      return mapOf(
+        "anchor" to mapOf("row" to anchor.row, "column" to anchor.column),
+        "focus" to mapOf("row" to focus.row, "column" to focus.column)
+      )
+    }
+
+    fun eventPoints(): Pair<Map<String, Any>, Map<String, Any>>? {
+      val anchor = rangeAnchor ?: return null
+      val focus = rangeFocus ?: return null
+      val block = blocks.getOrNull(anchor.blockIndex) ?: return null
+      if (focus.blockIndex != anchor.blockIndex) return null
+      val focusEditor = editors.firstOrNull { it.address == focus }
+      return mapOf(
+        "blockId" to block.id,
+        "field" to "cell",
+        "row" to anchor.row,
+        "column" to anchor.column,
+        "offset" to 0
+      ) to mapOf(
+        "blockId" to block.id,
+        "field" to "cell",
+        "row" to focus.row,
+        "column" to focus.column,
+        "offset" to (focusEditor?.selectionStart?.coerceAtLeast(0) ?: 0)
+      )
+    }
+
+    fun updateRangeFrom(editor: TableCellEditor, x: Float, y: Float) {
+      val targetX = editor.left + x
+      val targetY = editor.top + y
+      val target = editors.firstOrNull { candidate ->
+        candidate.address.blockIndex == editor.address.blockIndex
+          && targetX >= candidate.left && targetX < candidate.right
+          && targetY >= candidate.top && targetY < candidate.bottom
+      } ?: return
+      if (target.address != rangeFocus) {
+        rangeFocus = target.address
+        refreshChrome()
+      }
+    }
+
+    private fun updateHandleRange(handle: TableSelectionHandle, x: Float, y: Float) {
+      val targetX = handle.left + x
+      val targetY = handle.top + y
+      val target = editors.firstOrNull { candidate ->
+        targetX >= candidate.left && targetX < candidate.right
+          && targetY >= candidate.top && targetY < candidate.bottom
+      } ?: return
+      if (handle.anchorHandle) rangeAnchor = target.address else rangeFocus = target.address
+      refreshChrome()
+    }
+
+    fun sync() {
+      val restore = activeTableCell
+      removeAllViews()
+      editors.clear()
+      blocks.forEachIndexed { blockIndex, block ->
+        if (block.type != "table") return@forEachIndexed
+        block.table?.rows?.forEachIndexed { row, tableRow ->
+          tableRow.cells.forEachIndexed { column, _ ->
+            val editor = TableCellEditor(context, TableCellAddress(blockIndex, row, column))
+            editor.syncFromModel()
+            editors.add(editor)
+            addView(editor, LayoutParams(0, 0))
+          }
+        }
+      }
+      addView(startHandle, LayoutParams(0, 0))
+      addView(endHandle, LayoutParams(0, 0))
+      updateHandleVisibility()
+      post {
+        requestLayout()
+        restore?.let { address ->
+          editors.firstOrNull { it.address == address }?.let { editor ->
+            activeTableCell = address
+            activeTableEditor = editor
+            editor.requestFocus()
+            editor.setSelection(editor.text.length)
+          }
+        }
+      }
+    }
+
+    private fun updateHandleVisibility() {
+      val visible = rangeAnchor != null && rangeFocus != null
+      startHandle.visibility = if (visible) View.VISIBLE else View.GONE
+      endHandle.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    fun refreshChrome() {
+      editors.forEach { it.syncFromModel() }
+      updateHandleVisibility()
+      requestLayout()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+      super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+      val rowHeight = tableRowHeightPx()
+      editors.forEach { editor ->
+        val table = blocks.getOrNull(editor.address.blockIndex)?.table
+        val columnCount = table?.rows?.maxOfOrNull { it.cells.size }?.coerceAtLeast(1) ?: 1
+        val cellWidth = table?.let {
+          (tableDisplayWidthPx(input, it) / columnCount.toFloat()).roundToInt().coerceAtLeast(1)
+        } ?: 1
+        editor.measure(
+          MeasureSpec.makeMeasureSpec(cellWidth, MeasureSpec.EXACTLY),
+          MeasureSpec.makeMeasureSpec(rowHeight, MeasureSpec.EXACTLY)
+        )
+      }
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+      super.onLayout(changed, left, top, right, bottom)
+      val textLayout = input.layout ?: return
+      val rowHeight = tableRowHeightPx()
+      editors.forEach { editor ->
+        val address = editor.address
+        val table = blocks.getOrNull(address.blockIndex)?.table ?: return@forEach
+        val width = maxOf(1, table.rows.maxOfOrNull { it.cells.size } ?: 1)
+        val line = textLayout.getLineForOffset(offsetOf(address.blockIndex))
+        val tableTop = textLayout.getLineBaseline(line) - tableHeightPx(table)
+        val tableWidth = tableDisplayWidthPx(input, table)
+        val cellWidth = tableWidth / width.toFloat()
+        val cellLeft = input.left + input.paddingLeft + (address.column * cellWidth).roundToInt()
+        val cellRight = input.left + input.paddingLeft + ((address.column + 1) * cellWidth).roundToInt()
+        val cellTop = input.top + tableTop + address.row * rowHeight
+        editor.layout(cellLeft, cellTop, cellRight.coerceAtLeast(cellLeft + 1), cellTop + rowHeight)
+      }
+      val handleSize = (12 * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
+      fun layoutHandle(handle: TableSelectionHandle, address: TableCellAddress?) {
+        val editor = address?.let { selected -> editors.firstOrNull { it.address == selected } }
+        if (editor == null || handle.visibility != View.VISIBLE) return
+        val centerX = if (handle === startHandle) editor.left else editor.right
+        val centerY = if (handle === startHandle) editor.top else editor.bottom
+        handle.layout(
+          centerX - handleSize / 2,
+          centerY - handleSize / 2,
+          centerX - handleSize / 2 + handleSize,
+          centerY - handleSize / 2 + handleSize
+        )
+      }
+      layoutHandle(startHandle, rangeAnchor)
+      layoutHandle(endHandle, rangeFocus)
     }
   }
 
@@ -2808,6 +3771,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     private var pressedImageBlock = -1
     private var pressedAudioBlock = -1
     private var pressedFileBlock = -1
+    private var pressedTableBlock = -1
     private var pressStartX = 0f
     private var pressStartY = 0f
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -2884,9 +3848,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
       super.onSizeChanged(w, h, oldw, oldh)
-      if (w != oldw && blocks.any { it.type == "image" || it.type == "audio" || it.type == "video" || it.type == "file" }) {
+      if (w != oldw && blocks.any { it.type == "image" || it.type == "audio" || it.type == "video" || it.type == "file" || it.type == "table" }) {
         post {
           styleBlocks()
+          tableOverlay.requestLayout()
           invalidate()
         }
       }
@@ -2988,10 +3953,21 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       return if (block.type == "file") blockIndex else null
     }
 
+    private fun tableBlockAt(event: MotionEvent): Int? {
+      val textLayout = layout ?: return null
+      if (textLayout.height == 0) return null
+      val lineY = (event.y - totalPaddingTop).toInt().coerceIn(0, textLayout.height - 1)
+      val line = textLayout.getLineForVertical(lineY)
+      val lineStart = textLayout.getLineStart(line)
+      val blockIndex = text.take(lineStart).count { it == '\n' }
+      return blockIndex.takeIf { blocks.getOrNull(it)?.type == "table" }
+    }
+
     /** True once any tap-region has been armed by a preceding [MotionEvent.ACTION_DOWN]. */
     private fun hasPressedBlock() = pressedToggleBlock >= 0 || pressedTodoBlock >= 0 ||
       pressedPageReferenceBlock >= 0 || pressedDividerBlock >= 0 || pressedImageBlock >= 0 ||
       pressedAudioBlock >= 0 || pressedFileBlock >= 0
+      || pressedTableBlock >= 0
 
     /** Disarms every tap-region, e.g. once a gesture turns out to be a scroll, not a tap. */
     private fun clearPressedBlocks() {
@@ -3002,6 +3978,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       pressedImageBlock = -1
       pressedAudioBlock = -1
       pressedFileBlock = -1
+      pressedTableBlock = -1
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -3012,6 +3989,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val imageBlock = imageBlockAt(event)
       val audioBlock = audioBlockAt(event)
       val fileBlock = fileBlockAt(event)
+      val tableBlock = tableBlockAt(event)
       val pressedSpecialBlock = hasPressedBlock()
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
@@ -3024,6 +4002,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           pressedImageBlock = imageBlock ?: -1
           pressedAudioBlock = audioBlock ?: -1
           pressedFileBlock = fileBlock ?: -1
+          pressedTableBlock = tableBlock ?: -1
           if (pressedToggleBlock >= 0) return true
           if (pressedTodoBlock >= 0) return true
           if (pressedPageReferenceBlock >= 0) return true
@@ -3031,6 +4010,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           if (pressedImageBlock >= 0) return true
           if (pressedAudioBlock >= 0) return true
           if (pressedFileBlock >= 0) return true
+          if (pressedTableBlock >= 0) return true
         }
         // A tap-region stays armed through ACTION_DOWN's early return above, so a swipe that
         // starts on one (a divider or image commonly fills most of the visible width/height)
@@ -3051,6 +4031,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           val pressedImage = pressedImageBlock
           val pressedAudio = pressedAudioBlock
           val pressedFile = pressedFileBlock
+          val pressedTable = pressedTableBlock
           pressedToggleBlock = -1
           pressedTodoBlock = -1
           pressedPageReferenceBlock = -1
@@ -3058,6 +4039,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           pressedImageBlock = -1
           pressedAudioBlock = -1
           pressedFileBlock = -1
+          pressedTableBlock = -1
           if (pressed >= 0 && toggleBlock == pressed) {
             blocks[pressed].collapsed = !blocks[pressed].collapsed
             styleBlocks()
@@ -3111,6 +4093,12 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           if (pressedFile >= 0 && fileBlock == pressedFile) {
             val block = blocks[pressedFile]
             onBlockActionsPress(mapOf("id" to block.id, "type" to block.type))
+            performClick()
+            return true
+          }
+          if (pressedTable >= 0 && tableBlock == pressedTable) {
+            val block = blocks[pressedTable]
+            onBlockActionsPress(mapOf("id" to block.id, "type" to block.type, "scope" to "table"))
             performClick()
             return true
           }

@@ -417,6 +417,7 @@ function serializeTableRow(block: MarkdownBlock, indent: number): Array<string>
     const data = getMarkdownBlockPayload(block);
     const rowMeta = getMarkdownMetadata(block);
     const cells = Array.isArray(data.cells) ? data.cells : [ ];
+    const cellColors = rowMeta.table?.cellColors;
     const rowColor = rowMeta.table?.rowColor === undefined
         ? ""
         : ` color=${ quoteAttribute(rowMeta.table.rowColor) }`;
@@ -424,7 +425,9 @@ function serializeTableRow(block: MarkdownBlock, indent: number): Array<string>
     return [
         `${ "\t".repeat(indent) }<tr${ rowColor }>${ cells.map((cell: unknown, cellIndex: number) =>
         {
-            const cellColor = rowMeta.table?.cellColors?.[cellIndex];
+            const cellColor = Array.isArray(cellColors?.[ 0 ])
+                ? undefined
+                : cellColors?.[ cellIndex ] as MarkdownColor | undefined;
             const cellValue = Array.isArray(cell)
                 ? (cell as Array<unknown>)
                     .map((item: unknown) => richTextItem(item as MarkdownRichText[number]))

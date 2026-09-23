@@ -15,8 +15,10 @@ import {
     type EditorColumnCount,
     type EditorCommand,
     type EditorEvent,
+    type EditorBlockActionScope,
     type EditorPoint,
     type EditorSnapshot,
+    type EditorTableSelection,
     type EditorTextMark,
     type EditorTextMarkKind
 } from "../../prototype.ts";
@@ -51,7 +53,10 @@ import { EmojiBottomSheet } from "./EmojiBottomSheet.tsx";
 import type { LayoutChangeEvent } from "react-native";
 import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
 import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
-import type { MarkdownEditorBlockAction } from "./ActionsBottomSheet.tsx";
+import type {
+    MarkdownEditorBlockAction,
+    MarkdownEditorTableAction
+} from "./ActionsBottomSheet.tsx";
 import type { MarkdownColor } from "../../document/types.ts";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
 import { useMarkdownEditorTranslate } from "./config.tsx";
@@ -251,6 +256,8 @@ export interface MarkdownEditorBlockActionsSelection
 {
     readonly blockId: string;
     readonly blockType: EditorBlock["type"];
+    readonly scope?: EditorBlockActionScope;
+    readonly selection?: EditorTableSelection;
 }
 
 /** The current text selection handed to a host link prompt. */
@@ -389,7 +396,8 @@ export interface MarkdownEditorProps extends Omit<NativeEditorProps, "command" |
         Extra?: Pick<EditorCommand,
             "level" | "color" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
             | "label" | "blockId"
-            | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize">
+            | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize"
+            | "selection" | "row" | "column">
     ) => void;
 
     /** Optional icon overrides for the editor UI. */
@@ -695,6 +703,7 @@ const editorBlockNameMessageIds: Readonly<Record<EditorBlock["type"], EditorMess
         numbered_list_item: "blockName.numberedListItem",
         quote: "blockName.quote",
         table_of_contents: "blockName.tableOfContents",
+        table: "blockName.table",
         text: "blockName.text",
         to_do: "blockName.toDo",
         video: "blockName.video"
@@ -1227,7 +1236,8 @@ export function MarkdownEditor({
         extra?: Pick<EditorCommand,
             "level" | "color" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
             | "label" | "blockId"
-            | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize">
+            | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize"
+            | "selection" | "row" | "column">
     ) =>
     {
         if (onCommand !== undefined)
@@ -1351,7 +1361,12 @@ export function MarkdownEditor({
     }: { nativeEvent: NativeBlockActionsPressEvent }) =>
     {
         const selection: MarkdownEditorBlockActionsSelection =
-            { blockId: nativeEvent.id, blockType: nativeEvent.type };
+            {
+                blockId: nativeEvent.id,
+                blockType: nativeEvent.type,
+                scope: nativeEvent.scope,
+                selection: nativeEvent.selection
+            };
         send("dismiss");
         if (onBlockActions !== undefined)
         {
@@ -1398,6 +1413,48 @@ export function MarkdownEditor({
             case "duplicate": send("duplicateBlock", { blockId }); break;
             case "delete": send("deleteBlock", { blockId }); break;
         }
+    }, [ blockActionsRequest, send ]);
+    const handleTableAction = useCallback((action: MarkdownEditorTableAction) =>
+    {
+        const request = blockActionsRequest;
+        setBlockActionsRequest(undefined);
+        if (request === undefined)
+        {
+            send("focus");
+            return;
+        }
+        const selection = request.selection;
+        const extra = {
+            blockId: request.blockId,
+            column: selection?.anchor.column,
+            row: selection?.anchor.row,
+            selection
+        };
+        send(action, extra);
+    }, [ blockActionsRequest, send ]);
+    const handleTableColor = useCallback((color: MarkdownColor | undefined) =>
+    {
+        const request = blockActionsRequest;
+        setBlockActionsRequest(undefined);
+        if (request === undefined)
+        {
+            send("focus");
+            return;
+        }
+        const action = request.scope === "row"
+            ? "rowColor"
+            : request.scope === "column"
+                ? "columnColor"
+                : request.scope === "cells"
+                    ? "cellColor"
+                    : "tableColor";
+        send(action, {
+            blockId: request.blockId,
+            color,
+            column: request.selection?.anchor.column,
+            row: request.selection?.anchor.row,
+            selection: request.selection
+        });
     }, [ blockActionsRequest, send ]);
     const handleReplaceImage = useCallback((blockId: string, url: string) =>
         send("replaceImage", { blockId, url }), [ send ]);
@@ -1736,6 +1793,7 @@ export function MarkdownEditor({
     const handleToDo = useCallback(() => send("toDo"), [ send ]);
     const handleCallout = useCallback(() => send("callout"), [ send ]);
     const handleQuote = useCallback(() => send("quote"), [ send ]);
+    const handleTable = useCallback(() => send("insertTable"), [ send ]);
     const handleCreatePageReference = useCallback(() =>
     {
         if (onCreatePageReference === undefined
@@ -1941,6 +1999,18 @@ export function MarkdownEditor({
         editIcon: t("actionsSheet.editIcon"),
         insertAbove: t("actionsSheet.insertAbove"),
         insertBelow: t("actionsSheet.insertBelow"),
+        fitTableWidth: t("actionsSheet.fitTableWidth"),
+        headerRow: t("actionsSheet.headerRow"),
+        headerColumn: t("actionsSheet.headerColumn"),
+        insertTableRowAbove: t("actionsSheet.insertTableRowAbove"),
+        insertTableRowBelow: t("actionsSheet.insertTableRowBelow"),
+        insertTableColumnLeft: t("actionsSheet.insertTableColumnLeft"),
+        insertTableColumnRight: t("actionsSheet.insertTableColumnRight"),
+        duplicateTableRow: t("actionsSheet.duplicateTableRow"),
+        duplicateTableColumn: t("actionsSheet.duplicateTableColumn"),
+        deleteTableRow: t("actionsSheet.deleteTableRow"),
+        deleteTableColumn: t("actionsSheet.deleteTableColumn"),
+        clearTableContents: t("actionsSheet.clearTableContents"),
         /* Reuses the insert-media sheet's own labels -- replacing an image performs the exact
            same gallery/camera pick as inserting one. */
         openGallery: t("mediaSheet.openGallery"),
@@ -2343,7 +2413,7 @@ export function MarkdownEditor({
                                     grid
                                     label={ t("insertPanel.table") }
                                     labelColor={ iconColor }
-                                    onPress={ handleUnavailableInsert } />
+                                    onPress={ handleTable } />
                                 <BlockOption background={ cardBackground }
                                     button="divider"
                                     color={ iconColor }
@@ -2645,6 +2715,8 @@ export function MarkdownEditor({
                         dark={ dark }
                         labels={ actionsLabels }
                         onAction={ handleBlockAction }
+                        onTableAction={ handleTableAction }
+                        onTableColor={ handleTableColor }
                         onColor={ handleCalloutColor }
                         onDismiss={ handleBlockActionsDismiss }
                         onEditIcon={ handleEditCalloutIcon }
@@ -2652,6 +2724,7 @@ export function MarkdownEditor({
                         onReplaceImage={ (url: string) =>
                             handleReplaceImage(blockActionsRequest.blockId, url) }
                         showCalloutActions={ blockActionsRequest.blockType === "callout" }
+                        showTableActions={ blockActionsRequest.blockType === "table" }
                         showInsertAbove={ blockActionsRequest.blockType !== "divider" }
                         showReplaceAudio={ blockActionsRequest.blockType === "audio" }
                         showReplaceImage={ blockActionsRequest.blockType === "image" } />

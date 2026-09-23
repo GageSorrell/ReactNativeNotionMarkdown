@@ -14,7 +14,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { view } from "./.rnstorybook/storybook.requires";
 
 const StorybookUIRoot = view.getStorybookUI({
-    initialSelection: "editor--default",
+    initialSelection: "editor--table",
     shouldPersistSelection: true,
     storage:
     {

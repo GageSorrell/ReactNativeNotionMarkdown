@@ -10,7 +10,11 @@ import {
   toMarkdownBlocks,
   markdownSelectionPointAt,
   getMarkdownEditableFields,
-  createMarkdownEditor
+  createMarkdownEditor,
+  createMarkdownCommands,
+  insertTableAfter,
+  clearTableContents,
+  makeMarkdownTableBlock
 } from 'react-native-notion-markdown/renderer';
 
 test('renderer entry loads without React Native; seed has three stable blocks', () => {
@@ -78,6 +82,41 @@ test('invalid or duplicate payloads cannot enter the store', () => {
   assert.equal(acceptEditorEvent(initial, { ...initial, revision: 1, blocks: [] }), initial);
   assert.equal(acceptEditorEvent(initial, { ...initial, revision: 1, blocks: [initial.blocks[0], initial.blocks[0]] }), initial);
   assert.equal(acceptEditorEvent(initial, { ...initial, revision: 1, blocks: [{ ...initial.blocks[0], text: 'bad\nseparator' }] }), initial);
+});
+test('table snapshots validate rectangular cells, marks, colors, and stale revisions', () => {
+  const initial = createEditorDocument();
+  const table = {
+    ...initial.blocks[0],
+    text: '',
+    type: 'table',
+    table: {
+      fitPageWidth: false,
+      headerRow: true,
+      headerColumn: false,
+      columnColors: [ undefined, 'blue_bg' ],
+      rows: [
+        { color: 'gray_bg', cells: [
+          { text: 'Name', marks: [ { kind: 'bold', start: 0, end: 4 } ] },
+          { text: 'Value', color: 'green_bg' }
+          ] }
+      ]
+    }
+  };
+  const event = {
+    ...initial,
+    blocks: [ table, ...initial.blocks.slice(1) ],
+    revision: 1,
+    anchor: { blockId: table.id, field: 'cell', row: 0, column: 0, offset: 4 },
+    focus: { blockId: table.id, field: 'cell', row: 0, column: 0, offset: 4 }
+  };
+  const accepted = acceptEditorEvent(initial, event);
+  assert.equal(accepted.blocks[0].table.rows[0].cells[1].color, 'green_bg');
+  assert.equal(acceptEditorEvent(accepted, event), accepted);
+  assert.equal(acceptEditorEvent(initial, {
+    ...event,
+    revision: 1,
+    blocks: [ { ...table, table: { ...table.table, rows: [ { ...table.table.rows[0], cells: [ table.table.rows[0].cells[0] ] } ] } }, ...initial.blocks.slice(1) ]
+  }), initial);
 });
 test('to-do editor blocks preserve checked state and reject it on other block types', () => {
   const initial = createEditorDocument();
@@ -261,6 +300,32 @@ test('Milestone 2 parses recursive containers, tables, mentions, and literal cod
   assert.match(serializeMarkdown(result.document), /<table/);
 });
 
+test('table optional attributes and rich-text colors round trip canonically', () => {
+  const markdown = [
+    '<table fit-page-width="true" header-row="true" header-column="true">',
+    '\t<colgroup>',
+    '\t\t<col color="blue">',
+    '\t\t<col>',
+    '\t</colgroup>',
+    '\t<tr color="gray"><td color="red">**Bold**</td><td><span color="green">Text</span></td></tr>',
+    '\t<tr><td>Second</td><td>Row</td></tr>',
+    '</table>'
+  ].join('\n');
+  const first = parseMarkdown(markdown);
+  const serialized = serializeMarkdown(first.document);
+  const second = parseMarkdown(serialized);
+  const table = second.document.blocks[0];
+  assert.deepEqual(second.diagnostics, []);
+  assert.equal(table.__markdown_markdown.table.fitPageWidth, true);
+  assert.equal(table.__markdown_markdown.table.headerRow, true);
+  assert.equal(table.__markdown_markdown.table.headerColumn, true);
+  assert.deepEqual(table.__markdown_markdown.table.columnColors, ['blue', undefined]);
+  assert.equal(table.children[0].__markdown_markdown.table.rowColor, 'gray');
+  assert.deepEqual(table.children[0].__markdown_markdown.table.cellColors, ['red', undefined]);
+  assert.equal(table.children[0].table_row.cells[0][0].annotations.bold, true);
+  assert.equal(table.children[0].table_row.cells[1][0].annotations.color, 'green');
+});
+
 test('Milestone 2 adapters preserve IDs and report unresolved SDK conversions', () => {
   const imported = fromMarkdownBlocks([
     { object: 'block', id: '11111111-1111-1111-1111-111111111111', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: 'Remote' }, annotations: {} }] } }
@@ -298,4 +363,30 @@ test('Milestone 2 selection mapping and grouped history use immutable snapshots'
   assert.equal(store.getMarkdown(), 'One\nTwo');
   assert.equal(store.redo(), true);
   assert.match(store.getMarkdown(), /Changed twice/);
+});
+
+test('table commands create a 3x3 grid and clear only the selected rectangle', () => {
+  const store = createMarkdownEditor('Before');
+  const firstBlockId = store.getDocument().blocks[0].id;
+  const tableId = insertTableAfter(store, firstBlockId);
+  const commands = createMarkdownCommands(store);
+  const table = store.getDocument().blocks.find((block) => block.id === tableId);
+  assert.equal(table.children.length, 3);
+  assert.equal(table.children[0].table_row.cells.length, 3);
+  const populated = {
+    ...table.children[0],
+    table_row: {
+      ...table.children[0].table_row,
+      cells: [ [ { type: 'text', text: { content: 'keep' } } ], [ { type: 'text', text: { content: 'clear' } } ], [] ]
+    }
+  };
+  store.transact((document) => ({
+    ...document,
+    blocks: document.blocks.map((block) => block.id === tableId ? { ...block, children: [ populated, ...block.children.slice(1) ] } : block)
+  }), 'user');
+  commands.clearTableContents({ blockId: tableId, anchor: { row: 0, column: 1 }, focus: { row: 0, column: 1 } });
+  const updated = store.getDocument().blocks.find((block) => block.id === tableId);
+  assert.equal(updated.children[0].table_row.cells[0][0].text.content, 'keep');
+  assert.deepEqual(updated.children[0].table_row.cells[1], []);
+  assert.equal(makeMarkdownTableBlock().children.length, 3);
 });

@@ -37,7 +37,8 @@ import type {
     MarkdownRichText,
     MarkdownRichTextItem,
     MarkdownSelection,
-    MarkdownSelectionPoint
+    MarkdownSelectionPoint,
+    MarkdownTableSelection
 } from "./types.ts";
 import {
     appendMarkdownChild,
@@ -62,7 +63,7 @@ import {
 } from "./tree.ts";
 import { getMarkdownEditableFields, markdownSelectionPositionOf } from "./selection.ts";
 import type { MarkdownEditorStore } from "./store.ts";
-import { getMarkdownMetadata } from "../internal.ts";
+import { getMarkdownBlockPayload, getMarkdownMetadata } from "../internal.ts";
 
 let nextBlockSequence = 0;
 
@@ -195,6 +196,13 @@ function defaultBlockPayload(type: MarkdownBlockType): Record<string, unknown>
 {
     switch (type)
     {
+        case "table":
+            return {
+                has_column_header: false,
+                has_row_header: false,
+                table_width: 3,
+                cells: Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => [ ]))
+            };
         case "divider":
         case "table_of_contents":
             return { };
@@ -224,6 +232,27 @@ export function makeMarkdownBlock(
         id,
         type,
         [ type ]: defaultBlockPayload(type)
+    } as unknown as MarkdownBlock;
+}
+
+/** Create the default editable 3×3 table required by the enhanced-Markdown editor. */
+export function makeMarkdownTableBlock(id: string = generateMarkdownBlockId()): MarkdownBlock
+{
+    const rows = Array.from({ length: 3 }, (_: unknown, rowIndex: number) =>
+        ({
+            id: `${ id }:row:${ rowIndex }`,
+            table_row: { cells: Array.from({ length: 3 }, () => [ ]) },
+            type: "table_row"
+        }));
+    return {
+        __markdown_markdown: {
+            editorId: id,
+            table: { fitPageWidth: false, headerColumn: false, headerRow: false }
+        },
+        children: rows,
+        id,
+        table: { has_column_header: false, has_row_header: false, table_width: 3 },
+        type: "table"
     } as unknown as MarkdownBlock;
 }
 
@@ -266,6 +295,7 @@ const markdownInsertableBlockCatalog: ReadonlyArray<MarkdownInsertableBlockOptio
     { category: "list", keywords: [ "toggle", "collapse" ], label: "Toggle list", type: "toggle" },
     { category: "basic", keywords: [ "quote", "blockquote" ], label: "Quote", type: "quote" },
     { category: "basic", keywords: [ "callout", "note" ], label: "Callout", type: "callout" },
+    { category: "basic", keywords: [ "table", "grid", "rows", "columns" ], label: "Table", type: "table" },
     { category: "advanced", keywords: [ "code", "snippet" ], label: "Code", type: "code" },
     {
         category: "advanced",
@@ -618,6 +648,245 @@ export function insertBlockOfType(
         insertMarkdownBlockRelative(document, afterBlockId, newBlock, "after"), "user");
     store.setSelection(collapsedSelection(fieldPoint(id, "rich_text", undefined, 0)));
     return id;
+}
+
+interface TableRowValue
+{
+    cells: Array<MarkdownRichText>;
+    source?: MarkdownBlock;
+}
+
+function tableRowsOf(block: MarkdownBlock): Array<TableRowValue>
+{
+    return (block.children ?? [ ]).filter((child: MarkdownBlock) => child.type === "table_row").map(
+        (row: MarkdownBlock) => ({
+            cells: Array.isArray(getMarkdownBlockPayload(row).cells)
+                ? (getMarkdownBlockPayload(row).cells as Array<MarkdownRichText>).map(
+                    (cell: MarkdownRichText) => [ ...cell ])
+                : [ ],
+            source: row
+        })
+    );
+}
+
+function replaceTableRows(block: MarkdownBlock, rows: Array<TableRowValue>): MarkdownBlock
+{
+    const children = rows.map((row: TableRowValue, rowIndex: number) => ({
+        __markdown_markdown: row.source?.__markdown_markdown ?? {
+            editorId: `${ block.id }:row:${ rowIndex }`
+        },
+        id: row.source?.id ?? `${ block.id }:row:${ rowIndex }`,
+        table_row: { cells: row.cells },
+        type: "table_row"
+    } as unknown as MarkdownBlock));
+    const payload = getMarkdownBlockPayload(block);
+    return {
+        ...block,
+        children,
+        table: { ...payload, table_width: Math.max(0, ...rows.map((row) => row.cells.length)) }
+    } as unknown as MarkdownBlock;
+}
+
+function tableSelectionBounds(selection: MarkdownTableSelection): {
+    readonly top: number;
+    readonly bottom: number;
+    readonly left: number;
+    readonly right: number;
+}
+{
+    return {
+        bottom: Math.max(selection.anchor.row, selection.focus.row),
+        left: Math.min(selection.anchor.column, selection.focus.column),
+        right: Math.max(selection.anchor.column, selection.focus.column),
+        top: Math.min(selection.anchor.row, selection.focus.row)
+    };
+}
+
+/** Insert a blank 3×3 table after a block and select its first cell. */
+export function insertTableAfter(store: MarkdownEditorStore, blockId: string): string
+{
+    const table = makeMarkdownTableBlock();
+    store.transact((document: MarkdownDocument) =>
+        insertMarkdownBlockRelative(document, blockId, table, "after"), "user");
+    store.setSelection(collapsedSelection({
+        blockId: table.id,
+        field: "cell",
+        index: 0,
+        offset: 0
+    } as MarkdownSelectionPoint));
+    return table.id;
+}
+
+function updateTable(store: MarkdownEditorStore, blockId: string, updater: (block: MarkdownBlock) => MarkdownBlock): void
+{
+    store.transact((document: MarkdownDocument) => updateMarkdownBlock(document, blockId, updater), "user");
+}
+
+/** Toggle one of the three table-level boolean options. */
+export function toggleTableOption(
+    store: MarkdownEditorStore,
+    blockId: string,
+    option: "fitPageWidth" | "headerRow" | "headerColumn"
+): void
+{
+    updateTable(store, blockId, (block: MarkdownBlock) => {
+        const metadata = getMarkdownMetadata(block);
+        const table = metadata.table ?? { };
+        const next = !Boolean(table[ option ]);
+        return {
+            ...block,
+            __markdown_markdown: { ...metadata, table: { ...table, [ option ]: next } }
+        } as MarkdownBlock;
+    });
+}
+
+/** Insert an empty row while keeping a table at least one row high. */
+export function insertTableRow(
+    store: MarkdownEditorStore,
+    blockId: string,
+    index: number,
+    position: "above" | "below" = "below"
+): void
+{
+    updateTable(store, blockId, (block: MarkdownBlock) => {
+        const rows = tableRowsOf(block);
+        const width = Math.max(1, ...rows.map((row) => row.cells.length));
+        const insertAt = Math.max(0, Math.min(rows.length, index + (position === "below" ? 1 : 0)));
+        rows.splice(insertAt, 0, { cells: Array.from({ length: width }, () => [ ]) });
+        return replaceTableRows(block, rows);
+    });
+}
+
+/** Insert an empty column while keeping a table at least one column wide. */
+export function insertTableColumn(
+    store: MarkdownEditorStore,
+    blockId: string,
+    index: number,
+    position: "left" | "right" = "right"
+): void
+{
+    updateTable(store, blockId, (block: MarkdownBlock) => {
+        const rows = tableRowsOf(block);
+        const insertAt = Math.max(0, Math.min(Math.max(1, ...rows.map((row) => row.cells.length)),
+            index + (position === "right" ? 1 : 0)));
+        rows.forEach((row) => row.cells.splice(insertAt, 0, [ ]));
+        return replaceTableRows(block, rows);
+    });
+}
+
+/** Duplicate one row, including its rich text and cell formatting. */
+export function duplicateTableRow(
+    store: MarkdownEditorStore,
+    selection: MarkdownTableSelection
+): void
+{
+    updateTable(store, selection.blockId, (block: MarkdownBlock) => {
+        const rows = tableRowsOf(block);
+        const index = Math.max(0, Math.min(rows.length - 1, selection.anchor.row));
+        const source = rows[ index ];
+        if (source === undefined) { return block; }
+        rows.splice(index + 1, 0, { cells: source.cells.map((cell) => [ ...cell ]) });
+        const metadata = getMarkdownMetadata(block);
+        const table = metadata.table ?? { };
+        const rowColors = [ ...(table.rowColors ?? [ ]) ];
+        rowColors.splice(index + 1, 0, rowColors[ index ]);
+        return {
+            ...replaceTableRows(block, rows),
+            __markdown_markdown: { ...metadata, table: { ...table, rowColors } }
+        } as MarkdownBlock;
+    });
+}
+
+/** Duplicate one column, including its rich text and cell formatting. */
+export function duplicateTableColumn(
+    store: MarkdownEditorStore,
+    selection: MarkdownTableSelection
+): void
+{
+    updateTable(store, selection.blockId, (block: MarkdownBlock) => {
+        const rows = tableRowsOf(block);
+        const width = Math.max(1, ...rows.map((row) => row.cells.length));
+        const index = Math.max(0, Math.min(width - 1, selection.anchor.column));
+        rows.forEach((row) => {
+            const source = row.cells[ index ] ?? [ ];
+            row.cells.splice(index + 1, 0, [ ...source ]);
+        });
+        const metadata = getMarkdownMetadata(block);
+        const table = metadata.table ?? { };
+        const columnColors = [ ...(table.columnColors ?? [ ]) ];
+        columnColors.splice(index + 1, 0, columnColors[ index ]);
+        return {
+            ...replaceTableRows(block, rows),
+            __markdown_markdown: { ...metadata, table: { ...table, columnColors } }
+        } as MarkdownBlock;
+    });
+}
+
+/** Clear selected cell contents while retaining all table/row/cell colors. */
+export function clearTableContents(
+    store: MarkdownEditorStore,
+    selection: MarkdownTableSelection
+): void
+{
+    const bounds = tableSelectionBounds(selection);
+    updateTable(store, selection.blockId, (block: MarkdownBlock) => {
+        const rows = tableRowsOf(block);
+        rows.forEach((row, rowIndex) => row.cells = row.cells.map((cell, columnIndex) =>
+            rowIndex >= bounds.top && rowIndex <= bounds.bottom
+                && columnIndex >= bounds.left && columnIndex <= bounds.right ? [ ] : cell));
+        return replaceTableRows(block, rows);
+    });
+}
+
+/** Set a table, row, column, or rectangular-cell color. */
+export function setTableColor(
+    store: MarkdownEditorStore,
+    selection: MarkdownTableSelection,
+    scope: "table" | "row" | "column" | "cell",
+    color: MarkdownColor | undefined
+): void
+{
+    const bounds = tableSelectionBounds(selection);
+    updateTable(store, selection.blockId, (block: MarkdownBlock) => {
+        const metadata = getMarkdownMetadata(block);
+        const current = metadata.table ?? { };
+        if (scope === "table")
+        {
+            return { ...block, __markdown_markdown: { ...metadata, table: { ...current, tableColor: color } } } as MarkdownBlock;
+        }
+        const rowColors = [ ...(current.rowColors ?? [ ]) ];
+        const columnColors = [ ...(current.columnColors ?? [ ]) ];
+        const cellColors: Array<Array<MarkdownColor | undefined>> = Array.isArray(current.cellColors?.[ 0 ])
+            ? (current.cellColors as Array<Array<MarkdownColor | undefined>>).map((row) => [ ...row ])
+            : [ ];
+        if (scope === "row")
+        {
+            for (let row = bounds.top; row <= bounds.bottom; row += 1) rowColors[ row ] = color;
+        }
+        if (scope === "column")
+        {
+            for (let column = bounds.left; column <= bounds.right; column += 1) columnColors[ column ] = color;
+        }
+        if (scope === "cell")
+        {
+            for (let row = bounds.top; row <= bounds.bottom; row += 1)
+            {
+                for (let column = bounds.left; column <= bounds.right; column += 1)
+                {
+                    const rowColorsAt = [ ...(cellColors[ row ] ?? [ ]) ];
+                    rowColorsAt[ column ] = color;
+                    cellColors[ row ] = rowColorsAt;
+                }
+            }
+        }
+        return {
+            ...block,
+            __markdown_markdown: {
+                ...metadata,
+                table: { ...current, cellColors, columnColors, rowColors }
+            }
+        } as MarkdownBlock;
+    });
 }
 
 /**
@@ -981,6 +1250,18 @@ export interface MarkdownCommands
     handleFieldBoundary(event: MarkdownFieldBoundaryEvent): void;
     insertTextBlockAfter(blockId: string): string;
     insertBlockOfType(afterBlockId: string, type: MarkdownBlockType): string;
+    insertTableAfter(blockId: string): string;
+    toggleTableOption(blockId: string, option: "fitPageWidth" | "headerRow" | "headerColumn"): void;
+    insertTableRow(blockId: string, index: number, position?: "above" | "below"): void;
+    insertTableColumn(blockId: string, index: number, position?: "left" | "right"): void;
+    duplicateTableRow(selection: MarkdownTableSelection): void;
+    duplicateTableColumn(selection: MarkdownTableSelection): void;
+    clearTableContents(selection: MarkdownTableSelection): void;
+    setTableColor(
+        selection: MarkdownTableSelection,
+        scope: "table" | "row" | "column" | "cell",
+        color: MarkdownColor | undefined
+    ): void;
     appendChildBlock(parentBlockId: string, type: MarkdownBlockType): string;
     deleteBlock(blockId: string): void;
     turnInto(blockId: string, type: MarkdownBlockType): void;
@@ -1021,6 +1302,23 @@ export function createMarkdownCommands(store: MarkdownEditorStore): MarkdownComm
         indent: (blockId: string) => indent(store, blockId),
         insertBlockOfType: (afterBlockId: string, type: MarkdownBlockType) =>
             insertBlockOfType(store, afterBlockId, type),
+        insertTableAfter: (blockId: string) => insertTableAfter(store, blockId),
+        toggleTableOption: (
+            blockId: string,
+            option: "fitPageWidth" | "headerRow" | "headerColumn"
+        ) => toggleTableOption(store, blockId, option),
+        insertTableRow: (blockId: string, index: number, position?: "above" | "below") =>
+            insertTableRow(store, blockId, index, position),
+        insertTableColumn: (blockId: string, index: number, position?: "left" | "right") =>
+            insertTableColumn(store, blockId, index, position),
+        duplicateTableRow: (selection: MarkdownTableSelection) => duplicateTableRow(store, selection),
+        duplicateTableColumn: (selection: MarkdownTableSelection) => duplicateTableColumn(store, selection),
+        clearTableContents: (selection: MarkdownTableSelection) => clearTableContents(store, selection),
+        setTableColor: (
+            selection: MarkdownTableSelection,
+            scope: "table" | "row" | "column" | "cell",
+            color: MarkdownColor | undefined
+        ) => setTableColor(store, selection, scope, color),
         insertMention: (
             point: MarkdownSelectionPoint,
             candidate: MarkdownMentionCandidate,

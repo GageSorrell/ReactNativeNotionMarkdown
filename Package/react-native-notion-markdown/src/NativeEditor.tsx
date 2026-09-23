@@ -7,7 +7,14 @@
  * @license   MIT
  */
 
-import type { EditorBlock, EditorCommand, EditorEvent, EditorSnapshot } from "./prototype.ts";
+import type {
+    EditorBlock,
+    EditorBlockActionScope,
+    EditorCommand,
+    EditorEvent,
+    EditorSnapshot,
+    EditorTableSelection
+} from "./prototype.ts";
 import type { ComponentType } from "react";
 import type { ViewProps } from "react-native";
 import { requireNativeViewManager } from "expo-modules-core";
@@ -75,6 +82,8 @@ export interface NativeBlockActionsPressEvent
 {
     readonly id: string;
     readonly type: EditorBlock["type"];
+    readonly scope?: EditorBlockActionScope;
+    readonly selection?: EditorTableSelection;
 }
 
 /**

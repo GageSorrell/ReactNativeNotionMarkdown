@@ -34,6 +34,7 @@ export interface EditorBlock
         | "to_do"
         | "callout"
         | "quote"
+        | "table"
         | "divider"
         | "table_of_contents"
         | "column_list"
@@ -60,6 +61,8 @@ export interface EditorBlock
     readonly columnCount?: EditorColumnCount;
     /** Inline formatting ranges contained by this block's text. */
     readonly marks?: ReadonlyArray<EditorTextMark>;
+    /** Present only for a `table` block. */
+    readonly table?: EditorTable;
 };
 
 /** Boolean inline formatting marks supported by the editor's format sub-menu. */
@@ -82,17 +85,65 @@ export interface EditorTextMark
     readonly url?: string;
 }
 
+/** One directly editable cell in an editor table. */
+export interface EditorTableCell
+{
+    readonly text: string;
+    readonly marks?: ReadonlyArray<EditorTextMark>;
+    readonly color?: MarkdownColor;
+}
+
+/** A table row and its optional structural color. */
+export interface EditorTableRow
+{
+    readonly cells: Array<EditorTableCell>;
+    readonly color?: MarkdownColor;
+}
+
+/** The native editor payload for a table block. */
+export interface EditorTable
+{
+    readonly rows: Array<EditorTableRow>;
+    readonly columnColors?: ReadonlyArray<MarkdownColor | undefined>;
+    readonly tableColor?: MarkdownColor;
+    readonly fitPageWidth: boolean;
+    readonly headerRow: boolean;
+    readonly headerColumn: boolean;
+}
+
+/** A cell coordinate used by rectangular table selections and table actions. */
+export interface EditorTablePoint
+{
+    readonly row: number;
+    readonly column: number;
+}
+
+/** A rectangular selection within one table block. */
+export interface EditorTableSelection
+{
+    readonly blockId: string;
+    readonly anchor: EditorTablePoint;
+    readonly focus: EditorTablePoint;
+}
+
 /**
  * A UTF-16 selection point within an editor block.
  *
  * @since 1.0.0
  */
-export interface EditorPoint
-{
-    readonly blockId: string;
-    readonly field: "rich_text";
-    readonly offset: number ;
-}
+export type EditorPoint =
+    | {
+        readonly blockId: string;
+        readonly field: "rich_text";
+        readonly offset: number;
+    }
+    | {
+        readonly blockId: string;
+        readonly field: "cell";
+        readonly row: number;
+        readonly column: number;
+        readonly offset: number;
+    };
 
 /**
  * A revisioned document snapshot exchanged with the native editor.
@@ -159,6 +210,25 @@ export type Action =
     | "insertFile"
     | "callout"
     | "quote"
+    | "insertTable"
+    | "fitTableWidth"
+    | "toggleHeaderRow"
+    | "toggleHeaderColumn"
+    | "insertTableRowAbove"
+    | "insertTableRowBelow"
+    | "insertTableColumnLeft"
+    | "insertTableColumnRight"
+    | "duplicateTableRow"
+    | "duplicateTableColumn"
+    | "deleteTableRow"
+    | "deleteTableColumn"
+    | "duplicateTable"
+    | "clearTableContents"
+    | "deleteTable"
+    | "tableColor"
+    | "rowColor"
+    | "columnColor"
+    | "cellColor"
     | "compose"
     | "commit"
     | "insertAbove"
@@ -220,7 +290,14 @@ export interface EditorCommand
     readonly mimeType?: string;
     readonly fileName?: string;
     readonly fileSize?: number;
+    /** Table selection used by table-scoped commands. */
+    readonly selection?: EditorTableSelection;
+    readonly row?: number;
+    readonly column?: number;
 };
+
+/** Structural scope supplied with a block-actions event. */
+export type EditorBlockActionScope = "block" | "table" | "row" | "column" | "cells";
 
 /**
  * Create the default three-block editor document for the requested epoch.
@@ -266,7 +343,7 @@ const validEditorBlockTypes: ReadonlyArray<EditorBlock[ "type" ]> =
     [
         "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
         "numbered_list_item", "divider",
-        "to_do", "callout", "quote", "table_of_contents", "column_list", "image", "audio", "video", "file",
+        "to_do", "callout", "quote", "table", "table_of_contents", "column_list", "image", "audio", "video", "file",
         "link_to_page"
     ];
 
@@ -277,6 +354,44 @@ const validEditorColors: ReadonlyArray<MarkdownColor> =
         "gray_bg", "brown_bg", "orange_bg", "yellow_bg", "green_bg",
         "blue_bg", "purple_bg", "pink_bg", "red_bg"
     ];
+
+function validEditorTable(table: EditorTable | undefined): boolean
+{
+    if (table === undefined || !Array.isArray(table.rows) || table.rows.length < 1
+        || typeof table.fitPageWidth !== "boolean"
+        || typeof table.headerRow !== "boolean" || typeof table.headerColumn !== "boolean")
+    {
+        return false;
+    }
+
+    const width = table.rows[ 0 ]?.cells.length ?? 0;
+    if (width < 1) {return false;}
+
+    const validMark = (mark: EditorTextMark, text: string): boolean =>
+        mark.start >= 0 && mark.end > mark.start && mark.end <= text.length
+        && ([ "bold", "italic", "strikethrough", "underline", "code" ].includes(mark.kind)
+            || (mark.kind === "link" && typeof mark.url === "string" && mark.url.length > 0));
+
+    return table.rows.every((row: EditorTableRow) =>
+        Array.isArray(row.cells) && row.cells.length === width
+        && (row.color === undefined || validEditorColors.includes(row.color))
+        && row.cells.every((cell: EditorTableCell) =>
+            typeof cell.text === "string" && !cell.text.includes("\n")
+            && (cell.color === undefined || validEditorColors.includes(cell.color))
+            && (cell.marks === undefined && cell.text.length === 0
+                || cell.marks === undefined
+                || cell.marks.every((mark: EditorTextMark) => validMark(mark, cell.text)))
+        ))
+        && (table.columnColors === undefined || table.columnColors.length <= width
+            && table.columnColors.every((color: MarkdownColor | undefined) =>
+                color === undefined || validEditorColors.includes(color)))
+        && (table.tableColor === undefined || validEditorColors.includes(table.tableColor));
+}
+
+function editorTablesEqual(first: EditorTable | undefined, second: EditorTable | undefined): boolean
+{
+    return JSON.stringify(first ?? null) === JSON.stringify(second ?? null);
+}
 
 /**
  * Acknowledgements never replace the native composing buffer. Replacement changes epoch.
@@ -332,6 +447,7 @@ export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): 
         (Block.fileSize !== undefined && ((Block.type !== "audio" && Block.type !== "file")
             || !Number.isFinite(Block.fileSize) || Block.fileSize < 0)) ||
         (Block.color !== undefined && !validEditorColors.includes(Block.color)) ||
+        (Block.type === "table" ? !validEditorTable(Block.table) : Block.table !== undefined) ||
         (Block.marks !== undefined && Block.marks.some((mark: EditorTextMark) =>
             mark.start < 0 || mark.end <= mark.start || mark.end > Block.text.length ||
             (![ "bold", "italic", "strikethrough", "underline", "code" ].includes(mark.kind)
@@ -380,6 +496,7 @@ export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): 
                 && previous.fileName === block.fileName
                 && previous.fileSize === block.fileSize
                 && previous.icon === block.icon
+                && editorTablesEqual(previous.table, block.table)
                 && marksEqual
                 ? previous
                 : block;

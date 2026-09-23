@@ -102,9 +102,11 @@ export interface MarkdownMetadata
         readonly headerColumn?: boolean;
         readonly columnColor?: MarkdownColor;
         readonly columnColors?: Array<MarkdownColor | undefined>;
+        readonly tableColor?: MarkdownColor;
         readonly rowColor?: MarkdownColor;
+        readonly rowColors?: Array<MarkdownColor | undefined>;
         readonly cellColor?: MarkdownColor;
-        readonly cellColors?: Array<MarkdownColor | undefined>;
+        readonly cellColors?: Array<MarkdownColor | undefined> | Array<Array<MarkdownColor | undefined>>;
     };
     readonly unresolved?: boolean;
     readonly [key: string]: unknown;
@@ -373,6 +375,14 @@ export interface MarkdownSelection
 {
     readonly anchor: MarkdownSelectionPoint;
     readonly focus: MarkdownSelectionPoint;
+}
+
+/** A rectangular table selection used by table-scoped editor commands. */
+export interface MarkdownTableSelection
+{
+    readonly blockId: string;
+    readonly anchor: { readonly row: number; readonly column: number; };
+    readonly focus: { readonly row: number; readonly column: number; };
 }
 
 /**

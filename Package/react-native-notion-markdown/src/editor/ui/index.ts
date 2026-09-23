@@ -34,7 +34,7 @@ export {
     type MarkdownEditorPageReferenceSelection,
     type MarkdownEditorProps
 } from "./MarkdownEditor.tsx";
-export { type MarkdownEditorBlockAction } from "./ActionsBottomSheet.tsx";
+export { type MarkdownEditorBlockAction, type MarkdownEditorTableAction } from "./ActionsBottomSheet.tsx";
 
 /** Editor UI configuration -- currently localization, with room to grow to theming. */
 export {

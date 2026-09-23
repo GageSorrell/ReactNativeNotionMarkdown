@@ -9,7 +9,7 @@
     "editor.formatOnSave": false,
     "eslint.format.enable": false,
     "explorer.excludeGitIgnore": true,
-    "react-native-tools.projectRoot": "Application/Windows",
+    "react-native-tools.projectRoot": "Application",
   	"eslint.workingDirectories":
 	[
         { "!cwd": false, "directory": "**" }

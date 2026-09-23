@@ -340,6 +340,63 @@ export const WithImages: Story =
         render: (args: ComponentProps<typeof MarkdownEditor>) => <RichDocumentEditorStory { ...args } />
     };
 
+export const Table: Story =
+    {
+        args:
+        {
+            snapshot:
+            {
+                blocks:
+                [
+                    {
+                        id: "table:demo",
+                        table:
+                        {
+                            columnColors: [ undefined, "blue_bg", undefined ],
+                            fitPageWidth: true,
+                            headerColumn: true,
+                            headerRow: true,
+                            rows:
+                            [
+                                {
+                                    cells:
+                                    [
+                                        { text: "Feature", marks: [ { end: 7, kind: "bold", start: 0 } ] },
+                                        { text: "Status", marks: [ { end: 6, kind: "bold", start: 0 } ] },
+                                        { text: "Owner", marks: [ { end: 5, kind: "bold", start: 0 } ] }
+                                    ]
+                                },
+                                {
+                                    cells:
+                                    [
+                                        { text: "Editable cells" },
+                                        { color: "green_bg", text: "Ready" },
+                                        { text: "Ada" }
+                                    ],
+                                    color: "gray_bg"
+                                },
+                                {
+                                    cells:
+                                    [
+                                        { text: "Rich text" },
+                                        { color: "yellow_bg", text: "In progress" },
+                                        { text: "Lin" }
+                                    ]
+                                }
+                            ]
+                        },
+                        text: "",
+                        type: "table"
+                    },
+                    { id: "table:after", text: "Tap a cell to edit it.", type: "text" }
+                ],
+                epoch: 1,
+                revision: 0
+            },
+            style: { flex: 1 }
+        }
+    };
+
 export const Callout: Story =
     {
         args:

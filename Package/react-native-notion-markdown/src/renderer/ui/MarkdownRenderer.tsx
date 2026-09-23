@@ -639,6 +639,7 @@ function TableCell({
     cellBaseStyle,
     cellWidth,
     context,
+    foregroundColor,
     value,
     weight
 }: {
@@ -646,6 +647,7 @@ function TableCell({
     readonly cellBaseStyle: object;
     readonly cellWidth: number;
     readonly context: RenderContext;
+    readonly foregroundColor?: string;
     readonly value: unknown;
     readonly weight: "normal" | "bold";
 })
@@ -660,6 +662,7 @@ function TableCell({
             <Rich
                 context={ context }
                 value={ value }
+                color={ foregroundColor }
                 weight={ weight }
             />
         </View>
@@ -725,18 +728,24 @@ function TableView({ block, context }: { readonly block: MarkdownBlock; readonly
                                 {
                                     Array.from({ length: width }, (_: unknown, columnIndex: number) =>
                                     {
-                                        const color =
-                                            rowMeta?.cellColors?.[columnIndex] ??
-                                            rowMeta?.rowColor ??
-                                            table?.columnColors?.[columnIndex];
-
-                                        const backgroundColor =
-                                            markdownColor(color, context.dark) ??
-                                            ((headerRow && rowIndex === 0) ||
-                                            (headerColumn && columnIndex === 0)
+                                        const cellColors = rowMeta?.cellColors;
+                                        const cellColor = Array.isArray(cellColors?.[ 0 ])
+                                            ? cellColors?.[ rowIndex ]?.[ columnIndex ]
+                                            : cellColors?.[ columnIndex ] as string | undefined;
+                                        const color = cellColor
+                                            ?? rowMeta?.rowColor
+                                            ?? rowMeta?.rowColors?.[ rowIndex ]
+                                            ?? table?.columnColors?.[ columnIndex ]
+                                            ?? table?.tableColor;
+                                        const mappedColor = markdownColor(color as string | undefined, context.dark);
+                                        const explicitBackground = typeof color === "string"
+                                            && (color.endsWith("_bg") || color.endsWith("_background"));
+                                        const backgroundColor = explicitBackground
+                                            ? mappedColor ?? context.theme.background
+                                            : ((headerRow && rowIndex === 0) || (headerColumn && columnIndex === 0))
                                                 ? context.theme.surface
-                                                : context.theme.background
-                                            );
+                                                : context.theme.background;
+                                        const foregroundColor = explicitBackground ? undefined : mappedColor;
 
                                         const weight = (
                                             (headerRow && rowIndex === 0) ||
@@ -751,6 +760,7 @@ function TableView({ block, context }: { readonly block: MarkdownBlock; readonly
                                                 cellBaseStyle={ CellBaseStyle }
                                                 cellWidth={ cellWidth }
                                                 context={ context }
+                                                foregroundColor={ foregroundColor }
                                                 key={ columnIndex }
                                                 value={ cells[columnIndex] }
                                                 weight={ weight }

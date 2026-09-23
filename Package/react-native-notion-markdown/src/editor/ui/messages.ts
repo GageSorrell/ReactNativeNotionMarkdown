@@ -78,6 +78,18 @@ export type EditorMessageId =
     | "actionsSheet.title"
     | "actionsSheet.insertAbove"
     | "actionsSheet.insertBelow"
+    | "actionsSheet.fitTableWidth"
+    | "actionsSheet.headerRow"
+    | "actionsSheet.headerColumn"
+    | "actionsSheet.insertTableRowAbove"
+    | "actionsSheet.insertTableRowBelow"
+    | "actionsSheet.insertTableColumnLeft"
+    | "actionsSheet.insertTableColumnRight"
+    | "actionsSheet.duplicateTableRow"
+    | "actionsSheet.duplicateTableColumn"
+    | "actionsSheet.deleteTableRow"
+    | "actionsSheet.deleteTableColumn"
+    | "actionsSheet.clearTableContents"
     | "actionsSheet.duplicate"
     | "actionsSheet.delete"
     | "actionsSheet.color"
@@ -96,6 +108,7 @@ export type EditorMessageId =
     | "blockName.toDo"
     | "blockName.callout"
     | "blockName.quote"
+    | "blockName.table"
     | "blockName.divider"
     | "blockName.file"
     | "blockName.tableOfContents"
@@ -235,6 +248,78 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, MarkdownEditorMess
             description: "Block-actions sheet button that inserts an empty block below the target block",
             id: "actionsSheet.insertBelow"
         },
+        "actionsSheet.fitTableWidth":
+        {
+            defaultMessage: "Fit to page width",
+            description: "Table action-sheet button that toggles page-width fitting",
+            id: "actionsSheet.fitTableWidth"
+        },
+        "actionsSheet.headerRow":
+        {
+            defaultMessage: "Toggle header row",
+            description: "Table action-sheet button that toggles the header row",
+            id: "actionsSheet.headerRow"
+        },
+        "actionsSheet.headerColumn":
+        {
+            defaultMessage: "Toggle header column",
+            description: "Table action-sheet button that toggles the header column",
+            id: "actionsSheet.headerColumn"
+        },
+        "actionsSheet.insertTableRowAbove":
+        {
+            defaultMessage: "Insert row above",
+            description: "Table action-sheet button that inserts a row above the selected row",
+            id: "actionsSheet.insertTableRowAbove"
+        },
+        "actionsSheet.insertTableRowBelow":
+        {
+            defaultMessage: "Insert row below",
+            description: "Table action-sheet button that inserts a row below the selected row",
+            id: "actionsSheet.insertTableRowBelow"
+        },
+        "actionsSheet.insertTableColumnLeft":
+        {
+            defaultMessage: "Insert column left",
+            description: "Table action-sheet button that inserts a column left of the selected column",
+            id: "actionsSheet.insertTableColumnLeft"
+        },
+        "actionsSheet.insertTableColumnRight":
+        {
+            defaultMessage: "Insert column right",
+            description: "Table action-sheet button that inserts a column right of the selected column",
+            id: "actionsSheet.insertTableColumnRight"
+        },
+        "actionsSheet.duplicateTableRow":
+        {
+            defaultMessage: "Duplicate row",
+            description: "Table action-sheet button that duplicates the selected row",
+            id: "actionsSheet.duplicateTableRow"
+        },
+        "actionsSheet.duplicateTableColumn":
+        {
+            defaultMessage: "Duplicate column",
+            description: "Table action-sheet button that duplicates the selected column",
+            id: "actionsSheet.duplicateTableColumn"
+        },
+        "actionsSheet.deleteTableRow":
+        {
+            defaultMessage: "Delete row",
+            description: "Table action-sheet button that deletes the selected row",
+            id: "actionsSheet.deleteTableRow"
+        },
+        "actionsSheet.deleteTableColumn":
+        {
+            defaultMessage: "Delete column",
+            description: "Table action-sheet button that deletes the selected column",
+            id: "actionsSheet.deleteTableColumn"
+        },
+        "actionsSheet.clearTableContents":
+        {
+            defaultMessage: "Clear cell contents",
+            description: "Table action-sheet button that clears the selected cells",
+            id: "actionsSheet.clearTableContents"
+        },
         "actionsSheet.title":
         {
             defaultMessage: "Actions",
@@ -336,6 +421,12 @@ const defaultEditorMessages: Readonly<Record<EditorMessageId, MarkdownEditorMess
             defaultMessage: "Table of contents",
             description: "Block-actions sheet section label naming a table-of-contents block",
             id: "blockName.tableOfContents"
+        },
+        "blockName.table":
+        {
+            defaultMessage: "Table",
+            description: "Block-actions sheet section label naming a table block",
+            id: "blockName.table"
         },
         "blockName.text":
         {
