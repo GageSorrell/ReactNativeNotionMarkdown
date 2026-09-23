@@ -65,3 +65,18 @@ export function TrashActionIcon({ color, size, strokeWidth }: MarkdownEditorIcon
             strokeWidth={ strokeWidth } />
     </Svg>;
 }
+
+/** Render the right-facing chevron used to indicate a navigable action row. */
+export function ChevronRightActionIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
+{
+    return <Svg height={ size }
+        viewBox="0 0 24 24"
+        width={ size }>
+        <Path d="m9 18 6-6-6-6"
+            fill="none"
+            stroke={ color }
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={ strokeWidth } />
+    </Svg>;
+}

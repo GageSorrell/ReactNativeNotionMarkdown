@@ -12,7 +12,7 @@
 
 import * as ImagePicker from "expo-image-picker";
 import { CameraIcon, GalleryIcon } from "./mediaIcons.tsx";
-import { CopyActionIcon, TrashActionIcon } from "./actionIcons.tsx";
+import { ChevronRightActionIcon, CopyActionIcon, TrashActionIcon } from "./actionIcons.tsx";
 import {
     Animated,
     Easing,
@@ -120,6 +120,8 @@ interface ActionOptionProps
     readonly icon?: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
     readonly onPress: () => void;
+    readonly trailingIcon?: ComponentType<MarkdownEditorIconProps>;
+    readonly trailingIconColor?: string;
 }
 
 interface ActionSwitchOptionProps
@@ -140,10 +142,11 @@ type LucideModule = Record<string, ComponentType<MarkdownEditorIconProps>> &
 const lucideNames: Readonly<Record<
     "audio" | "back" | "clear" | "color" | "copy" | "edit" | "fit" | "gallery" | "headerColumn"
     | "headerRow" | "insertAbove" | "insertBelow" | "insertLeft" | "insertRight"
-    | "more" | "picture" | "remove" | "table", string
+    | "more" | "picture" | "remove" | "table" | "chevronRight", string
 >> =
     {
         back: "ChevronLeft",
+        chevronRight: "ChevronRight",
         audio: "AudioLines",
         clear: "Eraser",
         color: "Palette",
@@ -191,10 +194,11 @@ function getLucideIcons(): LucideModule | undefined
 const actionIconFallbacks: Readonly<Record<
     "audio" | "back" | "clear" | "color" | "copy" | "edit" | "fit" | "gallery" | "headerColumn"
     | "headerRow" | "insertAbove" | "insertBelow" | "insertLeft" | "insertRight"
-    | "more" | "picture" | "remove" | "table",
+    | "more" | "picture" | "remove" | "table" | "chevronRight",
     ComponentType<MarkdownEditorIconProps>>> =
     {
         back: CopyActionIcon,
+        chevronRight: ChevronRightActionIcon,
         audio: CopyActionIcon,
         clear: CopyActionIcon,
         color: CopyActionIcon,
@@ -238,7 +242,14 @@ function getActionIcon(
 }
 
 /** Render one labeled action row. */
-function ActionOption({ color, icon: Icon, label, onPress }: ActionOptionProps)
+function ActionOption({
+    color,
+    icon: Icon,
+    label,
+    onPress,
+    trailingIcon: TrailingIcon,
+    trailingIconColor
+}: ActionOptionProps)
 {
     const optionStyle = useCallback(({ pressed }: { pressed: boolean }) => [
         styles.option,
@@ -259,7 +270,15 @@ function ActionOption({ color, icon: Icon, label, onPress }: ActionOptionProps)
                 size={ 20 }
                 strokeWidth={ 1.75 } />
         }
-        <Text style={ labelStyle }>{ label }</Text>
+        <Text style={ [ labelStyle, styles.optionLabelExpanded ] }>{ label }</Text>
+        {
+            TrailingIcon !== undefined && <View style={ styles.trailingIcon }>
+                <TrailingIcon
+                    color={ trailingIconColor ?? "#A8A8A8" }
+                    size={ 18 }
+                    strokeWidth={ 2 } />
+            </View>
+        }
     </Pressable>;
 }
 
@@ -753,6 +772,7 @@ export function ActionsBottomSheet({
                                             color={ muted }
                                             icon={ getActionIcon("color", components) }
                                             label={ labels.color }
+                                            trailingIcon={ getActionIcon("chevronRight", components) }
                                             onPress={ () => setChoosingColor(true) } />
                                         <View style={ dividerStyle } />
                                         <ActionOption
@@ -799,6 +819,7 @@ export function ActionsBottomSheet({
                                                             color={ muted }
                                                             icon={ getActionIcon("color", components) }
                                                             label={ labels.color }
+                                                            trailingIcon={ getActionIcon("chevronRight", components) }
                                                             onPress={ handleTableColor } />
                                                     </>
                                                 }
@@ -808,6 +829,7 @@ export function ActionsBottomSheet({
                                                             color={ muted }
                                                             icon={ getActionIcon("color", components) }
                                                             label={ labels.color }
+                                                            trailingIcon={ getActionIcon("chevronRight", components) }
                                                             onPress={ handleTableColor } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
@@ -841,6 +863,7 @@ export function ActionsBottomSheet({
                                                             color={ muted }
                                                             icon={ getActionIcon("color", components) }
                                                             label={ labels.color }
+                                                            trailingIcon={ getActionIcon("chevronRight", components) }
                                                             onPress={ handleTableColor } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
@@ -874,6 +897,7 @@ export function ActionsBottomSheet({
                                                             color={ muted }
                                                             icon={ getActionIcon("color", components) }
                                                             label={ labels.color }
+                                                            trailingIcon={ getActionIcon("chevronRight", components) }
                                                             onPress={ handleTableColor } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
@@ -1079,6 +1103,10 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: "500"
     },
+    optionLabelExpanded:
+    {
+        flex: 1
+    },
     options:
     {
         borderRadius: 12,
@@ -1116,5 +1144,10 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         paddingBottom: 16,
         textAlign: "center"
+    },
+    trailingIcon:
+    {
+        alignItems: "center",
+        justifyContent: "center"
     }
 });
