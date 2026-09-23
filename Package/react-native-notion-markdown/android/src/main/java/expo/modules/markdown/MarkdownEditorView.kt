@@ -1713,6 +1713,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       "divider" -> insertDivider()
       "insertTable" -> insertTable()
       "fitTableWidth" -> tableAction(value) { table -> table.fitPageWidth = !table.fitPageWidth }
+      "toggleFitTableWidth" -> tableAction(value) { table -> table.fitPageWidth = !table.fitPageWidth }
       "toggleHeaderRow" -> tableAction(value) { table -> table.headerRow = !table.headerRow }
       "toggleHeaderColumn" -> tableAction(value) { table -> table.headerColumn = !table.headerColumn }
       "insertTableRowAbove" -> tableRowAction(value, below = false, delete = false)
@@ -1724,6 +1725,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       "deleteTableRow" -> tableRowAction(value, below = false, delete = true)
       "deleteTableColumn" -> tableColumnAction(value, right = false, delete = true)
       "clearTableContents" -> clearTableAction(value)
+      "clearTableRow", "clearTableColumn", "clearTableCells" -> clearTableAction(value)
       "tableColor", "rowColor", "columnColor", "cellColor" -> colorTableAction(value)
       "duplicateTable" -> duplicateBlockById(value["blockId"] as? String)
       "deleteTable" -> deleteBlockById(value["blockId"] as? String)
@@ -3438,11 +3440,16 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       setOnLongClickListener {
         val block = blocks.getOrNull(address.blockIndex)
         if (block != null) {
+          val selection = tableOverlay.selectionPayload(address)
+          val anchor = selection["anchor"] as? Map<*, *>
+          val focus = selection["focus"] as? Map<*, *>
+          val singleCell = anchor?.get("row") == focus?.get("row")
+            && anchor?.get("column") == focus?.get("column")
           onBlockActionsPress(mapOf(
             "id" to block.id,
             "type" to block.type,
-            "scope" to "cells",
-            "selection" to tableOverlay.selectionPayload(address)
+            "scope" to if (singleCell) "cell" else "cells",
+            "selection" to selection
           ))
         }
         true
@@ -3547,6 +3554,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
   private inner class TableOverlay(context: Context) : FrameLayout(context) {
     private val editors = mutableListOf<TableCellEditor>()
+    private val widthToggles = mutableListOf<TableWidthToggle>()
+    private val actionButtons = mutableListOf<TableActionsButton>()
+    private val rowThumbs = mutableListOf<TableSelectionThumb>()
+    private val columnThumbs = mutableListOf<TableSelectionThumb>()
     private val startHandle = TableSelectionHandle(context, true)
     private val endHandle = TableSelectionHandle(context, false)
     private var rangeAnchor: TableCellAddress? = null
@@ -3591,6 +3602,194 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           }
         }
       }
+    }
+
+    private inner class TableWidthToggle(
+      context: Context,
+      val blockIndex: Int
+    ) : View(context) {
+      private val density = resources.displayMetrics.density
+      private val trackWidth = (54 * density).roundToInt()
+      private val trackHeight = (34 * density).roundToInt()
+      private val thumbSize = (30 * density).roundToInt()
+      private val thumbTravel = (20 * density).roundToInt()
+
+      init {
+        contentDescription = "Fit table to page width"
+        isClickable = true
+      }
+
+      fun trackWidthForLayout(): Int = trackWidth
+      fun trackHeightForLayout(): Int = trackHeight
+
+      override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(trackWidth, trackHeight)
+      }
+
+      override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val fit = blocks.getOrNull(blockIndex)?.table?.fitPageWidth == true
+        val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+          color = if (fit) editorAccentColor(dark) else if (dark) Color.rgb(91, 91, 89) else Color.rgb(208, 208, 204)
+          style = Paint.Style.FILL
+        }
+        val radius = trackHeight / 2f
+        canvas.drawRoundRect(0f, 0f, trackWidth.toFloat(), trackHeight.toFloat(), radius, radius, track)
+        val thumb = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+          color = Color.WHITE
+          style = Paint.Style.FILL
+            setShadowLayer(1.5f * density, 0f, density, 0x4A000000)
+        }
+        setLayerType(LAYER_TYPE_SOFTWARE, thumb)
+        val left = 2f * density + if (fit) thumbTravel.toFloat() else 0f
+        canvas.drawCircle(left + thumbSize / 2f, trackHeight / 2f, thumbSize / 2f, thumb)
+      }
+
+      override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_UP) return true
+        val block = blocks.getOrNull(blockIndex) ?: return true
+        block.table?.fitPageWidth = !(block.table?.fitPageWidth ?: false)
+        replaceNativeTextAndSelect(blockIndex)
+        performClick()
+        return true
+      }
+
+      override fun performClick(): Boolean {
+        super.performClick()
+        return true
+      }
+    }
+
+    private inner class TableActionsButton(
+      context: Context,
+      val blockIndex: Int
+    ) : View(context) {
+      private val density = resources.displayMetrics.density
+      private val size = (34 * density).roundToInt()
+
+      init {
+        contentDescription = "Table actions"
+        isClickable = true
+      }
+
+      fun sizeForLayout(): Int = size
+
+      override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(size, size)
+      }
+
+      override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+          color = if (dark) Color.rgb(245, 245, 245) else Color.rgb(55, 53, 47)
+          style = Paint.Style.FILL
+        }
+        val center = size / 2f
+        val dot = (2 * density).coerceAtLeast(1f)
+        canvas.drawCircle(center - 6 * density, center, dot, paint)
+        canvas.drawCircle(center, center, dot, paint)
+        canvas.drawCircle(center + 6 * density, center, dot, paint)
+      }
+
+      override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_UP) return true
+        val block = blocks.getOrNull(blockIndex) ?: return true
+        onBlockActionsPress(mapOf("id" to block.id, "type" to block.type, "scope" to "table"))
+        performClick()
+        return true
+      }
+
+      override fun performClick(): Boolean {
+        super.performClick()
+        return true
+      }
+    }
+
+    private inner class TableSelectionThumb(
+      context: Context,
+      val blockIndex: Int,
+      val row: Int?,
+      val column: Int?
+    ) : View(context) {
+      private val density = resources.displayMetrics.density
+      private val size = (18 * density).roundToInt()
+
+      init {
+        contentDescription = if (row != null) "Select table row" else "Select table column"
+        isClickable = true
+        background = GradientDrawable().apply {
+          shape = GradientDrawable.OVAL
+          setColor(editorAccentColor(dark))
+        }
+      }
+
+      fun sizeForLayout(): Int = size
+
+      override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(size, size)
+      }
+
+      override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+          color = Color.WHITE
+          strokeWidth = density
+          style = Paint.Style.STROKE
+        }
+        if (row != null) {
+          canvas.drawLine(5 * density, size / 2f, size - 5 * density, size / 2f, paint)
+          canvas.drawLine(size / 2f, 5 * density, size / 2f, size - 5 * density, paint)
+        } else {
+          canvas.drawLine(5 * density, size / 2f, size - 5 * density, size / 2f, paint)
+          canvas.drawLine(size / 2f, 5 * density, size / 2f, size - 5 * density, paint)
+        }
+      }
+
+      override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_UP) return true
+        val block = blocks.getOrNull(blockIndex)?.takeIf { it.type == "table" }
+        val table = block?.table ?: return true
+        val width = table.rows.maxOfOrNull { it.cells.size }?.coerceAtLeast(1) ?: 1
+        val active = rangeAnchor ?: activeTableCell
+        if (row != null) {
+          selectRow(blockIndex, (active?.row ?: 0).coerceIn(0, table.rows.lastIndex), width)
+        } else if (column != null) {
+          selectColumn(blockIndex, (active?.column ?: 0).coerceIn(0, width - 1), table.rows.size)
+        }
+        performClick()
+        return true
+      }
+
+      override fun performClick(): Boolean {
+        super.performClick()
+        return true
+      }
+    }
+
+    private fun selectRow(blockIndex: Int, row: Int, width: Int) {
+      rangeAnchor = TableCellAddress(blockIndex, row, 0)
+      rangeFocus = TableCellAddress(blockIndex, row, width - 1)
+      refreshChrome()
+      val block = blocks.getOrNull(blockIndex) ?: return
+      onBlockActionsPress(mapOf(
+        "id" to block.id,
+        "type" to block.type,
+        "scope" to "row",
+        "selection" to selectionPayload(TableCellAddress(blockIndex, row, 0))
+      ))
+    }
+
+    private fun selectColumn(blockIndex: Int, column: Int, height: Int) {
+      rangeAnchor = TableCellAddress(blockIndex, 0, column)
+      rangeFocus = TableCellAddress(blockIndex, height - 1, column)
+      refreshChrome()
+      val block = blocks.getOrNull(blockIndex) ?: return
+      onBlockActionsPress(mapOf(
+        "id" to block.id,
+        "type" to block.type,
+        "scope" to "column",
+        "selection" to selectionPayload(TableCellAddress(blockIndex, 0, column))
+      ))
     }
 
     fun clearRange() {
@@ -3673,8 +3872,20 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val restore = activeTableCell
       removeAllViews()
       editors.clear()
+      widthToggles.clear()
+      actionButtons.clear()
+      rowThumbs.clear()
+      columnThumbs.clear()
       blocks.forEachIndexed { blockIndex, block ->
         if (block.type != "table") return@forEachIndexed
+        val widthToggle = TableWidthToggle(context, blockIndex)
+        val actionButton = TableActionsButton(context, blockIndex)
+        val rowThumb = TableSelectionThumb(context, blockIndex, 0, null)
+        val columnThumb = TableSelectionThumb(context, blockIndex, null, 0)
+        widthToggles.add(widthToggle)
+        actionButtons.add(actionButton)
+        rowThumbs.add(rowThumb)
+        columnThumbs.add(columnThumb)
         block.table?.rows?.forEachIndexed { row, tableRow ->
           tableRow.cells.forEachIndexed { column, _ ->
             val editor = TableCellEditor(context, TableCellAddress(blockIndex, row, column))
@@ -3683,6 +3894,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             addView(editor, LayoutParams(0, 0))
           }
         }
+        addView(widthToggle, LayoutParams(0, 0))
+        addView(actionButton, LayoutParams(0, 0))
+        addView(rowThumb, LayoutParams(0, 0))
+        addView(columnThumb, LayoutParams(0, 0))
       }
       addView(startHandle, LayoutParams(0, 0))
       addView(endHandle, LayoutParams(0, 0))
@@ -3704,6 +3919,19 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val visible = rangeAnchor != null && rangeFocus != null
       startHandle.visibility = if (visible) View.VISIBLE else View.GONE
       endHandle.visibility = if (visible) View.VISIBLE else View.GONE
+      val active = rangeAnchor ?: activeTableCell
+      widthToggles.forEachIndexed { index, view ->
+        view.visibility = if (active?.blockIndex == view.blockIndex) View.VISIBLE else View.GONE
+      }
+      actionButtons.forEachIndexed { index, view ->
+        view.visibility = if (active?.blockIndex == view.blockIndex) View.VISIBLE else View.GONE
+      }
+      rowThumbs.forEach { view ->
+        view.visibility = if (active?.blockIndex == view.blockIndex) View.VISIBLE else View.GONE
+      }
+      columnThumbs.forEach { view ->
+        view.visibility = if (active?.blockIndex == view.blockIndex) View.VISIBLE else View.GONE
+      }
     }
 
     fun refreshChrome() {
@@ -3725,6 +3953,21 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           MeasureSpec.makeMeasureSpec(cellWidth, MeasureSpec.EXACTLY),
           MeasureSpec.makeMeasureSpec(rowHeight, MeasureSpec.EXACTLY)
         )
+      }
+      widthToggles.forEach { toggle ->
+        toggle.measure(
+          MeasureSpec.makeMeasureSpec(toggle.trackWidthForLayout(), MeasureSpec.EXACTLY),
+          MeasureSpec.makeMeasureSpec(toggle.trackHeightForLayout(), MeasureSpec.EXACTLY)
+        )
+      }
+      actionButtons.forEach { button ->
+        button.measure(MeasureSpec.makeMeasureSpec(button.sizeForLayout(), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(button.sizeForLayout(), MeasureSpec.EXACTLY))
+      }
+      rowThumbs.forEach { thumb ->
+        thumb.measure(MeasureSpec.makeMeasureSpec(thumb.sizeForLayout(), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(thumb.sizeForLayout(), MeasureSpec.EXACTLY))
+      }
+      columnThumbs.forEach { thumb ->
+        thumb.measure(MeasureSpec.makeMeasureSpec(thumb.sizeForLayout(), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(thumb.sizeForLayout(), MeasureSpec.EXACTLY))
       }
     }
 
@@ -3760,6 +4003,45 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       }
       layoutHandle(startHandle, rangeAnchor)
       layoutHandle(endHandle, rangeFocus)
+
+      val chromeSize = (34 * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
+      val thumbSize = (18 * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
+      blocks.forEachIndexed { blockIndex, block ->
+        val table = block.table ?: return@forEachIndexed
+        if (block.type != "table") return@forEachIndexed
+        val line = textLayout.getLineForOffset(offsetOf(blockIndex))
+        val tableTop = textLayout.getLineBaseline(line) - tableHeightPx(table)
+        val tableLeft = input.left + input.paddingLeft
+        val tableRight = tableLeft + tableDisplayWidthPx(input, table)
+        val toggle = widthToggles.firstOrNull { it.blockIndex == blockIndex }
+        val actions = actionButtons.firstOrNull { it.blockIndex == blockIndex }
+        if (toggle != null && toggle.visibility == View.VISIBLE && actions != null) {
+          val actionsLeft = tableRight - chromeSize
+          val toggleLeft = actionsLeft - toggle.measuredWidth
+          toggle.layout(toggleLeft, tableTop + 4 * resources.displayMetrics.density.roundToInt(), actionsLeft, tableTop + 4 * resources.displayMetrics.density.roundToInt() + toggle.measuredHeight)
+          actions.layout(actionsLeft, tableTop + 4 * resources.displayMetrics.density.roundToInt(), tableRight, tableTop + 4 * resources.displayMetrics.density.roundToInt() + actions.measuredHeight)
+        }
+        val active = rangeAnchor ?: activeTableCell
+        if (active?.blockIndex == blockIndex) {
+          val row = active.row.coerceIn(0, table.rows.lastIndex)
+          val column = active.column.coerceIn(0, (table.rows.maxOfOrNull { it.cells.size } ?: 1) - 1)
+          val cellWidth = tableDisplayWidthPx(input, table) / (table.rows.maxOfOrNull { it.cells.size } ?: 1).toFloat()
+          val rowThumb = rowThumbs.firstOrNull { it.blockIndex == blockIndex }
+          val columnThumb = columnThumbs.firstOrNull { it.blockIndex == blockIndex }
+          rowThumb?.layout(
+            tableLeft - thumbSize / 2,
+            tableTop + row * rowHeight + rowHeight / 2 - thumbSize / 2,
+            tableLeft - thumbSize / 2 + thumbSize,
+            tableTop + row * rowHeight + rowHeight / 2 - thumbSize / 2 + thumbSize
+          )
+          columnThumb?.layout(
+            (tableLeft + column * cellWidth + cellWidth / 2 - thumbSize / 2).roundToInt(),
+            tableTop - thumbSize / 2,
+            (tableLeft + column * cellWidth + cellWidth / 2 + thumbSize / 2).roundToInt(),
+            tableTop + thumbSize / 2
+          )
+        }
+      }
     }
   }
 

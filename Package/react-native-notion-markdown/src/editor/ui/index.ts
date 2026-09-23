@@ -35,6 +35,7 @@ export {
     type MarkdownEditorProps
 } from "./MarkdownEditor.tsx";
 export { type MarkdownEditorBlockAction, type MarkdownEditorTableAction } from "./ActionsBottomSheet.tsx";
+export { Switch, type SwitchProps, type SwitchSize } from "./Switch.tsx";
 
 /** Editor UI configuration -- currently localization, with room to grow to theming. */
 export {

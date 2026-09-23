@@ -212,6 +212,7 @@ export type Action =
     | "quote"
     | "insertTable"
     | "fitTableWidth"
+    | "toggleFitTableWidth"
     | "toggleHeaderRow"
     | "toggleHeaderColumn"
     | "insertTableRowAbove"
@@ -224,6 +225,9 @@ export type Action =
     | "deleteTableColumn"
     | "duplicateTable"
     | "clearTableContents"
+    | "clearTableRow"
+    | "clearTableColumn"
+    | "clearTableCells"
     | "deleteTable"
     | "tableColor"
     | "rowColor"
@@ -297,7 +301,7 @@ export interface EditorCommand
 };
 
 /** Structural scope supplied with a block-actions event. */
-export type EditorBlockActionScope = "block" | "table" | "row" | "column" | "cells";
+export type EditorBlockActionScope = "block" | "table" | "row" | "column" | "cell" | "cells";
 
 /**
  * Create the default three-block editor document for the requested epoch.

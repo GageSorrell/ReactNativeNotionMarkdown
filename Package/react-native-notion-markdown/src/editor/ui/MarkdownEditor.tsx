@@ -44,6 +44,7 @@ import {
     useColorScheme,
     useWindowDimensions
 } from "react-native";
+import { Circle, Svg } from "react-native-svg";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
 import { AudioBottomSheet } from "./AudioBottomSheet.tsx";
@@ -155,6 +156,16 @@ export interface MarkdownEditorComponents extends Partial<Record<
     MarkdownEditorButton,
     ComponentType<MarkdownEditorIconProps>
 >> { }
+
+/** Dependency-free rendering of Lucide's Ellipsis icon for the built-in cell-actions button. */
+function DefaultMoreIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
+{
+    return <Svg height={ size } viewBox="0 0 24 24" width={ size }>
+        <Circle cx="5" cy="12" fill="none" r="1" stroke={ color } strokeWidth={ strokeWidth } />
+        <Circle cx="12" cy="12" fill="none" r="1" stroke={ color } strokeWidth={ strokeWidth } />
+        <Circle cx="19" cy="12" fill="none" r="1" stroke={ color } strokeWidth={ strokeWidth } />
+    </Svg>;
+}
 
 /** The built-in media action selected from the insert-media sheet. */
 export type MarkdownEditorMediaAction = "gallery" | "picture" | "video";
@@ -523,7 +534,17 @@ function getButtonIcon(
     components: MarkdownEditorComponents | undefined
 ): ComponentType<MarkdownEditorIconProps> | undefined
 {
-    if (button === undefined || components === undefined)
+    if (button === undefined)
+    {
+        return undefined;
+    }
+
+    if (button === "more" && components?.more === undefined)
+    {
+        return DefaultMoreIcon;
+    }
+
+    if (components === undefined)
     {
         return undefined;
     }
@@ -993,8 +1014,10 @@ export function MarkdownEditor({
        selection identifies block(s)". */
     const [ selectionAnchorBlockId, setSelectionAnchorBlockId ] = useState<string>();
     const [ selectionAnchorOffset, setSelectionAnchorOffset ] = useState<number>();
+    const [ selectionAnchorPoint, setSelectionAnchorPoint ] = useState<EditorPoint>();
     const [ selectionFocusBlockId, setSelectionFocusBlockId ] = useState<string>();
     const [ selectionFocusOffset, setSelectionFocusOffset ] = useState<number>();
+    const [ selectionFocusPoint, setSelectionFocusPoint ] = useState<EditorPoint>();
     const root = useRef<View>(null);
     const [ bottomGap, setBottomGap ] = useState(0);
     const bottomGapRef = useRef(0);
@@ -1068,10 +1091,34 @@ export function MarkdownEditor({
         && selectionAnchorOffset !== undefined
         && selectionFocusOffset !== undefined
         && selectionAnchorBlockId === selectionFocusBlockId
-        && selectionAnchorOffset === selectionFocusOffset;
+        && selectionAnchorOffset === selectionFocusOffset
+        && (selectionAnchorPoint?.field !== "cell"
+            || selectionFocusPoint?.field !== "cell"
+            || (selectionAnchorPoint.row === selectionFocusPoint.row
+                && selectionAnchorPoint.column === selectionFocusPoint.column));
     const cursorBlock = selectionIsCollapsed
         ? snapshot.blocks.find((block: EditorBlock) => block.id === selectionAnchorBlockId)
         : undefined;
+    const tableCellSelection = useMemo<EditorTableSelection | undefined>(() =>
+    {
+        if (!selectionIsCollapsed
+            || cursorBlock?.type !== "table"
+            || selectionAnchorPoint?.field !== "cell"
+            || selectionFocusPoint?.field !== "cell"
+            || selectionAnchorPoint.blockId !== cursorBlock.id
+            || selectionFocusPoint.blockId !== cursorBlock.id
+            || selectionAnchorPoint.row !== selectionFocusPoint.row
+            || selectionAnchorPoint.column !== selectionFocusPoint.column)
+        {
+            return undefined;
+        }
+        return {
+            blockId: cursorBlock.id,
+            anchor: { row: selectionAnchorPoint.row, column: selectionAnchorPoint.column },
+            focus: { row: selectionFocusPoint.row, column: selectionFocusPoint.column }
+        };
+    }, [ cursorBlock, selectionAnchorPoint, selectionFocusPoint, selectionIsCollapsed ]);
+    const tableCellActions = tableCellSelection !== undefined;
     const canFormatCollapsedCursor = cursorBlock !== undefined
         && cursorBlock.type !== "link_to_page"
         && editorCursorTouchesWord(cursorBlock.text, selectionAnchorOffset as number);
@@ -1302,8 +1349,10 @@ export function MarkdownEditor({
     {
         setSelectionAnchorBlockId(nativeEvent.anchor.blockId);
         setSelectionAnchorOffset(nativeEvent.anchor.offset);
+        setSelectionAnchorPoint(nativeEvent.anchor);
         setSelectionFocusBlockId(nativeEvent.focus.blockId);
         setSelectionFocusOffset(nativeEvent.focus.offset);
+        setSelectionFocusPoint(nativeEvent.focus);
 
         if (suppliedSnapshot === undefined && onEdit === undefined)
         {
@@ -1396,6 +1445,27 @@ export function MarkdownEditor({
         }
         setBlockActionsRequest(selection);
     }, [ onBlockActions, selectedCallout, selectionBlockRange, send, snapshot.blocks ]);
+    const handleTableCellActions = useCallback(() =>
+    {
+        if (!tableCellActions || tableCellSelection === undefined)
+        {
+            return;
+        }
+        const request: MarkdownEditorBlockActionsSelection =
+            {
+                blockId: tableCellSelection.blockId,
+                blockType: "table",
+                scope: "cell",
+                selection: tableCellSelection
+            };
+        send("dismiss");
+        if (onBlockActions !== undefined)
+        {
+            void onBlockActions(request);
+            return;
+        }
+        setBlockActionsRequest(request);
+    }, [ onBlockActions, send, tableCellActions, tableCellSelection ]);
     const handleBlockActionsDismiss = useCallback(() =>
     {
         setBlockActionsRequest(undefined);
@@ -1445,7 +1515,7 @@ export function MarkdownEditor({
             ? "rowColor"
             : request.scope === "column"
                 ? "columnColor"
-                : request.scope === "cells"
+                : request.scope === "cell" || request.scope === "cells"
                     ? "cellColor"
                     : "tableColor";
         send(action, {
@@ -2022,6 +2092,9 @@ export function MarkdownEditor({
     const blockActionsName = blockActionsRequest === undefined
         ? undefined
         : t(editorBlockNameMessageIds[ blockActionsRequest.blockType ]);
+    const blockActionsTable = blockActionsRequest?.blockType === "table"
+        ? snapshot.blocks.find((block: EditorBlock) => block.id === blockActionsRequest.blockId)?.table
+        : undefined;
     return (
         <View
             { ...nativeViewProps }
@@ -2298,12 +2371,19 @@ export function MarkdownEditor({
                                     onPress={ handleDismiss } />
                         }
                         {
-                            selectedCallout && <ActionButton
+                            selectedCallout
+                                ? <ActionButton
                                 button="more"
                                 color={ iconColor }
                                 components={ components }
                                 label={ t("actionsSheet.title") }
                                 onPress={ handleCalloutActions } />
+                                : tableCellActions && <ActionButton
+                                    button="more"
+                                    color={ iconColor }
+                                    components={ components }
+                                    label={ t("actionsSheet.title") }
+                                    onPress={ handleTableCellActions } />
                         }
                     </View>
                 </View>
@@ -2723,6 +2803,8 @@ export function MarkdownEditor({
                         onReplaceAudio={ handleReplaceAudio }
                         onReplaceImage={ (url: string) =>
                             handleReplaceImage(blockActionsRequest.blockId, url) }
+                        tableActionScope={ blockActionsRequest.scope ?? "table" }
+                        tableFitPageWidth={ blockActionsTable?.fitPageWidth ?? false }
                         showCalloutActions={ blockActionsRequest.blockType === "callout" }
                         showTableActions={ blockActionsRequest.blockType === "table" }
                         showInsertAbove={ blockActionsRequest.blockType !== "divider" }

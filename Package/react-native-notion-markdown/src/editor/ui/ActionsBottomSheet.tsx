@@ -13,29 +13,46 @@
 import * as ImagePicker from "expo-image-picker";
 import { CameraIcon, GalleryIcon } from "./mediaIcons.tsx";
 import { CopyActionIcon, TrashActionIcon } from "./actionIcons.tsx";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+    Animated,
+    Easing,
+    type GestureResponderEvent,
+    type LayoutChangeEvent,
+    Modal,
+    PanResponder,
+    type PanResponderGestureState,
+    Pressable,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
+    useWindowDimensions
+} from "react-native";
 import type { MarkdownEditorAudioAction, MarkdownEditorComponents, MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
 import { createElement, type ComponentType } from "react";
 import type { MarkdownColor } from "../../document/types.ts";
-import { useCallback, useMemo, useState } from "react";
+import type { EditorBlockActionScope } from "../../prototype.ts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Switch } from "./Switch.tsx";
 
 /** An action selected in the built-in block-actions sheet. */
 export type MarkdownEditorBlockAction = "delete" | "duplicate" | "insertAbove" | "insertBelow";
 
 /** An action selected in the built-in table-actions section. */
 export type MarkdownEditorTableAction =
-    | "fitTableWidth"
+    | "toggleFitTableWidth"
     | "toggleHeaderRow"
     | "toggleHeaderColumn"
     | "insertTableRowAbove"
     | "insertTableRowBelow"
     | "insertTableColumnLeft"
     | "insertTableColumnRight"
-    | "duplicateTableRow"
-    | "duplicateTableColumn"
     | "deleteTableRow"
     | "deleteTableColumn"
-    | "clearTableContents";
+    | "clearTableContents"
+    | "clearTableRow"
+    | "clearTableColumn"
+    | "clearTableCells";
 
 /** Public props for the built-in block-actions sheet. */
 export interface ActionsBottomSheetProps
@@ -54,8 +71,6 @@ export interface ActionsBottomSheetProps
         readonly insertTableRowBelow: string;
         readonly insertTableColumnLeft: string;
         readonly insertTableColumnRight: string;
-        readonly duplicateTableRow: string;
-        readonly duplicateTableColumn: string;
         readonly deleteTableRow: string;
         readonly deleteTableColumn: string;
         readonly clearTableContents: string;
@@ -76,6 +91,8 @@ export interface ActionsBottomSheetProps
     readonly onAction: (action: MarkdownEditorBlockAction) => void;
     readonly onTableAction?: (action: MarkdownEditorTableAction) => void;
     readonly onTableColor?: (color: MarkdownColor | undefined) => void;
+    readonly tableActionScope?: EditorBlockActionScope;
+    readonly tableFitPageWidth?: boolean;
     readonly onDismiss: () => void;
     /** Opens the callout emoji picker from the callout action sheet. */
     readonly onEditIcon?: () => void;
@@ -105,22 +122,45 @@ interface ActionOptionProps
     readonly onPress: () => void;
 }
 
+interface ActionSwitchOptionProps
+{
+    readonly color: string;
+    readonly dark: boolean;
+    readonly icon: ComponentType<MarkdownEditorIconProps>;
+    readonly label: string;
+    readonly onValueChange: (value: boolean) => void;
+    readonly value: boolean;
+}
+
 type LucideModule = Record<string, ComponentType<MarkdownEditorIconProps>> &
 {
     readonly default?: Record<string, ComponentType<MarkdownEditorIconProps>>;
 };
 
 const lucideNames: Readonly<Record<
-    "copy" | "remove" | "gallery" | "picture" | "color" | "edit" | "back", string
+    "audio" | "back" | "clear" | "color" | "copy" | "edit" | "fit" | "gallery" | "headerColumn"
+    | "headerRow" | "insertAbove" | "insertBelow" | "insertLeft" | "insertRight"
+    | "more" | "picture" | "remove" | "table", string
 >> =
     {
         back: "ChevronLeft",
+        audio: "AudioLines",
+        clear: "Eraser",
         color: "Palette",
         copy: "Copy",
         edit: "Pencil",
+        fit: "Maximize2",
         gallery: "Image",
+        headerColumn: "Columns3",
+        headerRow: "Rows3",
+        insertAbove: "ArrowUp",
+        insertBelow: "ArrowDown",
+        insertLeft: "ArrowLeft",
+        insertRight: "ArrowRight",
+        more: "Ellipsis",
         picture: "Camera",
-        remove: "Trash2"
+        remove: "Trash2",
+        table: "Table2"
     } as const;
 
 let optionalLucide: LucideModule | null | undefined;
@@ -149,25 +189,38 @@ function getLucideIcons(): LucideModule | undefined
 }
 
 const actionIconFallbacks: Readonly<Record<
-    "copy" | "remove" | "gallery" | "picture" | "color" | "edit" | "back",
+    "audio" | "back" | "clear" | "color" | "copy" | "edit" | "fit" | "gallery" | "headerColumn"
+    | "headerRow" | "insertAbove" | "insertBelow" | "insertLeft" | "insertRight"
+    | "more" | "picture" | "remove" | "table",
     ComponentType<MarkdownEditorIconProps>>> =
     {
         back: CopyActionIcon,
+        audio: CopyActionIcon,
+        clear: CopyActionIcon,
         color: CopyActionIcon,
         copy: CopyActionIcon,
         edit: CopyActionIcon,
+        fit: CopyActionIcon,
         gallery: GalleryIcon,
+        headerColumn: CopyActionIcon,
+        headerRow: CopyActionIcon,
+        insertAbove: CopyActionIcon,
+        insertBelow: CopyActionIcon,
+        insertLeft: CopyActionIcon,
+        insertRight: CopyActionIcon,
+        more: CopyActionIcon,
         picture: CameraIcon,
-        remove: TrashActionIcon
+        remove: TrashActionIcon,
+        table: CopyActionIcon
     };
 
 /** Resolve an override, an installed Lucide icon, or the dependency-free SVG fallback. */
 function getActionIcon(
-    button: "copy" | "remove" | "gallery" | "picture" | "color" | "edit" | "back",
+    button: keyof typeof lucideNames,
     components: ActionsBottomSheetProps["components"]
 ): ComponentType<MarkdownEditorIconProps>
 {
-    const override = components?.[button];
+    const override = components?.[button as keyof MarkdownEditorComponents];
 
     if (override !== undefined)
     {
@@ -208,6 +261,30 @@ function ActionOption({ color, icon: Icon, label, onPress }: ActionOptionProps)
         }
         <Text style={ labelStyle }>{ label }</Text>
     </Pressable>;
+}
+
+/** Render a switch row with the same dimensions and spacing as an action button. */
+function ActionSwitchOption({
+    color,
+    dark,
+    icon: Icon,
+    label,
+    onValueChange,
+    value
+}: ActionSwitchOptionProps)
+{
+    const labelStyle = useMemo(() => [ styles.optionLabel, { color } ], [ color ]);
+
+    return <View style={ styles.option }>
+        <Icon color={ color } size={ 20 } strokeWidth={ 1.75 } />
+        <Text style={ labelStyle }>{ label }</Text>
+        <Switch
+            accessibilityLabel={ label }
+            dark={ dark }
+            onValueChange={ onValueChange }
+            size="medium"
+            value={ value } />
+    </View>;
 }
 
 interface CalloutColorOption
@@ -292,6 +369,48 @@ function ColorOption({
     </Pressable>;
 }
 
+/** A resting position of the sheet. */
+type SheetSnap = "full" | "half";
+
+/** The sheet's `translateY` at each resting position, and when fully dismissed. */
+type SheetSnapPoints = Readonly<Record<SheetSnap | "closed", number>>;
+
+/** Gap left between the status bar and the top of the fully-expanded sheet. */
+const sheetTopGap = 8;
+
+/** Fraction of the screen covered by the sheet at its half-height snap point. */
+const halfSnapFraction = 0.5;
+
+/** How far ahead (in ms) a release's velocity is projected when picking the snap point. */
+const flingProjectionMs = 120;
+
+/** Vertical travel (in px) before a drag is taken from the sheet's rows. */
+const dragSlop = 8;
+
+/** Height of the sheet at its full-height snap point, within a modal of `containerHeight`. */
+function getSheetHeight(containerHeight: number): number
+{
+    return Math.max(0, containerHeight - (StatusBar.currentHeight ?? 0) - sheetTopGap);
+}
+
+/** Resolve each snap point's `translateY` within a modal of `containerHeight`. */
+function getSnapPoints(containerHeight: number): SheetSnapPoints
+{
+    const sheetHeight = getSheetHeight(containerHeight);
+
+    return {
+        closed: sheetHeight,
+        full: 0,
+        half: Math.max(0, sheetHeight - containerHeight * halfSnapFraction)
+    };
+}
+
+/** Whether a move is a deliberate vertical drag, rather than a tap or horizontal motion. */
+function isVerticalDrag(gesture: PanResponderGestureState): boolean
+{
+    return Math.abs(gesture.dy) > dragSlop && Math.abs(gesture.dy) > Math.abs(gesture.dx);
+}
+
 /** Render the built-in block-actions sheet. */
 export function ActionsBottomSheet({
     blockName,
@@ -309,6 +428,8 @@ export function ActionsBottomSheet({
     showInsertAbove,
     showCalloutActions = false,
     showTableActions = false,
+    tableActionScope = "table",
+    tableFitPageWidth = false,
     showReplaceImage,
     showReplaceAudio = false
 }: ActionsBottomSheetProps)
@@ -321,9 +442,170 @@ export function ActionsBottomSheet({
     const optionSurface = dark ? "#30302F" : "#FFFFFF";
     const divider = dark ? "rgba(255, 255, 255, 0.10)" : "#EEECE9";
     const scrim = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.25)";
+    /* Sampled from Notion's own Actions sheet handlebar in light mode. */
+    const handlebarColor = dark ? "#3F3F3E" : "#E6E5E3";
     /* The package's "danger" color -- see MarkdownRendererTheme.danger -- deliberately the same
        hex in both themes, unlike the other colors on this sheet. */
     const danger = "#E56458";
+
+    const { height: windowHeight } = useWindowDimensions();
+    const [ containerHeight, setContainerHeight ] = useState<number>();
+    /* Starts off-screen; the sheet slides up to full height once the modal has been measured. */
+    const [ translateY ] = useState(() => new Animated.Value(windowHeight));
+    const snapPoints = useRef<SheetSnapPoints | undefined>(undefined);
+    const currentSnap = useRef<SheetSnap>("full");
+    const dragOrigin = useRef(windowHeight);
+    const dismissing = useRef(false);
+    const onDismissRef = useRef(onDismiss);
+
+    useEffect(() =>
+    {
+        onDismissRef.current = onDismiss;
+    }, [ onDismiss ]);
+
+    const animateTo = useCallback((snap: SheetSnap, velocity: number = 0) =>
+    {
+        const points = snapPoints.current;
+        if (points === undefined) { return; }
+
+        currentSnap.current = snap;
+        dragOrigin.current = points[ snap ];
+        Animated.spring(translateY, {
+            damping: 28,
+            mass: 0.8,
+            overshootClamping: true,
+            stiffness: 260,
+            toValue: points[ snap ],
+            useNativeDriver: true,
+            /* Gesture velocity is px/ms; the spring expects px/s. */
+            velocity: velocity * 1000
+        }).start();
+    }, [ translateY ]);
+
+    const closeSheet = useCallback(() =>
+    {
+        if (dismissing.current) { return; }
+        dismissing.current = true;
+
+        const points = snapPoints.current;
+        if (points === undefined)
+        {
+            onDismissRef.current();
+            return;
+        }
+
+        Animated.timing(translateY, {
+            duration: 180,
+            easing: Easing.out(Easing.quad),
+            toValue: points.closed,
+            useNativeDriver: true
+        }).start(() => onDismissRef.current());
+    }, [ translateY ]);
+
+    /** Settle a released drag on the snap point nearest its velocity-projected position. */
+    const settle = useCallback((position: number, velocity: number) =>
+    {
+        const points = snapPoints.current;
+        if (points === undefined) { return; }
+
+        const projected = position + velocity * flingProjectionMs;
+        const nearest = ([ "full", "half", "closed" ] as const).reduce(
+            (best: keyof SheetSnapPoints, snap: keyof SheetSnapPoints) =>
+                Math.abs(points[ snap ] - projected) < Math.abs(points[ best ] - projected) ? snap : best
+        );
+
+        if (nearest === "closed")
+        {
+            closeSheet();
+        }
+        else
+        {
+            animateTo(nearest, velocity);
+        }
+    }, [ animateTo, closeSheet ]);
+
+    const shouldDrag = useCallback(
+        (_event: GestureResponderEvent, gesture: PanResponderGestureState) =>
+            !dismissing.current && isVerticalDrag(gesture),
+        [ ]
+    );
+    const handleDragGrant = useCallback(() =>
+    {
+        translateY.stopAnimation((value: number) =>
+        {
+            dragOrigin.current = value;
+        });
+    }, [ translateY ]);
+    const handleDragMove = useCallback(
+        (_event: GestureResponderEvent, gesture: PanResponderGestureState) =>
+        {
+            /* The full-height snap point is the top limit. */
+            translateY.setValue(Math.max(0, dragOrigin.current + gesture.dy));
+        },
+        [ translateY ]
+    );
+    const handleDragEnd = useCallback(
+        (_event: GestureResponderEvent, gesture: PanResponderGestureState) =>
+            settle(Math.max(0, dragOrigin.current + gesture.dy), gesture.vy),
+        [ settle ]
+    );
+    /* PanResponder.create only stores these handlers; they read refs during gestures, never
+       during render, which the compiler can't see through the call. */
+    /* eslint-disable-next-line react-hooks/refs */
+    const panResponder = useMemo(() => PanResponder.create({
+        onMoveShouldSetPanResponder: shouldDrag,
+        /* Capture so a vertical drag that starts on an action row moves the sheet instead. */
+        onMoveShouldSetPanResponderCapture: shouldDrag,
+        onPanResponderGrant: handleDragGrant,
+        onPanResponderMove: handleDragMove,
+        onPanResponderRelease: handleDragEnd,
+        onPanResponderTerminate: handleDragEnd,
+        onPanResponderTerminationRequest: () => false
+    }), [ handleDragEnd, handleDragGrant, handleDragMove, shouldDrag ]);
+
+    const handleLayout = useCallback((event: LayoutChangeEvent) =>
+    {
+        setContainerHeight(event.nativeEvent.layout.height);
+    }, [ ]);
+
+    useEffect(() =>
+    {
+        if (containerHeight === undefined || dismissing.current) { return; }
+
+        const points = getSnapPoints(containerHeight);
+        const opening = snapPoints.current === undefined;
+        snapPoints.current = points;
+
+        if (opening)
+        {
+            translateY.setValue(points.closed);
+            animateTo("full");
+        }
+        else
+        {
+            /* E.g. a rotation: stay on the same snap point at the new size. */
+            dragOrigin.current = points[ currentSnap.current ];
+            translateY.setValue(points[ currentSnap.current ]);
+        }
+    }, [ animateTo, containerHeight, translateY ]);
+
+    const sheetHeight = containerHeight === undefined
+        ? windowHeight
+        : getSheetHeight(containerHeight);
+    /* The scrim stays fully opaque down to the half-height snap point, then fades out with the
+       sheet as it is dragged toward dismissal. */
+    const scrimOpacity = useMemo(() =>
+    {
+        if (containerHeight === undefined) { return 0; }
+
+        const points = getSnapPoints(containerHeight);
+
+        return translateY.interpolate({
+            extrapolate: "clamp",
+            inputRange: [ points.half, Math.max(points.half + 1, points.closed) ],
+            outputRange: [ 1, 0 ]
+        });
+    }, [ containerHeight, translateY ]);
 
     const handleReplace = useCallback(async (action: "gallery" | "picture") =>
     {
@@ -365,8 +647,18 @@ export function ActionsBottomSheet({
         background: calloutBackgroundColors,
         text: calloutTextColors
     }), [ ]);
-    const scrimStyle = useMemo(() => [ styles.scrim, { backgroundColor: scrim } ], [ scrim ]);
-    const sheetStyle = useMemo(() => [ styles.sheet, { backgroundColor: surface } ], [ surface ]);
+    const scrimStyle = useMemo(
+        () => [ styles.scrim, { backgroundColor: scrim, opacity: scrimOpacity } ],
+        [ scrim, scrimOpacity ]
+    );
+    const sheetStyle = useMemo(() => [
+        styles.sheet,
+        { backgroundColor: surface, height: sheetHeight, transform: [ { translateY } ] }
+    ], [ sheetHeight, surface, translateY ]);
+    const handlebarStyle = useMemo(
+        () => [ styles.handlebar, { backgroundColor: handlebarColor } ],
+        [ handlebarColor ]
+    );
     const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
     const sectionTitleStyle = useMemo(() => [ styles.sectionTitle, { color: muted } ], [ muted ]);
     const blockNameLabelStyle = useMemo(
@@ -379,21 +671,30 @@ export function ActionsBottomSheet({
     ], [ divider, optionSurface ]);
     const dividerStyle = useMemo(() => [ styles.divider, { backgroundColor: divider } ], [ divider ]);
 
+    /* The sheet's slide is driven by `translateY` (so it can follow drags and snap); the modal
+       itself only fades, which also covers dismissals that unmount the sheet directly. */
     return <Modal
-        animationType="slide"
+        animationType="fade"
         navigationBarTranslucent
-        onRequestClose={ onDismiss }
+        onRequestClose={ closeSheet }
         statusBarTranslucent
         transparent
         visible>
-        <View style={ styles.modalRoot }>
-            <Pressable
-                accessibilityLabel="Dismiss actions"
-                accessibilityRole="button"
-                onPress={ onDismiss }
-                style={ scrimStyle } />
-            <View accessibilityViewIsModal
-                style={ sheetStyle }>
+        <View onLayout={ handleLayout }
+            style={ styles.modalRoot }>
+            <Animated.View style={ scrimStyle }>
+                <Pressable
+                    accessibilityLabel="Dismiss actions"
+                    accessibilityRole="button"
+                    onPress={ closeSheet }
+                    style={ styles.scrimPressable } />
+            </Animated.View>
+            <Animated.View accessibilityViewIsModal
+                style={ sheetStyle }
+                { ...panResponder.panHandlers }>
+                <View style={ styles.handlebarArea }>
+                    <View style={ handlebarStyle } />
+                </View>
                 <View style={ styles.content }>
                     <View style={ styles.header }>
                         {
@@ -462,92 +763,146 @@ export function ActionsBottomSheet({
                                     </View> }
                                 { showCalloutActions && <View style={ styles.groupGap } /> }
                                 {
-                                    showTableActions && <>
-                                        <View style={ styles.groupGap } />
-                                        <View style={ optionsStyle }>
+                                    showTableActions
+                                        ? <>
+                                            <View style={ styles.groupGap } />
+                                            <View style={ optionsStyle }>
+                                                {
+                                                    tableActionScope === "table" && <>
+                                                        <ActionSwitchOption
+                                                            color={ muted }
+                                                            dark={ dark }
+                                                            icon={ getActionIcon("fit", components) }
+                                                            label={ labels.fitTableWidth }
+                                                            onValueChange={ () => onTableAction?.("toggleFitTableWidth") }
+                                                            value={ tableFitPageWidth } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("headerRow", components) }
+                                                            label={ labels.headerRow }
+                                                            onPress={ () => onTableAction?.("toggleHeaderRow") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("headerColumn", components) }
+                                                            label={ labels.headerColumn }
+                                                            onPress={ () => onTableAction?.("toggleHeaderColumn") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("insertBelow", components) }
+                                                            label={ labels.insertBelow }
+                                                            onPress={ () => onAction("insertBelow") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("color", components) }
+                                                            label={ labels.color }
+                                                            onPress={ handleTableColor } />
+                                                    </>
+                                                }
+                                                {
+                                                    tableActionScope === "row" && <>
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("color", components) }
+                                                            label={ labels.color }
+                                                            onPress={ handleTableColor } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("insertAbove", components) }
+                                                            label={ labels.insertTableRowAbove }
+                                                            onPress={ () => onTableAction?.("insertTableRowAbove") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("insertBelow", components) }
+                                                            label={ labels.insertTableRowBelow }
+                                                            onPress={ () => onTableAction?.("insertTableRowBelow") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("clear", components) }
+                                                            label={ labels.clearTableContents }
+                                                            onPress={ () => onTableAction?.("clearTableRow") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ danger }
+                                                            icon={ getActionIcon("remove", components) }
+                                                            label={ labels.deleteTableRow }
+                                                            onPress={ () => onTableAction?.("deleteTableRow") } />
+                                                    </>
+                                                }
+                                                {
+                                                    tableActionScope === "column" && <>
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("color", components) }
+                                                            label={ labels.color }
+                                                            onPress={ handleTableColor } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("insertLeft", components) }
+                                                            label={ labels.insertTableColumnLeft }
+                                                            onPress={ () => onTableAction?.("insertTableColumnLeft") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("insertRight", components) }
+                                                            label={ labels.insertTableColumnRight }
+                                                            onPress={ () => onTableAction?.("insertTableColumnRight") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("clear", components) }
+                                                            label={ labels.clearTableContents }
+                                                            onPress={ () => onTableAction?.("clearTableColumn") } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ danger }
+                                                            icon={ getActionIcon("remove", components) }
+                                                            label={ labels.deleteTableColumn }
+                                                            onPress={ () => onTableAction?.("deleteTableColumn") } />
+                                                    </>
+                                                }
+                                                {
+                                                    (tableActionScope === "cell" || tableActionScope === "cells") && <>
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("color", components) }
+                                                            label={ labels.color }
+                                                            onPress={ handleTableColor } />
+                                                        <View style={ dividerStyle } />
+                                                        <ActionOption
+                                                            color={ muted }
+                                                            icon={ getActionIcon("clear", components) }
+                                                            label={ labels.clearTableContents }
+                                                            onPress={ () => onTableAction?.("clearTableCells") } />
+                                                    </>
+                                                }
+                                            </View>
+                                        </>
+                                        : <View style={ optionsStyle }>
+                                            {
+                                                showInsertAbove && <ActionOption
+                                                    color={ muted }
+                                                    icon={ getActionIcon("insertAbove", components) }
+                                                    label={ labels.insertAbove }
+                                                    onPress={ () => onAction("insertAbove") } />
+                                            }
+                                            {
+                                                showInsertAbove && <View style={ dividerStyle } />
+                                            }
                                             <ActionOption
                                                 color={ muted }
-                                                label={ labels.fitTableWidth }
-                                                onPress={ () => onTableAction?.("fitTableWidth") } />
-                                            <View style={ dividerStyle } />
-                                            <ActionOption
-                                                color={ muted }
-                                                label={ labels.headerRow }
-                                                onPress={ () => onTableAction?.("toggleHeaderRow") } />
-                                            <View style={ dividerStyle } />
-                            <ActionOption
-                                color={ muted }
-                                label={ labels.headerColumn }
-                                onPress={ () => onTableAction?.("toggleHeaderColumn") } />
-                            <View style={ dividerStyle } />
-                            <ActionOption
-                                color={ muted }
-                                label={ labels.color }
-                                onPress={ handleTableColor } />
-                            <View style={ dividerStyle } />
-                            <ActionOption
-                                color={ muted }
-                                label={ labels.insertTableRowAbove }
-                                                onPress={ () => onTableAction?.("insertTableRowAbove") } />
-                                            <View style={ dividerStyle } />
-                                            <ActionOption
-                                                color={ muted }
-                                                label={ labels.insertTableRowBelow }
-                                                onPress={ () => onTableAction?.("insertTableRowBelow") } />
-                                            <View style={ dividerStyle } />
-                                            <ActionOption
-                                                color={ muted }
-                                                label={ labels.insertTableColumnLeft }
-                                                onPress={ () => onTableAction?.("insertTableColumnLeft") } />
-                                            <View style={ dividerStyle } />
-                            <ActionOption
-                                color={ muted }
-                                label={ labels.insertTableColumnRight }
-                                onPress={ () => onTableAction?.("insertTableColumnRight") } />
-                            <View style={ dividerStyle } />
-                            <ActionOption
-                                color={ muted }
-                                label={ labels.duplicateTableRow }
-                                onPress={ () => onTableAction?.("duplicateTableRow") } />
-                            <View style={ dividerStyle } />
-                            <ActionOption
-                                color={ muted }
-                                label={ labels.duplicateTableColumn }
-                                onPress={ () => onTableAction?.("duplicateTableColumn") } />
-                            <View style={ dividerStyle } />
-                                            <ActionOption
-                                                color={ muted }
-                                                label={ labels.deleteTableRow }
-                                                onPress={ () => onTableAction?.("deleteTableRow") } />
-                                            <View style={ dividerStyle } />
-                                            <ActionOption
-                                                color={ muted }
-                                                label={ labels.deleteTableColumn }
-                                                onPress={ () => onTableAction?.("deleteTableColumn") } />
-                                            <View style={ dividerStyle } />
-                                            <ActionOption
-                                                color={ muted }
-                                                label={ labels.clearTableContents }
-                                                onPress={ () => onTableAction?.("clearTableContents") } />
+                                                icon={ getActionIcon("insertBelow", components) }
+                                                label={ labels.insertBelow }
+                                                onPress={ () => onAction("insertBelow") } />
                                         </View>
-                                    </>
                                 }
-                                <View style={ optionsStyle }>
-                                    {
-                                        showInsertAbove && <ActionOption
-                                            color={ muted }
-                                            label={ labels.insertAbove }
-                                            onPress={ () => onAction("insertAbove") } />
-                                    }
-                                    {
-                                        showInsertAbove
-                                            && <View style={ dividerStyle } />
-                                    }
-                                    <ActionOption
-                                        color={ muted }
-                                        label={ labels.insertBelow }
-                                        onPress={ () => onAction("insertBelow") } />
-                                </View>
                                 {
                                     showReplaceImage && <>
                                         <View style={ styles.groupGap } />
@@ -572,38 +927,44 @@ export function ActionsBottomSheet({
                                         <View style={ optionsStyle }>
                                             <ActionOption
                                                 color={ muted }
+                                                icon={ getActionIcon("audio", components) }
                                                 label={ labels.chooseAudio }
                                                 onPress={ () => onReplaceAudio?.("picked") } />
                                             <View style={ dividerStyle } />
                                             <ActionOption
                                                 color={ muted }
+                                                icon={ getActionIcon("audio", components) }
                                                 label={ labels.recordAudio }
                                                 onPress={ () => onReplaceAudio?.("recorded") } />
                                         </View>
                                     </>
                                 }
-                                <View style={ styles.groupGap } />
-                                <View style={ optionsStyle }>
-                                    {
-                                        !showCalloutActions && <>
+                                {
+                                    (!showTableActions || tableActionScope === "table") && <>
+                                        <View style={ styles.groupGap } />
+                                        <View style={ optionsStyle }>
+                                            {
+                                                !showCalloutActions && <>
                                             <ActionOption
                                                 color={ muted }
                                                 icon={ getActionIcon("copy", components) }
                                                 label={ labels.duplicate }
                                                 onPress={ () => onAction("duplicate") } />
                                             <View style={ dividerStyle } />
-                                        </>
-                                    }
-                                    <ActionOption
-                                        color={ danger }
-                                        icon={ getActionIcon("remove", components) }
-                                        label={ labels.delete }
-                                        onPress={ () => onAction("delete") } />
-                                </View>
+                                                </>
+                                            }
+                                            <ActionOption
+                                                color={ danger }
+                                                icon={ getActionIcon("remove", components) }
+                                                label={ labels.delete }
+                                                onPress={ () => onAction("delete") } />
+                                        </View>
+                                    </>
+                                }
                             </>
                     }
                 </View>
-            </View>
+            </Animated.View>
         </View>
     </Modal>;
 }
@@ -634,7 +995,8 @@ const styles = StyleSheet.create({
     {
         paddingBottom: 64,
         paddingHorizontal: 16,
-        paddingTop: 14
+        /* With the handlebar above, places the title where Notion's sits (~34dp from the top). */
+        paddingTop: 10
     },
     colorContent:
     {
@@ -681,6 +1043,18 @@ const styles = StyleSheet.create({
     {
         height: 12
     },
+    /* Measured from Notion's Actions sheet: a ~52x6dp pill, ~7dp below the sheet's top edge. */
+    handlebar:
+    {
+        borderRadius: 3,
+        height: 6,
+        width: 52
+    },
+    handlebarArea:
+    {
+        alignItems: "center",
+        paddingTop: 7
+    },
     header:
     {
         alignItems: "center",
@@ -718,6 +1092,10 @@ const styles = StyleSheet.create({
         position: "absolute",
         right: 0,
         top: 0
+    },
+    scrimPressable:
+    {
+        flex: 1
     },
     sectionTitle:
     {
