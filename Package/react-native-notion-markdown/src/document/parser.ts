@@ -19,7 +19,8 @@ import {
     type MarkdownMetadata,
     type MarkdownRichText,
     type ParseMarkdownOptions,
-    type ParseMarkdownResult
+    type ParseMarkdownResult,
+    isMarkdownColor
 } from "./types.ts";
 import MarkdownIt from "markdown-it";
 import { asRecord } from "../internal.ts";
@@ -175,6 +176,27 @@ function attributes(value: string): Record<string, string>
     return result;
 }
 
+/** Read a color attribute without admitting values outside the enhanced Markdown palette. */
+function parseColor(
+    context: ParseContext,
+    line: SourceLine,
+    value: string | undefined,
+    location: string
+): MarkdownColor | undefined
+{
+    if (value === undefined || value === "") {return undefined;}
+    if (value === "default") {return undefined;}
+    if (isMarkdownColor(value)) {return value;}
+    diagnostic(
+        context,
+        line,
+        "invalid-color",
+        `Ignoring unsupported ${ location } color "${ value }".`,
+        "error"
+    );
+    return undefined;
+}
+
 /**
  * Build metadata for a block parsed from the given source line.
  *
@@ -182,12 +204,13 @@ function attributes(value: string): Record<string, string>
  * @since 1.0.0
  */
 function blockMetadata(
+    context: ParseContext,
     line: SourceLine,
     attrs: Record<string, string>,
     extra: MarkdownMetadata = { }
 ): MarkdownMetadata
 {
-    const color = attrs.color as MarkdownColor | undefined;
+    const color = parseColor(context, line, attrs.color, "block");
 
     return {
         ...extra,
@@ -227,6 +250,7 @@ function makeBlock<BlockType extends MarkdownBlockType>(
         [ key ]: payload,
         ...(children === undefined ? { } : { children }),
         [ MARKDOWN_MARKDOWN_METADATA ]: blockMetadata(
+            context,
             line,
             attrs,
             {
@@ -308,13 +332,26 @@ function customRichText(
 
     if (tag === "span")
     {
+        const color = parseColor(context, line, attrs.color, "inline");
+        const hasNestedColor = color !== undefined
+            && /<span\b[^>]*\bcolor\s*=\s*["'][^"']+["']/i.test(content);
+        if (hasNestedColor)
+        {
+            diagnostic(
+                context,
+                line,
+                "nested-inline-color",
+                "Nested inline color spans are not supported; ignoring the conflicting colors.",
+                "error"
+            );
+        }
         return parseInline(
             content,
             context,
             line,
             {
                 ...(attrs.underline === "true" ? { underline: true } : { }),
-                ...(attrs.color === undefined ? { } : { color: attrs.color as MarkdownColor })
+                ...(hasNestedColor || color === undefined ? { } : { color })
             }
         );
     }
@@ -574,12 +611,26 @@ function parseInline(
 
         if (full.toLowerCase().startsWith("<span"))
         {
+            const spanAttrs = attributes(match[1] ?? "");
+            const color = parseColor(context, line, spanAttrs.color, "inline");
+            const hasNestedColor = color !== undefined
+                && /<span\b[^>]*\bcolor\s*=\s*["'][^"']+["']/i.test(match[2] ?? "");
+            if (hasNestedColor)
+            {
+                diagnostic(
+                    context,
+                    line,
+                    "nested-inline-color",
+                    "Nested inline color spans are not supported; ignoring the conflicting colors.",
+                    "error"
+                );
+            }
             result.push(...parseInline(match[2] ?? "", context, line, {
                 ...state,
-                ...(attributes(match[1] ?? "").underline === "true" ? { underline: true } : { }),
-                ...(attributes(match[1] ?? "").color === undefined
+                ...(spanAttrs.underline === "true" ? { underline: true } : { }),
+                ...(hasNestedColor || color === undefined
                     ? { }
-                    : { color: attributes(match[1] ?? "").color as MarkdownColor }
+                    : { color }
                 )
             }));
         }
@@ -809,7 +860,12 @@ function parseTable(
     let columnMatch: RegExpExecArray | null;
     while ((columnMatch = columnPattern.exec(tableBody)) !== null)
     {
-        columnColors.push(attributes(columnMatch[1] ?? "").color as MarkdownColor | undefined);
+        columnColors.push(parseColor(
+            context,
+            line,
+            attributes(columnMatch[1] ?? "").color,
+            "table column"
+        ));
     }
     for (let index = start + 1, rowIndex = 0; index < bodyEnd; index += 1)
     {
@@ -830,14 +886,15 @@ function parseTable(
             const cellAttrs = attributes(cellMatch[1] ?? "");
             const cell = parseInline(cellMatch[2]!, context, rowLine);
             cells.push(cell);
-            cellColors.push(cellAttrs.color as MarkdownColor | undefined);
+            cellColors.push(parseColor(context, rowLine, cellAttrs.color, "table cell"));
         }
 
         const rowAttrs = attributes(rowMatch[1] ?? "");
+        const rowColor = parseColor(context, rowLine, rowAttrs.color, "table row");
         rows.push(makeBlock(context, "table_row", `${path}.${rowIndex}`, { cells }, rowLine, {}, undefined, {
             table:
             {
-                ...(rowAttrs.color === undefined ? {} : { rowColor: rowAttrs.color as MarkdownColor }),
+                ...(rowColor === undefined ? {} : { rowColor }),
                 ...(cellColors.some((color: MarkdownColor | undefined) => color !== undefined)
                     ? { cellColors }
                     : { }
@@ -1301,7 +1358,7 @@ function parseSequence(
                 "table_of_contents",
                 pathValue,
                 {
-                    color: tocAttrs.color as MarkdownColor | undefined
+                    color: parseColor(context, line, tocAttrs.color, "block")
                 },
                 line,
                 tocAttrs

@@ -1,4 +1,6 @@
 /**
+ * Renders enhanced Markdown, themed and configured through `MarkdownProvider`.
+ *
  * @module react-native-notion-markdown/renderer/ui/MarkdownRenderer
  *
  * @file      MarkdownRenderer.tsx
@@ -14,29 +16,34 @@ import type {
     MarkdownRichTextItem
 } from "../../document/types.ts";
 import type {
+    MarkdownRendererConfig,
     MarkdownRendererProps,
-    MarkdownReferenceDisplay,
-    MarkdownRendererTheme
+    MarkdownReferenceDisplay
 } from "./types.ts";
+import type { MarkdownDocumentTheme, MarkdownPalette, MarkdownTheme } from "../../provider/theme.ts";
+import {
+    MarkdownProvider,
+    type MarkdownOpenUrl,
+    type MarkdownTranslateById,
+    useResolvedRendererConfig
+} from "../../provider/MarkdownProvider.tsx";
 import {
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
     View,
-    useColorScheme,
     useWindowDimensions
 } from "react-native";
 import { asRecord, getMarkdownBlockPayload, getMarkdownMetadata } from "../../internal.ts";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { darkRendererTheme, lightRendererTheme, markdownColor } from "./theme.ts";
+import { markdownColor } from "../../provider/theme.ts";
 import { FaviconIcon } from "./FaviconIcon.tsx";
 import { MarkdownMathView } from "./MathView.tsx";
 import { MarkdownMediaView } from "./Previews.tsx";
 import { MarkdownMermaidView } from "./MermaidView.tsx";
 import { MarkdownRichTextView } from "./RichText.tsx";
 import type { ReactNode } from "react";
-import { defaultEmptyTogglePlaceholder } from "./types.ts";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
 import { parseMarkdown } from "../../document/parser.ts";
 
@@ -132,8 +139,16 @@ function collectSynced(
 interface RenderContext
 {
     readonly document: MarkdownDocument;
-    readonly props: MarkdownRendererProps;
-    readonly theme: MarkdownRendererTheme;
+    readonly config: MarkdownRendererConfig;
+    readonly onOpenUrl?: MarkdownOpenUrl;
+    readonly t: MarkdownTranslateById;
+
+    /** The document section of the resolved theme, which nearly every block view reads. */
+    readonly theme: MarkdownDocumentTheme;
+    readonly palette: MarkdownPalette;
+
+    /** The complete resolved theme, handed to custom block components and child views. */
+    readonly fullTheme: MarkdownTheme;
     readonly dark: boolean;
     readonly narrow: boolean;
     readonly availableWidth: number;
@@ -207,13 +222,12 @@ function Rich({ value, context, size, color, weight, family, lineHeight, striket
 
     return (
         <MarkdownRichTextView
-            dark={ context.dark }
             items={ rich(value) }
-            linkFallbackIcon={ context.props.linkFallbackIcon }
-            onOpenUrl={ context.props.onOpenUrl }
-            resolveReference={ context.props.resolveReference }
+            linkFallbackIcon={ context.config.icons?.link }
+            onOpenUrl={ context.onOpenUrl }
+            resolveReference={ context.config.resolveReference }
             textStyle={ textStyle }
-            theme={ context.theme }
+            theme={ context.fullTheme }
         />
     );
 }
@@ -335,7 +349,7 @@ function ToggleContent({ block, context, depth, seen, title }: {
 
     return <View>
         <Pressable
-            accessibilityLabel={ expanded ? "Collapse toggle" : "Expand toggle" }
+            accessibilityLabel={ context.t(expanded ? "renderer.collapseToggle" : "renderer.expandToggle") }
             accessibilityRole="button"
             accessibilityState={ { expanded } }
             onPress={ () => setLocalExpansion({ block, value: !expanded }) }
@@ -353,7 +367,7 @@ function ToggleContent({ block, context, depth, seen, title }: {
                     {
                         empty
                             ? <Text style={ styles.placeholder }>
-                                { context.props.emptyTogglePlaceholder ?? defaultEmptyTogglePlaceholder }
+                                { context.t("renderer.emptyTogglePlaceholder") }
                             </Text>
                             : <Children block={ block }
                                 context={ context }
@@ -384,7 +398,7 @@ function ReferenceCard({ block, context }: {
     const rawUrl = metadata.referenceUrl ?? payload.url ?? payload.page_id ?? payload.database_id;
     const url = typeof rawUrl === "string" ? rawUrl : undefined;
     const label = metadata.mention?.label ?? String(payload.title ?? kind);
-    const resolver = context.props.resolveReference;
+    const resolver = context.config.resolveReference;
     const requestKey = `${kind}:${url ?? ""}:${label}`;
     const [ resolved, setResolved ] = useState<{ key: string; value: MarkdownReferenceDisplay | null }>();
     useEffect(() =>
@@ -415,12 +429,10 @@ function ReferenceCard({ block, context }: {
     const pageIcon = result?.icon
         ?? metadata.icon
         ?? (typeof payload.icon === "string" ? payload.icon : undefined);
-    const FallbackIcon = context.props.pageReferenceFallbackIcon;
+    const FallbackIcon = context.config.icons?.pageReference;
 
     const HandlePress = destination
-        ? () => context.props.onOpenUrl !== undefined
-            ? context.props.onOpenUrl(destination)
-            : void openPageReferenceUrl(destination)
+        ? () => void (context.onOpenUrl ?? openPageReferenceUrl)(destination)
         : undefined;
 
     const RootStyle = useMemo(() => isPageReference
@@ -483,7 +495,7 @@ function ReferenceCard({ block, context }: {
                         })
                         : !isPageReference && destination !== undefined && <FaviconIcon
                             color={ context.theme.foreground }
-                            fallbackIcon={ context.props.linkFallbackIcon }
+                            fallbackIcon={ context.config.icons?.link }
                             size={ context.theme.fontSize }
                             textFallback={ result?.icon ?? "↗" }
                             url={ destination }
@@ -495,7 +507,7 @@ function ReferenceCard({ block, context }: {
             {
                 !destination && (
                     <Text style={ MutedStyle }>
-                        Reference unavailable
+                        { context.t("renderer.referenceUnavailable") }
                     </Text>
                 )
             }
@@ -522,7 +534,7 @@ function SyncedContent({ block, context, depth, seen }: {
     const [ resolved, setResolved ] = useState<{ key: string; value: MarkdownDocument | null }>();
     const [ retry, setRetry ] = useState(0);
     const cycle = url ? seen.has(url) : false;
-    const resolver = context.props.resolveSyncedBlock;
+    const resolver = context.config.resolveSyncedBlock;
     const requestKey = `${url ?? ""}:${retry}`;
     useEffect(() =>
     {
@@ -580,7 +592,7 @@ function SyncedContent({ block, context, depth, seen }: {
     {
         return (
             <Text style={ ErrorStyle }>
-                Circular synced reference
+                { context.t("renderer.circularSyncedReference") }
             </Text>
         );
     }
@@ -593,20 +605,20 @@ function SyncedContent({ block, context, depth, seen }: {
             <View style={ SyncedUnavailableRootStyle }>
                 <Text style={ MutedStyle }>
                     {
-                        !url || !context.props.resolveSyncedBlock
-                            ? "Synced content unavailable"
+                        !url || !context.config.resolveSyncedBlock
+                            ? context.t("renderer.syncedContentUnavailable")
                             : remote === null
-                                ? "Synced content unavailable"
-                                : "Loading synced content…"
+                                ? context.t("renderer.syncedContentUnavailable")
+                                : context.t("renderer.loadingSyncedContent")
                     }
                 </Text>
                 {
                     remote === null && (
-                        <Pressable accessibilityLabel="Retry synced content"
+                        <Pressable accessibilityLabel={ context.t("renderer.retrySyncedContent") }
                             accessibilityRole="button"
                             onPress={ HandleRetry }>
                             <Text style={ AccentStyle }>
-                                Retry
+                                { context.t("renderer.retry") }
                             </Text>
                         </Pressable>
                     )
@@ -737,7 +749,7 @@ function TableView({ block, context }: { readonly block: MarkdownBlock; readonly
                                             ?? rowMeta?.rowColors?.[ rowIndex ]
                                             ?? table?.columnColors?.[ columnIndex ]
                                             ?? table?.tableColor;
-                                        const mappedColor = markdownColor(color as string | undefined, context.dark);
+                                        const mappedColor = markdownColor(color as string | undefined, context.palette);
                                         const explicitBackground = typeof color === "string"
                                             && (color.endsWith("_bg") || color.endsWith("_background"));
                                         const backgroundColor = explicitBackground
@@ -822,10 +834,10 @@ export function MarkdownBlockView({
     const payload = getMarkdownBlockPayload(block);
     const metadata = getMarkdownMetadata(block);
     const color = blockColor(block);
-    const mapped = markdownColor(color, context.dark);
+    const mapped = markdownColor(color, context.palette);
     const backgroundColor = color?.endsWith("_bg") || color?.endsWith("_background") ? mapped : undefined;
     const foreground = backgroundColor ? undefined : mapped;
-    const override = context.props.components?.[block.type];
+    const override = context.config.components?.[block.type];
     const childView = (
         <Children block={ block }
             context={ context }
@@ -899,7 +911,7 @@ export function MarkdownBlockView({
     ]);
 
     const todoStyles = useMemo(() => ({
-        checkboxCheckmark: { color: "#ffffff", fontSize: 12, fontWeight: "700" as const, lineHeight: 14 },
+        checkboxCheckmark: { color: context.theme.onAccent, fontSize: 12, fontWeight: "700" as const, lineHeight: 14 },
         checkboxDefault: {
             alignItems: "center" as const,
             backgroundColor: checked ? context.theme.accent : "transparent",
@@ -920,7 +932,15 @@ export function MarkdownBlockView({
         root: { ...base, paddingBottom: 8, paddingLeft: 8 + depth * 24, paddingRight: 8, paddingTop: 8 },
         row: { alignItems: "flex-start" as const, flexDirection: "row" as const, paddingLeft: 2 },
         textWrap: { flex: 1 }
-    }), [ base, checked, context.theme.accent, context.theme.border, context.theme.fontSize, depth ]);
+    }), [
+        base,
+        checked,
+        context.theme.accent,
+        context.theme.border,
+        context.theme.fontSize,
+        context.theme.onAccent,
+        depth
+    ]);
 
     const quoteStyle = useMemo(() => ({
         ...base,
@@ -960,13 +980,18 @@ export function MarkdownBlockView({
             borderRadius: 6,
             padding: context.theme.spacing
         },
-        source: { color: context.theme.foreground, fontFamily: "monospace", fontSize: context.theme.fontSize }
+        source: {
+            color: context.theme.foreground,
+            fontFamily: context.theme.monospaceFontFamily,
+            fontSize: context.theme.fontSize
+        }
     }), [
         base,
         context.theme.codeBackground,
         context.theme.fontFamily,
         context.theme.fontSize,
         context.theme.foreground,
+        context.theme.monospaceFontFamily,
         context.theme.muted,
         context.theme.spacing
     ]);
@@ -1026,7 +1051,7 @@ export function MarkdownBlockView({
         return (
             <Component
                 block={ block }
-                theme={ context.theme }>
+                theme={ context.fullTheme }>
                 { childView }
             </Component>
         );
@@ -1036,7 +1061,7 @@ export function MarkdownBlockView({
         return (
             <View style={ unsupportedStyles.root }>
                 <Text style={ unsupportedStyles.text }>
-                    Unsupported block: { String(metadata.unsupportedType) }
+                    { context.t("renderer.unsupportedBlock", { type: String(metadata.unsupportedType) }) }
                 </Text>
                 { childView }
             </View>
@@ -1071,7 +1096,7 @@ export function MarkdownBlockView({
                         metadata.empty
                             ? (
                                 <View
-                                    accessibilityLabel="Empty block"
+                                    accessibilityLabel={ context.t("renderer.emptyBlock") }
                                     style={ paragraphStyles.empty }
                                 />
                             )
@@ -1137,7 +1162,7 @@ export function MarkdownBlockView({
             );
         }
         case "to_do": {
-            const Checkbox = context.props.checkboxComponent;
+            const Checkbox = context.config.checkboxComponent;
 
             return (
                 <View style={ todoStyles.root }>
@@ -1210,7 +1235,7 @@ export function MarkdownBlockView({
             if (payload.language === "mermaid")
             {
                 return <MarkdownMermaidView source={ source }
-                    theme={ context.theme } />;
+                    theme={ context.fullTheme } />;
             }
             return (
                 <View style={ codeStyles.root }>
@@ -1227,10 +1252,10 @@ export function MarkdownBlockView({
         }
         case "equation": return <View style={ base }><MarkdownMathView display
             expression={ String(payload.expression ?? "") }
-            theme={ context.theme } /></View>;
+            theme={ context.fullTheme } /></View>;
         case "divider":
             return (
-                <View accessibilityLabel="Divider"
+                <View accessibilityLabel={ context.t("renderer.divider") }
                     style={ dividerStyle }
                 />
             );
@@ -1270,7 +1295,7 @@ export function MarkdownBlockView({
             return (
                 <View style={ tableOfContentsStyles.root }>
                     <Text style={ tableOfContentsStyles.title }>
-                        Table of contents
+                        { context.t("renderer.tableOfContents") }
                     </Text>
                     {
                         context.headings.map((entry: HeadingEntry) => (
@@ -1293,11 +1318,10 @@ export function MarkdownBlockView({
             return (
                 <MarkdownMediaView
                     block={ block }
-                    dark={ context.dark }
                     kind={ block.type }
-                    onOpenUrl={ context.props.onOpenUrl }
-                    resolveMediaUrl={ context.props.resolveMediaUrl }
-                    theme={ context.theme }
+                    onOpenUrl={ context.onOpenUrl }
+                    resolveMediaUrl={ context.config.resolveMediaUrl }
+                    theme={ context.fullTheme }
                 />
             );
         case "embed":
@@ -1328,8 +1352,58 @@ export function MarkdownBlockView({
     }
 }
 
-/** Render enhanced Markdown or a supplied document without mutating the AST. */
-export function MarkdownRenderer(props: MarkdownRendererProps)
+/** Per-document props of the renderer body, after the configuration props are split off. */
+interface MarkdownRendererContentProps
+{
+    readonly document?: MarkdownDocument;
+    readonly markdown?: string;
+    readonly onDiagnostics?: MarkdownRendererProps["onDiagnostics"];
+    readonly testID?: string;
+}
+
+/**
+ * Render enhanced Markdown or a supplied document without mutating the AST. Theme, color scheme,
+ * localization, link opening, and renderer configuration come from the nearest
+ * `MarkdownProvider`; any of them passed as props override the provider for this instance.
+ *
+ * @category Components
+ * @since 1.0.0
+ */
+export function MarkdownRenderer({
+    checkboxComponent,
+    colorScheme,
+    components,
+    document,
+    icons,
+    localization,
+    markdown,
+    onDiagnostics,
+    onOpenUrl,
+    resolveMediaUrl,
+    resolveReference,
+    resolveSyncedBlock,
+    testID,
+    theme
+}: MarkdownRendererProps)
+{
+    const renderer = useMemo<MarkdownRendererConfig>(() => (
+        { checkboxComponent, components, icons, resolveMediaUrl, resolveReference, resolveSyncedBlock }
+    ), [ checkboxComponent, components, icons, resolveMediaUrl, resolveReference, resolveSyncedBlock ]);
+
+    return <MarkdownProvider colorScheme={ colorScheme }
+        localization={ localization }
+        onOpenUrl={ onOpenUrl }
+        renderer={ renderer }
+        theme={ theme }>
+        <MarkdownRendererContent document={ document }
+            markdown={ markdown }
+            onDiagnostics={ onDiagnostics }
+            testID={ testID } />
+    </MarkdownProvider>;
+}
+
+/** The renderer body, reading its theme and configuration from the scoped provider. */
+function MarkdownRendererContent(props: MarkdownRendererContentProps)
 {
     useEffect(() =>
     {
@@ -1350,12 +1424,9 @@ export function MarkdownRenderer(props: MarkdownRendererProps)
     const diagnostics = parsed?.diagnostics;
     const onDiagnostics = props.onDiagnostics;
     useEffect(() => { onDiagnostics?.(diagnostics ?? []); }, [ diagnostics, onDiagnostics ]);
-    const systemDark = useColorScheme() === "dark";
-    const dark = props.colorScheme === "dark" || (props.colorScheme !== "light" && systemDark);
-    const theme = useMemo(() => ({
-        ...(dark ? darkRendererTheme : lightRendererTheme),
-        ...props.theme
-    }), [ dark, props.theme ]);
+    const resolved = useResolvedRendererConfig();
+    const { dark, theme: fullTheme } = resolved;
+    const theme = fullTheme.document;
     const { width } = useWindowDimensions();
     const availableWidth = Math.max(120, width - theme.spacing * 2);
     const scroll = useRef<ScrollView>(null);
@@ -1392,14 +1463,18 @@ export function MarkdownRenderer(props: MarkdownRendererProps)
     const context: RenderContext =
         {
             availableWidth,
+            config: resolved.config,
             dark,
             document,
+            fullTheme,
             goToHeading,
             headings: collectHeadings(document.blocks),
             narrow: width < 600,
-            props,
+            onOpenUrl: resolved.onOpenUrl,
+            palette: fullTheme.palette,
             registerHeading,
             synced: collectSynced(document.blocks),
+            t: resolved.t,
             targetHeading,
             theme
         };

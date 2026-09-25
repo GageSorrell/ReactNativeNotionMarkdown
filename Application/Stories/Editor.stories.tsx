@@ -9,17 +9,24 @@
 
 import type { ComponentProps, ComponentType } from "react";
 import {
-    type EditorMessageId,
     MarkdownEditor,
-    MarkdownEditorConfigProvider,
+    type MarkdownEditorColorPanel,
     type MarkdownEditorCustomButton,
     type MarkdownEditorCustomPanelContext,
-    type MarkdownEditorMessageDescriptor,
-    type MarkdownEditorTranslate
+    type MarkdownEditorInsertContext,
+    type MarkdownEditorInsertPanel,
+    type MarkdownEditorToolbar,
+    type MarkdownEditorTurnIntoPanel,
+    type MarkdownMessageDescriptor,
+    type MarkdownMessageId,
+    MarkdownProvider,
+    type MarkdownTranslate,
+    defaultMarkdownEditorInsertSections,
+    defaultMarkdownEditorToolbar
 } from "react-native-notion-markdown/editor/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Sparkles, Star } from "lucide-react-native";
+import { CalendarDays, Sparkles, Star } from "lucide-react-native";
 import {
     KeyboardToggleButton,
     ThemeOverrideProvider,
@@ -30,6 +37,7 @@ import { useEffect, useState } from "react";
 import { Asset } from "expo-asset";
 import type { EditorSnapshot } from "react-native-notion-markdown";
 import { markdownEditorLucideIcons } from "react-native-notion-markdown/editor/ui/lucide-icons";
+import { sepiaTheme } from "./customTheme";
 
 /* Bundled Pexels stock photos used to seed the "With Images" story's starter document. */
 const stockImageModules =
@@ -95,9 +103,11 @@ function buildRichSnapshot(images: Record<StockImageKey, string>): EditorSnapsho
 }
 
 /** Content for the "AI Tools" custom panel -- demonstrates the render-context contract. */
-function AiToolsPanel({ close, foreground, panelBackground }: MarkdownEditorCustomPanelContext)
+function AiToolsPanel({ close, theme }: MarkdownEditorCustomPanelContext)
 {
-    return <View style={ { backgroundColor: panelBackground, flex: 1, gap: 12 } }>
+    const { background, foreground } = theme.editor.panel;
+
+    return <View style={ { backgroundColor: background, flex: 1, gap: 12 } }>
         <Text style={ { color: foreground, fontSize: 15 } }>Custom panel content goes here.</Text>
         <Pressable onPress={ close }>
             <Text style={ { color: foreground } }>Close</Text>
@@ -108,14 +118,12 @@ function AiToolsPanel({ close, foreground, panelBackground }: MarkdownEditorCust
 const customButtons: Array<MarkdownEditorCustomButton> =
     [
         {
-            after: "insert",
             icon: Star,
             id: "highlight",
             label: "Highlight",
             onPress: () => { }
         },
         {
-            before: "edit",
             icon: Sparkles,
             id: "ai-tools",
             label: "AI Tools",
@@ -127,8 +135,54 @@ const customButtons: Array<MarkdownEditorCustomButton> =
         }
     ];
 
+/* Positions come from the toolbar list: "Highlight" right after "Insert", "AI Tools" right before
+   the page-reference "Edit" button. */
+const customButtonsToolbar: MarkdownEditorToolbar =
+    {
+        main: defaultMarkdownEditorToolbar.main.flatMap((id: string) =>
+            id === "insert" ? [ id, "highlight" ] : id === "edit" ? [ "ai-tools", id ] : [ id ])
+    };
+
+/* The "Toolbar Layout" story: trimmed, reordered rows; a custom insert item; smaller pickers. */
+const toolbarLayout: MarkdownEditorToolbar =
+    {
+        format: [ "bold", "italic", "link" ],
+        main: [ "insert", "format", "turnInto", "highlight", "undo", "redo" ]
+    };
+const toolbarLayoutInsertPanel: MarkdownEditorInsertPanel =
+    {
+        sections:
+        [
+            {
+                id: "favorites",
+                items:
+                [
+                    "text",
+                    "heading1",
+                    "toDo",
+                    "divider",
+                    {
+                        icon: CalendarDays,
+                        id: "today",
+                        label: "Today's date",
+                        onPress: ({ close }: MarkdownEditorInsertContext) => close()
+                    }
+                ],
+                title: "Favorites"
+            },
+            ...defaultMarkdownEditorInsertSections.filter((section: { readonly id: string }) => section.id === "media")
+        ]
+    };
+const toolbarLayoutTurnInto: MarkdownEditorTurnIntoPanel = { items: [ "text", "heading_1", "heading_2" ] };
+const toolbarLayoutColors: MarkdownEditorColorPanel =
+    {
+        background: [ "yellow", "green" ],
+        showDefault: false,
+        text: [ "red", "blue", "purple" ]
+    };
+
 /** Plain-object translations--no i18n framework required. */
-const frenchMessages: Partial<Record<EditorMessageId, string>> =
+const frenchMessages: Partial<Record<MarkdownMessageId, string>> =
     {
         "insertPanel.heading1": "Titre 1",
         "insertPanel.heading2": "Titre 2",
@@ -146,7 +200,7 @@ const frenchMessages: Partial<Record<EditorMessageId, string>> =
         "toolbar.paste": "Coller"
     };
 
-const translateFrench: MarkdownEditorTranslate = (Message: MarkdownEditorMessageDescriptor) =>
+const translateFrench: MarkdownTranslate = (Message: MarkdownMessageDescriptor) =>
     frenchMessages[Message.id] ?? Message.defaultMessage;
 const frenchLocalization = { translate: translateFrench };
 
@@ -158,7 +212,7 @@ const frenchLocalization = { translate: translateFrench };
 function RichDocumentEditorStory(args: ComponentProps<typeof MarkdownEditor>)
 {
     const { override } = useThemeOverride();
-    const dark = override === "system" ? args.dark === true : override === "dark";
+    const dark = override === "system" ? args.colorScheme === "dark" : override === "dark";
     const [ snapshot, setSnapshot ] = useState<EditorSnapshot>();
 
     useEffect(() =>
@@ -184,7 +238,7 @@ function RichDocumentEditorStory(args: ComponentProps<typeof MarkdownEditor>)
                 ? null
                 : <MarkdownEditor
                     { ...args }
-                    dark={ dark }
+                    colorScheme={ dark ? "dark" : "light" }
                     snapshot={ snapshot }
                     style={ [ styles.editor, args.style ] }
                 />
@@ -193,14 +247,14 @@ function RichDocumentEditorStory(args: ComponentProps<typeof MarkdownEditor>)
 }
 
 /**
- * Renders the editor story page. The story's own `dark` arg is the default appearance; the
+ * Renders the editor story page. The story's own `colorScheme` arg is the default appearance; the
  * upper-right `ThemeToggleButton`, opposite the "Editor" title, overrides it unless left on
  * "system".
  */
 function EditorStoryRender(args: ComponentProps<typeof MarkdownEditor>)
 {
     const { override } = useThemeOverride();
-    const dark = override === "system" ? args.dark === true : override === "dark";
+    const dark = override === "system" ? args.colorScheme === "dark" : override === "dark";
 
     return <View style={ [ styles.page, dark && styles.darkPage ] }>
         <View style={ styles.titleContainer }>
@@ -212,7 +266,7 @@ function EditorStoryRender(args: ComponentProps<typeof MarkdownEditor>)
         </View>
         <MarkdownEditor
             { ...args }
-            dark={ dark }
+            colorScheme={ dark ? "dark" : "light" }
             style={ [ styles.editor, args.style ] }
         />
     </View>;
@@ -269,18 +323,18 @@ const meta =
     {
         argTypes:
         {
-            components: { control: false },
+            icons: { control: false },
             style: { control: false }
         },
         args:
         {
-            components: markdownEditorLucideIcons
+            icons: markdownEditorLucideIcons
         },
         component: MarkdownEditor,
         decorators: [ withThemeOverride ],
         parameters:
         {
-            controls: { exclude: [ "components", "style" ] },
+            controls: { exclude: [ "icons", "style" ] },
             layout: "fullscreen"
         },
         render: EditorStoryRender,
@@ -302,7 +356,7 @@ export const Dark: Story =
     {
         args:
         {
-            dark: true,
+            colorScheme: "dark",
             style: { flex: 1 }
         }
     };
@@ -312,8 +366,36 @@ export const CustomButtons: Story =
         args:
         {
             customButtons,
-            style: { flex: 1 }
+            style: { flex: 1 },
+            toolbar: customButtonsToolbar
         }
+    };
+
+export const ToolbarLayout: Story =
+    {
+        args:
+        {
+            colorPanel: toolbarLayoutColors,
+            customButtons: [ customButtons[ 0 ] as MarkdownEditorCustomButton ],
+            insertPanel: toolbarLayoutInsertPanel,
+            style: { flex: 1 },
+            toolbar: toolbarLayout,
+            turnIntoPanel: toolbarLayoutTurnInto
+        }
+    };
+
+export const CustomTheme: Story =
+    {
+        args:
+        {
+            style: { flex: 1 }
+        },
+        decorators:
+        [
+            (StoryComponent: ComponentType) => <MarkdownProvider theme={ sepiaTheme }>
+                <StoryComponent />
+            </MarkdownProvider>
+        ]
     };
 
 export const Localized: Story =
@@ -324,10 +406,10 @@ export const Localized: Story =
         },
         decorators:
         [
-            (StoryComponent: ComponentType) => <MarkdownEditorConfigProvider
+            (StoryComponent: ComponentType) => <MarkdownProvider
                 localization={ frenchLocalization }>
                 <StoryComponent />
-            </MarkdownEditorConfigProvider>
+            </MarkdownProvider>
         ]
     };
 

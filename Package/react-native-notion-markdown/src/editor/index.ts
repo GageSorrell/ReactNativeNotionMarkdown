@@ -11,9 +11,16 @@
 
 export {
     NativeEditor,
+    nativeEditorTheme,
+    type NativeBlockActionsPressEvent,
+    type NativeContentSizeEvent,
+    type NativeEditorColorName,
+    type NativeEditorLabels,
+    type NativeEditorTheme,
     type NativePageReferencePressEvent,
     type NativeEditorProps
 } from "../NativeEditor.tsx";
+export type { EditorColorTarget } from "../prototype.ts";
 export { default as Markdown } from "../MarkdownModule.ts";
 
 /** Pure store and React bindings for composable editors. */

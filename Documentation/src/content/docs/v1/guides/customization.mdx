@@ -1,0 +1,88 @@
+---
+title: Customization
+description: Configure strings, icons, toolbars, panels, layout, and renderer components the same way everywhere.
+sidebar:
+  order: 6
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+`MarkdownEditor` and `MarkdownRenderer` follow one customization rule.
+
+- **Configuration** is anything that doesn't depend on a particular document: the theme, color scheme, strings, icons, block components, toolbar and panel composition, layout, resolvers, and link opening. Set it app-wide on `MarkdownProvider`, or pass the same-named prop to one component to override the provider for that component only.
+- **Instance props** read, change, or report on one document, such as `snapshot`, `onEdit`, `markdown`, and `onDiagnostics`. They exist only on the component.
+
+Values merge in this order, later winning: built-in defaults, outer provider, inner provider, component prop. Object-valued fields such as `icons`, `toolbar`, and `layout` merge key by key; everything else is replaced. The provider is optional; without one, the defaults apply.
+
+```tsx
+<MarkdownProvider
+    colorScheme="system"
+    editor={ { icons: markdownEditorLucideIcons, layout: { pageMaxWidth: 720 } } }
+    localization={ { translate } }
+    onOpenUrl={ openInApp }
+    renderer={ { resolveMediaUrl } }
+    theme={ theme }>
+    <App />
+</MarkdownProvider>
+```
+
+See [Theming](/docs/v1/guides/theming) for the `theme` prop.
+
+## Strings
+
+Every user-visible and accessibility string in both components has a stable `MarkdownMessageId` with English defaults in `defaultMarkdownMessages`. Supply a `translate` function to localize them. It receives the message descriptor and any values to interpolate into `{name}` placeholders.
+
+```tsx
+const translate: MarkdownTranslate = (message, values) =>
+    i18n.t(`markdown.${ message.id }`, { defaultValue: message.defaultMessage, ...values })
+```
+
+## Editor configuration
+
+`MarkdownEditorConfig` holds everything configurable about the editor. Each field below works on the provider's `editor` prop or as a `MarkdownEditor` prop.
+
+| Field | Purpose |
+|---|---|
+| `icons` | Icon components by `MarkdownEditorButton` name. `markdownEditorLucideIcons` from `react-native-notion-markdown/editor/ui/lucide-icons` is a ready-made set. |
+| `toolbar` | `{ main, format }`: the ordered ids shown in each toolbar row. Leaving an id out hides that button. |
+| `customButtons` | Your own buttons, each with an `onPress` or a `panel` that replaces the keyboard. List a button's `id` in `toolbar` to place it; unlisted buttons go at the end of the main row. |
+| `insertPanel` | `{ sections }`: titled sections of built-in insert items and your own `{ id, label, icon, onPress }` items. |
+| `turnIntoPanel` | `{ items }`: which block types the turn-into panel offers. |
+| `colorPanel` | `{ text, background, showDefault }`: which hues the color pickers offer. |
+| `layout` | `{ pagePaddingHorizontal, pageMaxWidth, imageMaxWidth }` for the editing surface. |
+| `pageReferenceFallbackGlyph` | The glyph drawn beside a page reference that has no icon. |
+
+The defaults are exported as `defaultMarkdownEditorToolbar`, `defaultMarkdownEditorInsertSections`, and `defaultMarkdownEditorTurnIntoItems`, so you can adjust them instead of restating them.
+
+```tsx
+const toolbar = {
+    main: defaultMarkdownEditorToolbar.main
+        .filter((id) => id !== "speech")
+        .flatMap((id) => id === "insert" ? [ id, "highlight" ] : [ id ])
+}
+
+<MarkdownEditor
+    customButtons={ [ { icon: Star, id: "highlight", label: "Highlight", onPress: highlight } ] }
+    toolbar={ toolbar } />
+```
+
+<Aside type="note" title="Buttons that depend on state">
+  Some built-in buttons only appear when they apply: `color` while colorable text is selected, `edit` while a page reference is selected, `redo` once something can be redone, and `moveUp`/`moveDown` when the selection can move. Listing them in `toolbar.main` makes them eligible to appear; it doesn't force them to show.
+</Aside>
+
+A custom panel's `render` component receives `close` and the resolved `theme`, so its content can match the built-in panels.
+
+## Renderer configuration
+
+`MarkdownRendererConfig` works the same way, on the provider's `renderer` prop or as `MarkdownRenderer` props.
+
+| Field | Purpose |
+|---|---|
+| `components` | Custom components by block type. Each receives the block, its rendered children, and the resolved theme. |
+| `checkboxComponent` | The checkbox drawn for to-do blocks. |
+| `icons` | `{ pageReference, link }`: fallback icons for references without a fetched icon or favicon. |
+| `resolveReference` | Resolves page, database, and mention references to display labels, icons, and URLs. |
+| `resolveSyncedBlock` | Loads the content of a synced block reference. |
+| `resolveMediaUrl` | Turns a media block into a playable or viewable URL. |
+
+`onOpenUrl` is shared by both components. It opens renderer links and page references tapped in the editor, and falls back to `expo-linking` when you don't supply it.

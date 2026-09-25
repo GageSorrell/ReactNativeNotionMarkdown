@@ -1,5 +1,5 @@
 /**
- *
+ * Built-in URL and link-label prompt for the editor's inline link action.
  *
  * @module react-native-notion-markdown/editor/ui/LinkBottomSheet
  *
@@ -7,12 +7,6 @@
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
- */
-
-/**
- * Built-in URL and link-label prompt for the editor's inline link action.
- *
- * @module react-native-notion-markdown/editor/ui/LinkBottomSheet
  */
 
 import {
@@ -23,15 +17,15 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
-    useColorScheme
+    View
 } from "react-native";
+import { useCallback, useMemo, useState } from "react";
 import type { MarkdownEditorLinkResult } from "./MarkdownEditor.tsx";
-import { useMemo, useState } from "react";
+import { editorFontStyle } from "./customization.ts";
+import { useResolvedEditorConfig } from "../../provider/MarkdownProvider.tsx";
 
 interface LinkBottomSheetProps
 {
-    readonly dark: boolean;
     readonly initialLabel: string;
     readonly initialUrl?: string;
     readonly labels: {
@@ -40,6 +34,7 @@ interface LinkBottomSheetProps
         readonly label: string;
         readonly title: string;
         readonly url: string;
+        readonly urlPlaceholder: string;
     };
     readonly onDismiss: () => void;
     readonly onSubmit: (result: MarkdownEditorLinkResult) => void;
@@ -70,7 +65,6 @@ function normalizeUrl(value: string): string | undefined
 
 /** Render the built-in link prompt. */
 export function LinkBottomSheet({
-    dark,
     initialLabel,
     initialUrl,
     labels,
@@ -78,28 +72,49 @@ export function LinkBottomSheet({
     onSubmit
 }: LinkBottomSheetProps)
 {
-    const systemDark = useColorScheme() === "dark";
-    const isDark = dark || systemDark;
-    const foreground = isDark ? "#F5F5F5" : "#2C2C2B";
-    const muted = isDark ? "#B8B5AF" : "#6D6A64";
-    const surface = isDark ? "#202020" : "#F9F8F6";
-    const fieldSurface = isDark ? "#30302F" : "#FFFFFF";
-    const border = isDark ? "#4A4946" : "#D9D6D0";
-    const accent = isDark ? "#81B8E7" : "#2F6EAB";
-    const scrim = isDark ? "rgba(0, 0, 0, 0.60)" : "rgba(0, 0, 0, 0.28)";
+    const { theme } = useResolvedEditorConfig();
+    const { sheet } = theme.editor;
+    const { fontFamily } = editorFontStyle(theme.editor);
+    const foreground = sheet.foreground;
+    const muted = sheet.subtle;
+    const surface = sheet.background;
+    const fieldSurface = sheet.card;
+    const border = sheet.border;
+    const accent = theme.document.accent;
+    const onAccent = theme.document.onAccent;
+    const scrim = sheet.scrim;
     const [ url, setUrl ] = useState(initialUrl ?? "");
     const [ label, setLabel ] = useState(initialLabel);
     const normalizedUrl = normalizeUrl(url);
     const scrimStyle = useMemo(() => [ styles.scrim, { backgroundColor: scrim } ], [ scrim ]);
     const sheetStyle = useMemo(() => [ styles.sheet, { backgroundColor: surface } ], [ surface ]);
-    const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
-    const fieldLabelStyle = useMemo(() => [ styles.fieldLabel, { color: muted } ], [ muted ]);
+    const titleStyle = useMemo(
+        () => [ styles.title, { color: foreground, fontFamily } ],
+        [ fontFamily, foreground ]
+    );
+    const fieldLabelStyle = useMemo(
+        () => [ styles.fieldLabel, { color: muted, fontFamily } ],
+        [ fontFamily, muted ]
+    );
     const inputStyle = useMemo(() => [ styles.input, {
-        backgroundColor: fieldSurface, borderColor: border, color: foreground
-    } ], [ border, fieldSurface, foreground ]);
-    const cancelTextStyle = useMemo(() => [ styles.actionText, { color: muted } ], [ muted ]);
+        backgroundColor: fieldSurface, borderColor: border, color: foreground, fontFamily
+    } ], [ border, fieldSurface, fontFamily, foreground ]);
+    const cancelTextStyle = useMemo(
+        () => [ styles.actionText, { color: muted, fontFamily } ],
+        [ fontFamily, muted ]
+    );
     const applyButtonStyle = useMemo(() => [ styles.action, { backgroundColor: accent } ], [ accent ]);
-    const applyTextStyle = useMemo(() => [ styles.actionText, styles.applyText ], [ ]);
+    const applyTextStyle = useMemo(
+        () => [ styles.actionText, { color: onAccent, fontFamily } ],
+        [ fontFamily, onAccent ]
+    );
+    const handleApply = useCallback(() =>
+    {
+        if (normalizedUrl !== undefined)
+        {
+            onSubmit({ label: label.trim(), url: normalizedUrl });
+        }
+    }, [ label, normalizedUrl, onSubmit ]);
 
     return <Modal
         animationType="slide"
@@ -126,7 +141,7 @@ export function LinkBottomSheet({
                     autoFocus
                     keyboardType="url"
                     onChangeText={ setUrl }
-                    placeholder="https://example.com"
+                    placeholder={ labels.urlPlaceholder }
                     placeholderTextColor={ muted }
                     style={ inputStyle }
                     value={ url }
@@ -147,8 +162,7 @@ export function LinkBottomSheet({
                     </Pressable>
                     <Pressable accessibilityRole="button"
                         disabled={ normalizedUrl === undefined || label.trim().length === 0 }
-                        onPress={ () => normalizedUrl !== undefined
-                            && onSubmit({ label: label.trim(), url: normalizedUrl }) }
+                        onPress={ handleApply }
                         style={ applyButtonStyle }>
                         <Text style={ applyTextStyle }>{ labels.apply }</Text>
                     </Pressable>
@@ -178,10 +192,6 @@ const styles = StyleSheet.create({
         gap: 10,
         justifyContent: "flex-end",
         marginTop: 8
-    },
-    applyText:
-    {
-        color: "#FFFFFF"
     },
     fieldLabel:
     {

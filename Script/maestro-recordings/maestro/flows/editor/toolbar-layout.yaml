@@ -1,0 +1,27 @@
+appId: com.gagesorrell.markdown.storybook
+---
+# The "Toolbar Layout" story (Editor.stories.tsx) trims and reorders the toolbar rows, adds a custom
+# "Today's date" insert item, and narrows the turn-into and color pickers.
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "editor--toolbar-layout"
+      ASSERT_TEXT: "Editor"
+- assertVisible: "Highlight"
+- assertNotVisible: "Remove"
+- assertNotVisible: "Indent"
+- tapOn: "Insert"
+- assertVisible: "Favorites"
+- assertVisible: "Today's date"
+- assertNotVisible: "Callout"
+- tapOn: "Today's date"
+- assertNotVisible: "Favorites"
+- tapOn: "Turn into"
+- assertVisible: "Heading 2"
+- assertNotVisible: "Heading 3"
+- tapOn: "Close panel"
+# The format row last: its "Back" label can collide with the system navigation button's.
+- tapOn: "Aa"
+- assertVisible: "Bold"
+- assertVisible: "Italic"
+- assertNotVisible: "Underline"

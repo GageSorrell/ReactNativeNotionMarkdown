@@ -28,8 +28,17 @@ import {
     View,
     useWindowDimensions
 } from "react-native";
-import type { MarkdownEditorAudioAction, MarkdownEditorComponents, MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
+import {
+    type EditorColorChoice,
+    type MarkdownEditorIconProps,
+    type MarkdownEditorIcons,
+    editorColorChoices,
+    editorFontStyle
+} from "./customization.ts";
 import { createElement, type ComponentType } from "react";
+import type { MarkdownEditorAudioAction } from "./MarkdownEditor.tsx";
+import { useResolvedEditorConfig } from "../../provider/MarkdownProvider.tsx";
+import { withAlpha } from "../../provider/theme.ts";
 import type { MarkdownColor } from "../../document/types.ts";
 import type { EditorBlockActionScope } from "../../prototype.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -59,10 +68,9 @@ export interface ActionsBottomSheetProps
 {
     /** Translated display name of the target block, e.g. "Divider". */
     readonly blockName: string;
-    readonly components?: MarkdownEditorComponents;
-    readonly dark: boolean;
     readonly labels: {
         readonly delete: string;
+        readonly dismiss: string;
         readonly duplicate: string;
         readonly fitTableWidth: string;
         readonly headerRow: string;
@@ -96,7 +104,7 @@ export interface ActionsBottomSheetProps
     readonly onDismiss: () => void;
     /** Opens the callout emoji picker from the callout action sheet. */
     readonly onEditIcon?: () => void;
-    /** Called when a color is selected for a callout. */
+    /** Called when a block-level color is selected. */
     readonly onColor?: (color: MarkdownColor | undefined) => void;
     /** Called with the picked asset's local URI once a replacement image is chosen. */
     readonly onReplaceImage?: (url: string) => void | Promise<void>;
@@ -106,6 +114,8 @@ export interface ActionsBottomSheetProps
     readonly showInsertAbove: boolean;
     /** Callout actions use the Markdown-specific color/icon layout. */
     readonly showCalloutActions?: boolean;
+    /** Shows the block-level color action for other colorable blocks. */
+    readonly showBlockColorActions?: boolean;
     /** Shows the built-in table operations for a table block. */
     readonly showTableActions?: boolean;
     /** Shown only for the image block -- offers to replace its source via gallery or camera. */
@@ -127,7 +137,6 @@ interface ActionOptionProps
 interface ActionSwitchOptionProps
 {
     readonly color: string;
-    readonly dark: boolean;
     readonly icon: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
     readonly onValueChange: (value: boolean) => void;
@@ -221,10 +230,10 @@ const actionIconFallbacks: Readonly<Record<
 /** Resolve an override, an installed Lucide icon, or the dependency-free SVG fallback. */
 function getActionIcon(
     button: keyof typeof lucideNames,
-    components: ActionsBottomSheetProps["components"]
+    icons: MarkdownEditorIcons | undefined
 ): ComponentType<MarkdownEditorIconProps>
 {
-    const override = components?.[button as keyof MarkdownEditorComponents];
+    const override = icons?.[button as keyof MarkdownEditorIcons];
 
     if (override !== undefined)
     {
@@ -251,17 +260,23 @@ function ActionOption({
     trailingIconColor
 }: ActionOptionProps)
 {
+    const { theme } = useResolvedEditorConfig();
+    const { fontFamily } = editorFontStyle(theme.editor);
     const optionStyle = useCallback(({ pressed }: { pressed: boolean }) => [
         styles.option,
         pressed
-            ? { backgroundColor: `${ color }12` }
+            ? { backgroundColor: withAlpha(color, 0.07) }
             : undefined
     ], [ color ]);
-    const labelStyle = useMemo(() => [ styles.optionLabel, { color } ], [ color ]);
+    const labelStyle = useMemo(
+        () => [ styles.optionLabel, styles.optionLabelExpanded, { color, fontFamily } ],
+        [ color, fontFamily ]
+    );
+    const ripple = useMemo(() => ({ color: withAlpha(color, 0.13) }), [ color ]);
 
     return <Pressable accessibilityLabel={ label }
         accessibilityRole="button"
-        android_ripple={ { color: `${ color }22` } }
+        android_ripple={ ripple }
         onPress={ onPress }
         style={ optionStyle }>
         {
@@ -270,11 +285,11 @@ function ActionOption({
                 size={ 20 }
                 strokeWidth={ 1.75 } />
         }
-        <Text style={ [ labelStyle, styles.optionLabelExpanded ] }>{ label }</Text>
+        <Text style={ labelStyle }>{ label }</Text>
         {
             TrailingIcon !== undefined && <View style={ styles.trailingIcon }>
                 <TrailingIcon
-                    color={ trailingIconColor ?? "#A8A8A8" }
+                    color={ trailingIconColor ?? theme.editor.sheet.subtle }
                     size={ 18 }
                     strokeWidth={ 2 } />
             </View>
@@ -285,105 +300,66 @@ function ActionOption({
 /** Render a switch row with the same dimensions and spacing as an action button. */
 function ActionSwitchOption({
     color,
-    dark,
     icon: Icon,
     label,
     onValueChange,
     value
 }: ActionSwitchOptionProps)
 {
-    const labelStyle = useMemo(() => [ styles.optionLabel, { color } ], [ color ]);
+    const { theme } = useResolvedEditorConfig();
+    const { fontFamily } = editorFontStyle(theme.editor);
+    const labelStyle = useMemo(() => [ styles.optionLabel, { color, fontFamily } ], [ color, fontFamily ]);
 
     return <View style={ styles.option }>
         <Icon color={ color } size={ 20 } strokeWidth={ 1.75 } />
         <Text style={ labelStyle }>{ label }</Text>
         <Switch
             accessibilityLabel={ label }
-            dark={ dark }
             onValueChange={ onValueChange }
             size="medium"
             value={ value } />
     </View>;
 }
 
-interface CalloutColorOption
-{
-    readonly color: MarkdownColor | undefined;
-    readonly hex?: string;
-    readonly label: string;
-}
-
-const calloutTextColors: ReadonlyArray<CalloutColorOption> =
-    [
-        { color: undefined, label: "default" },
-        { color: "gray", hex: "#787774", label: "gray" },
-        { color: "brown", hex: "#9F6B53", label: "brown" },
-        { color: "orange", hex: "#D9730D", label: "orange" },
-        { color: "yellow", hex: "#CB912F", label: "yellow" },
-        { color: "green", hex: "#448361", label: "green" },
-        { color: "blue", hex: "#337EA9", label: "blue" },
-        { color: "purple", hex: "#9065B0", label: "purple" },
-        { color: "pink", hex: "#C14C8A", label: "pink" },
-        { color: "red", hex: "#D44C47", label: "red" }
-    ];
-
-const calloutBackgroundColors: ReadonlyArray<CalloutColorOption> =
-    [
-        { color: undefined, label: "default" },
-        { color: "gray_bg", hex: "#787774", label: "gray" },
-        { color: "brown_bg", hex: "#9F6B53", label: "brown" },
-        { color: "orange_bg", hex: "#D9730D", label: "orange" },
-        { color: "yellow_bg", hex: "#CB912F", label: "yellow" },
-        { color: "green_bg", hex: "#448361", label: "green" },
-        { color: "blue_bg", hex: "#337EA9", label: "blue" },
-        { color: "purple_bg", hex: "#9065B0", label: "purple" },
-        { color: "pink_bg", hex: "#C14C8A", label: "pink" },
-        { color: "red_bg", hex: "#D44C47", label: "red" }
-    ];
-
-/** Render one selectable callout foreground/background color. */
+/** Render one selectable callout or table foreground/background color. */
 function ColorOption({
-    dark,
-    option,
-    onPress,
-    defaultLabel
+    choice,
+    onSelect
 }: {
-    readonly dark: boolean;
-    readonly defaultLabel: string;
-    readonly onPress: () => void;
-    readonly option: CalloutColorOption;
+    readonly choice: EditorColorChoice;
+    readonly onSelect: (color: MarkdownColor | undefined) => void;
 })
 {
-    const foreground = dark ? "#F5F5F5" : "#2C2C2B";
-    const muted = dark ? "#D0CDC7" : "#45433F";
-    const swatch = option.hex ?? (dark ? "#30302F" : "#FFFFFF");
-    const swatchBackground = option.color?.endsWith("_bg") === true
-        ? `${ swatch }38`
-        : swatch;
+    const { theme } = useResolvedEditorConfig();
+    const { sheet } = theme.editor;
+    const { fontFamily } = editorFontStyle(theme.editor);
+    const hueText = choice.hue === undefined ? undefined : theme.palette.text[ choice.hue ];
+    const swatchBackground = choice.hue === undefined
+        ? sheet.card
+        : choice.background ? theme.palette.background[ choice.hue ] : sheet.card;
     const swatchStyle = useMemo(() => [
         styles.colorSwatch,
-        { backgroundColor: swatchBackground, borderColor: option.hex ?? muted }
-    ], [ muted, option.hex, swatchBackground ]);
+        { backgroundColor: swatchBackground, borderColor: hueText ?? sheet.muted }
+    ], [ hueText, sheet.muted, swatchBackground ]);
     const swatchTextStyle = useMemo(
-        () => [ styles.colorSwatchText, { color: option.hex ?? foreground } ],
-        [ foreground, option.hex ]
+        () => [ styles.colorSwatchText, { color: hueText ?? sheet.foreground, fontFamily } ],
+        [ fontFamily, hueText, sheet.foreground ]
     );
     const labelStyle = useMemo(
-        () => [ styles.colorOptionLabel, { color: foreground } ],
-        [ foreground ]
+        () => [ styles.colorOptionLabel, { color: sheet.foreground, fontFamily } ],
+        [ fontFamily, sheet.foreground ]
     );
+    const handlePress = useCallback(() => onSelect(choice.color), [ choice.color, onSelect ]);
 
-    return <Pressable accessibilityLabel={ option.color === undefined ? defaultLabel : option.label }
+    return <Pressable accessibilityLabel={ choice.label }
         accessibilityRole="button"
-        onPress={ onPress }
+        onPress={ handlePress }
         style={ styles.colorOption }>
         <View style={ swatchStyle }>
-            <Text style={ swatchTextStyle }>
-                { option.color === undefined ? "A" : "A" }
-            </Text>
+            <Text style={ swatchTextStyle }>A</Text>
         </View>
         <Text style={ labelStyle }>
-            { option.color === undefined ? defaultLabel : option.label }
+            { choice.label }
         </Text>
     </Pressable>;
 }
@@ -433,8 +409,6 @@ function isVerticalDrag(gesture: PanResponderGestureState): boolean
 /** Render the built-in block-actions sheet. */
 export function ActionsBottomSheet({
     blockName,
-    components,
-    dark,
     labels,
     onAction,
     onTableAction,
@@ -446,6 +420,7 @@ export function ActionsBottomSheet({
     onReplaceAudio,
     showInsertAbove,
     showCalloutActions = false,
+    showBlockColorActions = false,
     showTableActions = false,
     tableActionScope = "table",
     tableFitPageWidth = false,
@@ -455,17 +430,18 @@ export function ActionsBottomSheet({
 {
     const [ choosingColor, setChoosingColor ] = useState(false);
     const [ choosingTableColor, setChoosingTableColor ] = useState(false);
-    const foreground = dark ? "#F5F5F5" : "#2C2C2B";
-    const muted = dark ? "#D0CDC7" : "#45433F";
-    const surface = dark ? "#202020" : "#F9F8F6";
-    const optionSurface = dark ? "#30302F" : "#FFFFFF";
-    const divider = dark ? "rgba(255, 255, 255, 0.10)" : "#EEECE9";
-    const scrim = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.25)";
-    /* Sampled from Notion's own Actions sheet handlebar in light mode. */
-    const handlebarColor = dark ? "#3F3F3E" : "#E6E5E3";
-    /* The package's "danger" color -- see MarkdownRendererTheme.danger -- deliberately the same
-       hex in both themes, unlike the other colors on this sheet. */
-    const danger = "#E56458";
+    const { config, t, theme } = useResolvedEditorConfig();
+    const { icons } = config;
+    const { sheet } = theme.editor;
+    const { fontFamily } = editorFontStyle(theme.editor);
+    const foreground = sheet.foreground;
+    const muted = sheet.muted;
+    const surface = sheet.background;
+    const optionSurface = sheet.card;
+    const divider = sheet.divider;
+    const scrim = sheet.scrim;
+    const handlebarColor = sheet.handle;
+    const danger = theme.document.danger;
 
     const { height: windowHeight } = useWindowDimensions();
     const [ containerHeight, setContainerHeight ] = useState<number>();
@@ -662,10 +638,10 @@ export function ActionsBottomSheet({
     }, [ ]);
     const handleEditIcon = useCallback(() => onEditIcon?.(), [ onEditIcon ]);
 
-    const colorOptions = useMemo(() => ({
-        background: calloutBackgroundColors,
-        text: calloutTextColors
-    }), [ ]);
+    const colorOptions = useMemo(
+        () => editorColorChoices(config.colorPanel, t, labels.defaultColor),
+        [ config.colorPanel, labels.defaultColor, t ]
+    );
     const scrimStyle = useMemo(
         () => [ styles.scrim, { backgroundColor: scrim, opacity: scrimOpacity } ],
         [ scrim, scrimOpacity ]
@@ -678,11 +654,17 @@ export function ActionsBottomSheet({
         () => [ styles.handlebar, { backgroundColor: handlebarColor } ],
         [ handlebarColor ]
     );
-    const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
-    const sectionTitleStyle = useMemo(() => [ styles.sectionTitle, { color: muted } ], [ muted ]);
+    const titleStyle = useMemo(
+        () => [ styles.title, { color: foreground, fontFamily } ],
+        [ fontFamily, foreground ]
+    );
+    const sectionTitleStyle = useMemo(
+        () => [ styles.sectionTitle, { color: muted, fontFamily } ],
+        [ fontFamily, muted ]
+    );
     const blockNameLabelStyle = useMemo(
-        () => [ styles.blockNameLabel, { color: muted } ],
-        [ muted ]
+        () => [ styles.blockNameLabel, { color: muted, fontFamily } ],
+        [ fontFamily, muted ]
     );
     const optionsStyle = useMemo(() => [
         styles.options,
@@ -703,7 +685,7 @@ export function ActionsBottomSheet({
             style={ styles.modalRoot }>
             <Animated.View style={ scrimStyle }>
                 <Pressable
-                    accessibilityLabel="Dismiss actions"
+                    accessibilityLabel={ labels.dismiss }
                     accessibilityRole="button"
                     onPress={ closeSheet }
                     style={ styles.scrimPressable } />
@@ -723,7 +705,7 @@ export function ActionsBottomSheet({
                                 onPress={ () => setChoosingColor(false) }
                                 style={ styles.backButton }>
                                 {
-                                    createElement(getActionIcon("back", components), {
+                                    createElement(getActionIcon("back", icons), {
                                         color: muted,
                                         size: 22,
                                         strokeWidth: 2
@@ -743,43 +725,43 @@ export function ActionsBottomSheet({
                                     { labels.text }
                                 </Text>
                                 <View style={ styles.colorGrid }>
-                                    { colorOptions.text.map((option: CalloutColorOption) =>
+                                    { colorOptions.text.map((choice: EditorColorChoice) =>
                                         <ColorOption
-                                            dark={ dark }
-                                            defaultLabel={ labels.defaultColor }
-                                            key={ option.color ?? "text-default" }
-                                            onPress={ () => handleColor(option.color) }
-                                            option={ option } />) }
+                                            choice={ choice }
+                                            key={ choice.color ?? "text-default" }
+                                            onSelect={ handleColor } />) }
                                 </View>
                                 <Text style={ sectionTitleStyle }>
                                     { labels.background }
                                 </Text>
                                 <View style={ styles.colorGrid }>
-                                    { colorOptions.background.map((option: CalloutColorOption) =>
+                                    { colorOptions.background.map((choice: EditorColorChoice) =>
                                         <ColorOption
-                                            dark={ dark }
-                                            defaultLabel={ labels.defaultColor }
-                                            key={ option.color ?? "background-default" }
-                                            onPress={ () => handleColor(option.color) }
-                                            option={ option } />) }
+                                            choice={ choice }
+                                            key={ choice.color ?? "background-default" }
+                                            onSelect={ handleColor } />) }
                                 </View>
                             </View>
                             : <>
                                 <Text style={ blockNameLabelStyle }>{ blockName }</Text>
                                 {
-                                    showCalloutActions && <View style={ optionsStyle }>
+                                    (showCalloutActions || showBlockColorActions) && <View style={ optionsStyle }>
                                         <ActionOption
                                             color={ muted }
-                                            icon={ getActionIcon("color", components) }
+                                            icon={ getActionIcon("color", icons) }
                                             label={ labels.color }
-                                            trailingIcon={ getActionIcon("chevronRight", components) }
+                                            trailingIcon={ getActionIcon("chevronRight", icons) }
                                             onPress={ () => setChoosingColor(true) } />
-                                        <View style={ dividerStyle } />
-                                        <ActionOption
-                                            color={ muted }
-                                            icon={ getActionIcon("edit", components) }
-                                            label={ labels.editIcon }
-                                            onPress={ handleEditIcon } />
+                                        {
+                                            showCalloutActions && <>
+                                                <View style={ dividerStyle } />
+                                                <ActionOption
+                                                    color={ muted }
+                                                    icon={ getActionIcon("edit", icons) }
+                                                    label={ labels.editIcon }
+                                                    onPress={ handleEditIcon } />
+                                            </>
+                                        }
                                     </View> }
                                 { showCalloutActions && <View style={ styles.groupGap } /> }
                                 {
@@ -791,35 +773,34 @@ export function ActionsBottomSheet({
                                                     tableActionScope === "table" && <>
                                                         <ActionSwitchOption
                                                             color={ muted }
-                                                            dark={ dark }
-                                                            icon={ getActionIcon("fit", components) }
+                                                            icon={ getActionIcon("fit", icons) }
                                                             label={ labels.fitTableWidth }
                                                             onValueChange={ () => onTableAction?.("toggleFitTableWidth") }
                                                             value={ tableFitPageWidth } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("headerRow", components) }
+                                                            icon={ getActionIcon("headerRow", icons) }
                                                             label={ labels.headerRow }
                                                             onPress={ () => onTableAction?.("toggleHeaderRow") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("headerColumn", components) }
+                                                            icon={ getActionIcon("headerColumn", icons) }
                                                             label={ labels.headerColumn }
                                                             onPress={ () => onTableAction?.("toggleHeaderColumn") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("insertBelow", components) }
+                                                            icon={ getActionIcon("insertBelow", icons) }
                                                             label={ labels.insertBelow }
                                                             onPress={ () => onAction("insertBelow") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("color", components) }
+                                                            icon={ getActionIcon("color", icons) }
                                                             label={ labels.color }
-                                                            trailingIcon={ getActionIcon("chevronRight", components) }
+                                                            trailingIcon={ getActionIcon("chevronRight", icons) }
                                                             onPress={ handleTableColor } />
                                                     </>
                                                 }
@@ -827,32 +808,32 @@ export function ActionsBottomSheet({
                                                     tableActionScope === "row" && <>
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("color", components) }
+                                                            icon={ getActionIcon("color", icons) }
                                                             label={ labels.color }
-                                                            trailingIcon={ getActionIcon("chevronRight", components) }
+                                                            trailingIcon={ getActionIcon("chevronRight", icons) }
                                                             onPress={ handleTableColor } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("insertAbove", components) }
+                                                            icon={ getActionIcon("insertAbove", icons) }
                                                             label={ labels.insertTableRowAbove }
                                                             onPress={ () => onTableAction?.("insertTableRowAbove") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("insertBelow", components) }
+                                                            icon={ getActionIcon("insertBelow", icons) }
                                                             label={ labels.insertTableRowBelow }
                                                             onPress={ () => onTableAction?.("insertTableRowBelow") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("clear", components) }
+                                                            icon={ getActionIcon("clear", icons) }
                                                             label={ labels.clearTableContents }
                                                             onPress={ () => onTableAction?.("clearTableRow") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ danger }
-                                                            icon={ getActionIcon("remove", components) }
+                                                            icon={ getActionIcon("remove", icons) }
                                                             label={ labels.deleteTableRow }
                                                             onPress={ () => onTableAction?.("deleteTableRow") } />
                                                     </>
@@ -861,32 +842,32 @@ export function ActionsBottomSheet({
                                                     tableActionScope === "column" && <>
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("color", components) }
+                                                            icon={ getActionIcon("color", icons) }
                                                             label={ labels.color }
-                                                            trailingIcon={ getActionIcon("chevronRight", components) }
+                                                            trailingIcon={ getActionIcon("chevronRight", icons) }
                                                             onPress={ handleTableColor } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("insertLeft", components) }
+                                                            icon={ getActionIcon("insertLeft", icons) }
                                                             label={ labels.insertTableColumnLeft }
                                                             onPress={ () => onTableAction?.("insertTableColumnLeft") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("insertRight", components) }
+                                                            icon={ getActionIcon("insertRight", icons) }
                                                             label={ labels.insertTableColumnRight }
                                                             onPress={ () => onTableAction?.("insertTableColumnRight") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("clear", components) }
+                                                            icon={ getActionIcon("clear", icons) }
                                                             label={ labels.clearTableContents }
                                                             onPress={ () => onTableAction?.("clearTableColumn") } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ danger }
-                                                            icon={ getActionIcon("remove", components) }
+                                                            icon={ getActionIcon("remove", icons) }
                                                             label={ labels.deleteTableColumn }
                                                             onPress={ () => onTableAction?.("deleteTableColumn") } />
                                                     </>
@@ -895,14 +876,14 @@ export function ActionsBottomSheet({
                                                     (tableActionScope === "cell" || tableActionScope === "cells") && <>
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("color", components) }
+                                                            icon={ getActionIcon("color", icons) }
                                                             label={ labels.color }
-                                                            trailingIcon={ getActionIcon("chevronRight", components) }
+                                                            trailingIcon={ getActionIcon("chevronRight", icons) }
                                                             onPress={ handleTableColor } />
                                                         <View style={ dividerStyle } />
                                                         <ActionOption
                                                             color={ muted }
-                                                            icon={ getActionIcon("clear", components) }
+                                                            icon={ getActionIcon("clear", icons) }
                                                             label={ labels.clearTableContents }
                                                             onPress={ () => onTableAction?.("clearTableCells") } />
                                                     </>
@@ -913,7 +894,7 @@ export function ActionsBottomSheet({
                                             {
                                                 showInsertAbove && <ActionOption
                                                     color={ muted }
-                                                    icon={ getActionIcon("insertAbove", components) }
+                                                    icon={ getActionIcon("insertAbove", icons) }
                                                     label={ labels.insertAbove }
                                                     onPress={ () => onAction("insertAbove") } />
                                             }
@@ -922,7 +903,7 @@ export function ActionsBottomSheet({
                                             }
                                             <ActionOption
                                                 color={ muted }
-                                                icon={ getActionIcon("insertBelow", components) }
+                                                icon={ getActionIcon("insertBelow", icons) }
                                                 label={ labels.insertBelow }
                                                 onPress={ () => onAction("insertBelow") } />
                                         </View>
@@ -933,13 +914,13 @@ export function ActionsBottomSheet({
                                         <View style={ optionsStyle }>
                                             <ActionOption
                                                 color={ muted }
-                                                icon={ getActionIcon("gallery", components) }
+                                                icon={ getActionIcon("gallery", icons) }
                                                 label={ labels.openGallery }
                                                 onPress={ () => void handleReplace("gallery") } />
                                             <View style={ dividerStyle } />
                                             <ActionOption
                                                 color={ muted }
-                                                icon={ getActionIcon("picture", components) }
+                                                icon={ getActionIcon("picture", icons) }
                                                 label={ labels.takePicture }
                                                 onPress={ () => void handleReplace("picture") } />
                                         </View>
@@ -951,13 +932,13 @@ export function ActionsBottomSheet({
                                         <View style={ optionsStyle }>
                                             <ActionOption
                                                 color={ muted }
-                                                icon={ getActionIcon("audio", components) }
+                                                icon={ getActionIcon("audio", icons) }
                                                 label={ labels.chooseAudio }
                                                 onPress={ () => onReplaceAudio?.("picked") } />
                                             <View style={ dividerStyle } />
                                             <ActionOption
                                                 color={ muted }
-                                                icon={ getActionIcon("audio", components) }
+                                                icon={ getActionIcon("audio", icons) }
                                                 label={ labels.recordAudio }
                                                 onPress={ () => onReplaceAudio?.("recorded") } />
                                         </View>
@@ -971,7 +952,7 @@ export function ActionsBottomSheet({
                                                 !showCalloutActions && <>
                                             <ActionOption
                                                 color={ muted }
-                                                icon={ getActionIcon("copy", components) }
+                                                icon={ getActionIcon("copy", icons) }
                                                 label={ labels.duplicate }
                                                 onPress={ () => onAction("duplicate") } />
                                             <View style={ dividerStyle } />
@@ -979,7 +960,7 @@ export function ActionsBottomSheet({
                                             }
                                             <ActionOption
                                                 color={ danger }
-                                                icon={ getActionIcon("remove", components) }
+                                                icon={ getActionIcon("remove", icons) }
                                                 label={ labels.delete }
                                                 onPress={ () => onAction("delete") } />
                                         </View>

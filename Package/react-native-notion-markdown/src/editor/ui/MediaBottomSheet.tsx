@@ -18,24 +18,23 @@
 
 import * as ImagePicker from "expo-image-picker";
 import { CameraIcon, GalleryIcon, VideoIcon } from "./mediaIcons.tsx";
-import { Modal, Pressable, StyleSheet, Text, View, useColorScheme } from "react-native";
-import type {
-    MarkdownEditorComponents,
-    MarkdownEditorIconProps,
-    MarkdownEditorMediaAction,
-    MarkdownEditorMediaSelection
-} from "./MarkdownEditor.tsx";
-import type { ComponentType } from "react";
+import type { MarkdownEditorIconProps, MarkdownEditorIcons } from "./customization.ts";
+import type { MarkdownEditorMediaAction, MarkdownEditorMediaSelection } from "./MarkdownEditor.tsx";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useCallback, useMemo } from "react";
+import type { ComponentType } from "react";
+import { editorFontStyle } from "./customization.ts";
+import { useResolvedEditorConfig } from "../../provider/MarkdownProvider.tsx";
+import { withAlpha } from "../../provider/theme.ts";
 
 /** Public props for the native insert-media sheet. */
 export interface MediaBottomSheetProps
 {
-    readonly components?: MarkdownEditorComponents;
     readonly onDismiss: () => void;
     readonly onSelected: (selection: MarkdownEditorMediaSelection) => void | Promise<void>;
     readonly labels: {
         readonly captureVideo: string;
+        readonly dismiss: string;
         readonly openGallery: string;
         readonly takePicture: string;
         readonly title: string;
@@ -46,6 +45,7 @@ interface MediaOptionProps
 {
     readonly action: MarkdownEditorMediaAction;
     readonly color: string;
+    readonly fontFamily?: string;
     readonly icon: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
     readonly onPress: (action: MarkdownEditorMediaAction) => void;
@@ -91,10 +91,10 @@ function getLucideIcons(): LucideModule | undefined
 /** Resolve an override, an installed Lucide icon, or the dependency-free SVG fallback. */
 function getMediaIcon(
     action: MarkdownEditorMediaAction,
-    components: MediaBottomSheetProps["components"]
+    icons: MarkdownEditorIcons | undefined
 ): ComponentType<MarkdownEditorIconProps>
 {
-    const override = components?.[action];
+    const override = icons?.[action];
 
     if (override !== undefined)
     {
@@ -114,19 +114,20 @@ function getMediaIcon(
 }
 
 /** Render one labeled media action. */
-function MediaOption({ action, color, icon: Icon, label, onPress }: MediaOptionProps)
+function MediaOption({ action, color, fontFamily, icon: Icon, label, onPress }: MediaOptionProps)
 {
     const optionStyle = useCallback(({ pressed }: { pressed: boolean }) => [
         styles.option,
         pressed
-            ? { backgroundColor: `${ color }12` }
+            ? { backgroundColor: withAlpha(color, 0.07) }
             : undefined
     ], [ color ]);
-    const labelStyle = useMemo(() => [ styles.optionLabel, { color } ], [ color ]);
+    const ripple = useMemo(() => ({ color: withAlpha(color, 0.13) }), [ color ]);
+    const labelStyle = useMemo(() => [ styles.optionLabel, { color, fontFamily } ], [ color, fontFamily ]);
 
     return <Pressable accessibilityLabel={ label }
         accessibilityRole="button"
-        android_ripple={ { color: `${ color }22` } }
+        android_ripple={ ripple }
         onPress={ () => onPress(action) }
         style={ optionStyle }>
         <Icon
@@ -163,15 +164,18 @@ function normalizeSelection(
 }
 
 /** Render the native insert-media sheet. */
-export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: MediaBottomSheetProps)
+export function MediaBottomSheet({ labels, onDismiss, onSelected }: MediaBottomSheetProps)
 {
-    const dark = useColorScheme() === "dark";
-    const foreground = dark ? "#F5F5F5" : "#2C2C2B";
-    const muted = dark ? "#D0CDC7" : "#45433F";
-    const surface = dark ? "#202020" : "#F9F8F6";
-    const optionSurface = dark ? "#30302F" : "#FFFFFF";
-    const divider = dark ? "rgba(255, 255, 255, 0.10)" : "#EEECE9";
-    const scrim = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.25)";
+    const { config, theme } = useResolvedEditorConfig();
+    const { icons } = config;
+    const { sheet } = theme.editor;
+    const { fontFamily } = editorFontStyle(theme.editor);
+    const foreground = sheet.foreground;
+    const muted = sheet.muted;
+    const surface = sheet.background;
+    const optionSurface = sheet.card;
+    const divider = sheet.divider;
+    const scrim = sheet.scrim;
 
     const handleAction = useCallback(async (action: MarkdownEditorMediaAction) =>
     {
@@ -189,7 +193,13 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
 
     const scrimStyle = useMemo(() => [ styles.scrim, { backgroundColor: scrim } ], [ scrim ]);
     const sheetStyle = useMemo(() => [ styles.sheet, { backgroundColor: surface } ], [ surface ]);
-    const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
+    const titleStyle = useMemo(
+        () => [ styles.title, { color: foreground, fontFamily } ],
+        [ fontFamily, foreground ]
+    );
+    const galleryIcon = useMemo(() => getMediaIcon("gallery", icons), [ icons ]);
+    const pictureIcon = useMemo(() => getMediaIcon("picture", icons), [ icons ]);
+    const videoIcon = useMemo(() => getMediaIcon("video", icons), [ icons ]);
     const optionsStyle = useMemo(() => [
         styles.options,
         { backgroundColor: optionSurface, borderColor: divider }
@@ -205,7 +215,7 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
         visible>
         <View style={ styles.modalRoot }>
             <Pressable
-                accessibilityLabel="Dismiss insert media"
+                accessibilityLabel={ labels.dismiss }
                 accessibilityRole="button"
                 onPress={ onDismiss }
                 style={ scrimStyle } />
@@ -219,19 +229,22 @@ export function MediaBottomSheet({ components, labels, onDismiss, onSelected }: 
                     <View style={ optionsStyle }>
                         <MediaOption action="gallery"
                             color={ muted }
-                            icon={ getMediaIcon("gallery", components) }
+                            fontFamily={ fontFamily }
+                            icon={ galleryIcon }
                             label={ labels.openGallery }
                             onPress={ handleAction } />
                         <View style={ dividerStyle } />
                         <MediaOption action="picture"
                             color={ muted }
-                            icon={ getMediaIcon("picture", components) }
+                            fontFamily={ fontFamily }
+                            icon={ pictureIcon }
                             label={ labels.takePicture }
                             onPress={ handleAction } />
                         <View style={ dividerStyle } />
                         <MediaOption action="video"
                             color={ muted }
-                            icon={ getMediaIcon("video", components) }
+                            fontFamily={ fontFamily }
+                            icon={ videoIcon }
                             label={ labels.captureVideo }
                             onPress={ handleAction } />
                     </View>

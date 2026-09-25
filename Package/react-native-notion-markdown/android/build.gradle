@@ -11,3 +11,8 @@ android {
     versionName "0.0.1"
   }
 }
+
+dependencies {
+  // ReactFontManager resolves the theme's font families the way React Native Text does.
+  implementation 'com.facebook.react:react-android'
+}

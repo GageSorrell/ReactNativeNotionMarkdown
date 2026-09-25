@@ -1,4 +1,6 @@
 /**
+ * Offline, preview-only Mermaid diagrams.
+ *
  * @module react-native-notion-markdown/renderer/ui/MermaidView
  *
  * @file      MermaidView.tsx
@@ -11,8 +13,9 @@ import { Pressable, Text, View } from "react-native";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 import { useCallback, useMemo, useState } from "react";
 import { MERMAID_RUNTIME } from "./mermaidRuntime.ts";
-import type { MarkdownRendererTheme } from "./types.ts";
+import type { MarkdownTheme } from "../../provider/theme.ts";
 import type { ShouldStartLoadRequest } from "react-native-webview/lib/WebViewTypes";
+import { useResolvedRendererConfig } from "../../provider/MarkdownProvider.tsx";
 
 /**
  * Props for rendering a given Mermaid diagram source.
@@ -23,7 +26,15 @@ import type { ShouldStartLoadRequest } from "react-native-webview/lib/WebViewTyp
 export interface MarkdownMermaidViewProps
 {
     readonly source: string;
-    readonly theme: MarkdownRendererTheme;
+
+    /** Overrides the nearest `MarkdownProvider`'s theme. */
+    readonly theme?: MarkdownTheme;
+}
+
+/** Strip characters that could end the inline stylesheet's declaration. */
+function cssValue(value: string): string
+{
+    return value.replace(/[<>{};]/g, "");
 }
 
 /**
@@ -32,26 +43,28 @@ export interface MarkdownMermaidViewProps
  * @category Functions
  * @since 1.0.0
  */
-function htmlFor(source: string): string
+function htmlFor(source: string, foreground: string): string
 {
     const safeSource = JSON.stringify(source).replace(/</g, "\\u003c");
 
     /* eslint-disable @stylistic/max-len */
     return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-<style>body{margin:0;padding:8px;background:transparent;color:#2C2C2B}#diagram{pointer-events:none}svg{max-width:100%;height:auto}</style></head><body><div id="diagram"></div>
+<style>body{margin:0;padding:8px;background:transparent;color:${ cssValue(foreground) }}#diagram{pointer-events:none}svg{max-width:100%;height:auto}</style></head><body><div id="diagram"></div>
 <script>${ MERMAID_RUNTIME }</script><script>(async()=>{try{const svg=await window.__renderMarkdownMermaid(${safeSource},'markdown-mermaid');document.getElementById('diagram').innerHTML=svg;window.ReactNativeWebView.postMessage(JSON.stringify({ok:true,height:Math.max(80,document.body.scrollHeight)}));}catch(error){window.ReactNativeWebView.postMessage(JSON.stringify({ok:false,message:String(error)}));}})();</script></body></html>`;
     /* eslint-enable @stylistic/max-len */
 }
 
 /** Offline, preview-only Mermaid WebView. Diagram text never runs as application script. */
-export function MarkdownMermaidView({ source, theme }: MarkdownMermaidViewProps)
+export function MarkdownMermaidView({ source, theme: suppliedTheme }: MarkdownMermaidViewProps)
 {
+    const { t, theme: resolvedTheme } = useResolvedRendererConfig();
+    const { document: theme } = suppliedTheme ?? resolvedTheme;
     const [ active, setActive ] = useState(false);
     const [ error, setError ] = useState<string>();
     const [ height, setHeight ] = useState(160);
     const [ attempt, setAttempt ] = useState(0);
-    const html = useMemo(() => htmlFor(source), [ source ]);
+    const html = useMemo(() => htmlFor(source, theme.foreground), [ source, theme.foreground ]);
     const invalid = !source.trim();
 
     const RootStyle = useMemo(() => ({
@@ -89,14 +102,14 @@ export function MarkdownMermaidView({ source, theme }: MarkdownMermaidViewProps)
             }
             else
             {
-                setError(message.message ?? "Invalid Mermaid source");
+                setError(message.message ?? t("renderer.invalidMermaidSource"));
             }
         }
         catch
         {
-            setError("Mermaid preview failed");
+            setError(t("renderer.mermaidPreviewFailed"));
         }
-    }, [ ]);
+    }, [ t ]);
 
     const HandleRetry = useCallback(() =>
     {
@@ -110,16 +123,16 @@ export function MarkdownMermaidView({ source, theme }: MarkdownMermaidViewProps)
 
     const SourceStyle = useMemo(() => ({
         color: theme.muted,
-        fontFamily: "monospace",
+        fontFamily: theme.monospaceFontFamily,
         fontSize: theme.fontSize * 0.8,
         marginTop: 6
-    }), [ theme.fontSize, theme.muted ]);
+    }), [ theme.fontSize, theme.monospaceFontFamily, theme.muted ]);
 
     const HandleClose = useCallback(() => setActive(false), [ ]);
 
     const CloseStyle = useMemo(() => ({ color: theme.muted, paddingVertical: 8 }), [ theme.muted ]);
 
-    const HandleError = useCallback(() => setError("Mermaid preview failed"), [ ]);
+    const HandleError = useCallback(() => setError(t("renderer.mermaidPreviewFailed")), [ t ]);
 
     const HandleShouldStartLoadWithRequest = useCallback(
         (request: ShouldStartLoadRequest) => request.url === "about:blank",
@@ -140,17 +153,17 @@ export function MarkdownMermaidView({ source, theme }: MarkdownMermaidViewProps)
         {
             invalid && (
                 <Text style={ ErrorStyle }>
-                    Invalid Mermaid source
+                    { t("renderer.invalidMermaidSource") }
                 </Text>
             )
         }
         {
             !invalid && !active && (
-                <Pressable accessibilityLabel="Load Mermaid preview"
+                <Pressable accessibilityLabel={ t("renderer.loadMermaidPreview") }
                     accessibilityRole="button"
                     onPress={ HandleLoadPreview }>
                     <Text style={ AccentStyle }>
-                        Load Mermaid preview
+                        { t("renderer.loadMermaidPreview") }
                     </Text>
                 </Pressable>
             )
@@ -177,16 +190,16 @@ export function MarkdownMermaidView({ source, theme }: MarkdownMermaidViewProps)
             error && (
                 <View>
                     <Text
-                        accessibilityLabel="Mermaid preview error"
+                        accessibilityLabel={ t("renderer.mermaidPreviewError") }
                         style={ ErrorStyle }>
-                        Invalid Mermaid source: { error }
+                        { t("renderer.invalidMermaidSourceWithError", { error }) }
                     </Text>
                     <Pressable
-                        accessibilityLabel="Retry Mermaid preview"
+                        accessibilityLabel={ t("renderer.retryMermaidPreview") }
                         accessibilityRole="button"
                         onPress={ HandleRetry }>
                         <Text style={ RetryStyle }>
-                            Retry
+                            { t("renderer.retry") }
                         </Text>
                     </Pressable>
                 </View>
@@ -200,11 +213,11 @@ export function MarkdownMermaidView({ source, theme }: MarkdownMermaidViewProps)
         {
             active && (
                 <Pressable
-                    accessibilityLabel="Close Mermaid preview"
+                    accessibilityLabel={ t("renderer.closeMermaidPreview") }
                     accessibilityRole="button"
                     onPress={ HandleClose }>
                     <Text style={ CloseStyle }>
-                        Close preview
+                        { t("renderer.closePreview") }
                     </Text>
                 </Pressable>
             )

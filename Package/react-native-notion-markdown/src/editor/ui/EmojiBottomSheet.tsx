@@ -16,18 +16,21 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    View,
-    useColorScheme
+    View
 } from "react-native";
 import { useCallback, useMemo, useState } from "react";
+import { editorFontStyle } from "./customization.ts";
+import { useResolvedEditorConfig } from "../../provider/MarkdownProvider.tsx";
+import { withAlpha } from "../../provider/theme.ts";
 
 /** Public props for the built-in callout emoji picker. */
 export interface EmojiBottomSheetProps
 {
-    readonly dark?: boolean;
     readonly labels: {
         readonly common: string;
+        readonly dismiss: string;
         readonly filter: string;
+        readonly shuffle: string;
         readonly title: string;
     };
     readonly onDismiss: () => void;
@@ -60,8 +63,6 @@ const commonEmojis: ReadonlyArray<EmojiChoice> =
         { emoji: "📚", keywords: [ "books", "read", "learn" ] }
     ];
 
-const shuffleRipple = { color: "rgba(128, 128, 128, 0.18)" };
-
 interface EmojiOptionProps
 {
     readonly choice: EmojiChoice;
@@ -83,18 +84,19 @@ function EmojiOption({ choice, onPress }: EmojiOptionProps)
 }
 
 /** Render the callout emoji picker sheet. */
-export function EmojiBottomSheet({ dark: suppliedDark, labels, onDismiss, onSelected }: EmojiBottomSheetProps)
+export function EmojiBottomSheet({ labels, onDismiss, onSelected }: EmojiBottomSheetProps)
 {
-    const systemDark = useColorScheme() === "dark";
-    const dark = suppliedDark ?? systemDark;
+    const { theme } = useResolvedEditorConfig();
+    const { sheet } = theme.editor;
+    const { fontFamily } = editorFontStyle(theme.editor);
     const [ query, setQuery ] = useState("");
     const [ choices, setChoices ] = useState(commonEmojis);
-    const foreground = dark ? "#F5F5F5" : "#2C2C2B";
-    const muted = dark ? "#ADA9A3" : "#787774";
-    const surface = dark ? "#202020" : "#F9F8F6";
-    const inputSurface = dark ? "#30302F" : "#FFFFFF";
-    const divider = dark ? "rgba(255, 255, 255, 0.10)" : "#EEECE9";
-    const scrim = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.25)";
+    const foreground = sheet.foreground;
+    const muted = sheet.subtle;
+    const surface = sheet.background;
+    const inputSurface = sheet.card;
+    const divider = sheet.divider;
+    const scrim = sheet.scrim;
 
     const filteredChoices = useMemo(() =>
     {
@@ -122,13 +124,21 @@ export function EmojiBottomSheet({ dark: suppliedDark, labels, onDismiss, onSele
     }, [ onDismiss, onSelected ]);
     const scrimStyle = useMemo(() => [ styles.scrim, { backgroundColor: scrim } ], [ scrim ]);
     const sheetStyle = useMemo(() => [ styles.sheet, { backgroundColor: surface } ], [ surface ]);
-    const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
-    const sectionTitleStyle = useMemo(() => [ styles.sectionTitle, { color: muted } ], [ muted ]);
+    const titleStyle = useMemo(
+        () => [ styles.title, { color: foreground, fontFamily } ],
+        [ fontFamily, foreground ]
+    );
+    const sectionTitleStyle = useMemo(
+        () => [ styles.sectionTitle, { color: muted, fontFamily } ],
+        [ fontFamily, muted ]
+    );
     const filterStyle = useMemo(() => [
         styles.filter,
-        { backgroundColor: inputSurface, borderColor: divider, color: foreground }
-    ], [ divider, foreground, inputSurface ]);
+        { backgroundColor: inputSurface, borderColor: divider, color: foreground, fontFamily }
+    ], [ divider, fontFamily, foreground, inputSurface ]);
     const shuffleStyle = useMemo(() => [ styles.shuffle, { borderColor: divider } ], [ divider ]);
+    const shuffleRipple = useMemo(() => ({ color: withAlpha(muted, 0.18) }), [ muted ]);
+    const searchGlyphStyle = useMemo(() => [ styles.searchGlyph, { color: muted } ], [ muted ]);
 
     return <Modal
         animationType="slide"
@@ -139,7 +149,7 @@ export function EmojiBottomSheet({ dark: suppliedDark, labels, onDismiss, onSele
         visible>
         <View style={ styles.modalRoot }>
             <Pressable
-                accessibilityLabel="Dismiss emoji picker"
+                accessibilityLabel={ labels.dismiss }
                 accessibilityRole="button"
                 onPress={ onDismiss }
                 style={ scrimStyle } />
@@ -152,7 +162,7 @@ export function EmojiBottomSheet({ dark: suppliedDark, labels, onDismiss, onSele
                     </Text>
                     <View style={ styles.filterRow }>
                         <View style={ styles.filterContainer }>
-                            <Text style={ styles.searchGlyph }>⌕</Text>
+                            <Text style={ searchGlyphStyle }>⌕</Text>
                             <TextInput
                                 accessibilityLabel={ labels.filter }
                                 autoCapitalize="none"
@@ -163,7 +173,7 @@ export function EmojiBottomSheet({ dark: suppliedDark, labels, onDismiss, onSele
                                 value={ query } />
                         </View>
                         <Pressable
-                            accessibilityLabel="Shuffle emoji"
+                            accessibilityLabel={ labels.shuffle }
                             accessibilityRole="button"
                             android_ripple={ shuffleRipple }
                             onPress={ handleShuffle }
@@ -257,7 +267,6 @@ const styles = StyleSheet.create({
     },
     searchGlyph:
     {
-        color: "#8E8B86",
         fontSize: 30,
         left: 14,
         lineHeight: 32,

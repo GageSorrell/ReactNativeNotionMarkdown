@@ -1,5 +1,5 @@
 /**
- *
+ * Read-only rich-text presentation shared by the renderer's block views.
  *
  * @module react-native-notion-markdown/renderer/ui/RichText
  *
@@ -13,18 +13,20 @@ import type { MarkdownMetadata, MarkdownRichText, MarkdownRichTextItem } from ".
 import type {
     MarkdownReferenceDisplay,
     MarkdownReferenceIconComponent,
-    MarkdownReferenceRequest,
-    MarkdownRendererTheme
+    MarkdownReferenceRequest
 } from "./types.ts";
+import type { MarkdownOpenUrl, MarkdownTranslateById } from "../../provider/MarkdownProvider.tsx";
+import { type MarkdownTheme, markdownColor } from "../../provider/theme.ts";
 import { Text, View, type ViewStyle } from "react-native";
 import { asRecord, getMarkdownMetadata } from "../../internal.ts";
 import { useEffect, useMemo, useState } from "react";
 import { MarkdownMathView } from "./MathView.tsx";
-import { markdownColor } from "./theme.ts";
+import { useResolvedRendererConfig } from "../../provider/MarkdownProvider.tsx";
 import { FaviconIcon } from "./FaviconIcon.tsx";
 
 /**
- * Props for rendering a given rich-text collection.
+ * Props for rendering a given rich-text collection. The theme, link icon, link opening, and
+ * reference resolution default to the nearest `MarkdownProvider`'s; pass them to override.
  *
  * @category Interfaces
  * @since 1.0.0
@@ -33,9 +35,8 @@ export interface MarkdownRichTextViewProps
 {
     readonly items?: ReadonlyArray<MarkdownRichText[number]>;
     readonly linkFallbackIcon?: MarkdownReferenceIconComponent;
-    readonly theme: MarkdownRendererTheme;
-    readonly dark: boolean;
-    readonly onOpenUrl?: (url: string) => void;
+    readonly theme?: MarkdownTheme;
+    readonly onOpenUrl?: MarkdownOpenUrl;
     readonly resolveReference?: (request: MarkdownReferenceRequest) => Promise<MarkdownReferenceDisplay | null>;
     readonly textStyle?:
     {
@@ -94,13 +95,18 @@ function contentOf(item: MarkdownRichText[number], metadata: MarkdownMetadata): 
 function RichItem({
     item,
     theme,
-    dark,
+    t,
     onOpenUrl,
     resolveReference,
     linkFallbackIcon,
     textStyle
-}: MarkdownRichTextViewProps & { readonly item: MarkdownRichText[number]; })
+}: MarkdownRichTextViewProps & {
+    readonly item: MarkdownRichText[number];
+    readonly t: MarkdownTranslateById;
+    readonly theme: MarkdownTheme;
+})
 {
+    const { document: documentTheme, palette } = theme;
     const value = asRecord(item);
     const metadata = getMarkdownMetadata(value);
     const annotation = asRecord(value.annotations);
@@ -157,7 +163,7 @@ function RichItem({
     const annotationUnderline = annotation.underline === true;
     const annotationStrikethrough = annotation.strikethrough === true;
     const destination = resolved?.url ?? url;
-    const baseFontSize = textStyle?.fontSize ?? theme.fontSize;
+    const baseFontSize = textStyle?.fontSize ?? documentTheme.fontSize;
 
     const display = metadata.citationUrl
         ? `↗ ${ text || metadata.citationUrl }`
@@ -173,23 +179,25 @@ function RichItem({
             annotationColor !== undefined &&
             (annotationColor.endsWith("_bg") || annotationColor.endsWith("_background"))
         )
-            ? markdownColor(annotationColor, dark)
+            ? markdownColor(annotationColor, palette)
             : undefined;
         const styleForeground = annotationColor !== undefined && styleBackgroundColor === undefined
-            ? markdownColor(annotationColor, dark)
+            ? markdownColor(annotationColor, palette)
             : undefined;
         const styleDestination = resolved?.url ?? url;
-        const styleBaseFontSize = textStyle?.fontSize ?? theme.fontSize;
+        const styleBaseFontSize = textStyle?.fontSize ?? documentTheme.fontSize;
 
         return {
-            backgroundColor: annotationCode ? theme.inlineCodeBackground : styleBackgroundColor,
+            backgroundColor: annotationCode ? documentTheme.inlineCodeBackground : styleBackgroundColor,
             borderRadius: annotationCode ? 4 : 0,
             color: styleDestination
-                ? theme.accent
+                ? documentTheme.accent
                 : annotationCode
-                    ? theme.inlineCodeForeground
-                    : (styleForeground ?? textStyle?.color ?? theme.foreground),
-            fontFamily: annotationCode ? "monospace" : textStyle?.fontFamily ?? theme.fontFamily,
+                    ? documentTheme.inlineCodeForeground
+                    : (styleForeground ?? textStyle?.color ?? documentTheme.foreground),
+            fontFamily: annotationCode
+                ? documentTheme.monospaceFontFamily
+                : textStyle?.fontFamily ?? documentTheme.fontFamily,
             fontSize: annotationCode ? styleBaseFontSize - 2 : styleBaseFontSize,
             fontStyle: annotationItalic ? "italic" as const : "normal" as const,
             fontWeight: annotationBold ? "bold" as const : textStyle?.fontWeight ?? "normal" as const,
@@ -208,7 +216,14 @@ function RichItem({
         annotationItalic,
         annotationStrikethrough,
         annotationUnderline,
-        dark,
+        documentTheme.accent,
+        documentTheme.fontFamily,
+        documentTheme.fontSize,
+        documentTheme.foreground,
+        documentTheme.inlineCodeBackground,
+        documentTheme.inlineCodeForeground,
+        documentTheme.monospaceFontFamily,
+        palette,
         resolved?.url,
         textStyle?.color,
         textStyle?.fontFamily,
@@ -216,21 +231,19 @@ function RichItem({
         textStyle?.fontWeight,
         textStyle?.lineHeight,
         textStyle?.strikethrough,
-        theme.accent,
-        theme.fontFamily,
-        theme.fontSize,
-        theme.foreground,
-        theme.inlineCodeBackground,
-        theme.inlineCodeForeground,
         url
     ]);
+    const handlePress = useMemo(
+        () => destination && onOpenUrl ? () => void onOpenUrl(destination) : undefined,
+        [ destination, onOpenUrl ]
+    );
     /* eslint-enable react-hooks/preserve-manual-memoization */
 
     if (text === "\n")
     {
         return (
             <View
-                accessibilityLabel="Line break"
+                accessibilityLabel={ t("renderer.lineBreak") }
                 style={ lineBreakStyle }
             />
         );
@@ -249,7 +262,7 @@ function RichItem({
         <View style={ containerStyle }>
             {
                 linkUrl !== undefined && <FaviconIcon
-                    color={ theme.accent }
+                    color={ documentTheme.accent }
                     fallbackIcon={ linkFallbackIcon }
                     size={ baseFontSize }
                     textFallback="↗"
@@ -258,7 +271,7 @@ function RichItem({
             }
             <Text
                 accessibilityRole={ destination && onOpenUrl ? "link" : undefined }
-                onPress={ destination && onOpenUrl ? () => onOpenUrl(destination) : undefined }
+                onPress={ handlePress }
                 style={ richTextStyle }>
                 { display }
             </Text>
@@ -270,20 +283,24 @@ function RichItem({
 export function MarkdownRichTextView({
     items,
     linkFallbackIcon,
-    theme,
-    dark,
-    onOpenUrl,
-    resolveReference,
+    theme: suppliedTheme,
+    onOpenUrl: suppliedOnOpenUrl,
+    resolveReference: suppliedResolveReference,
     textStyle,
     testID
 }: MarkdownRichTextViewProps)
 {
+    const resolved = useResolvedRendererConfig();
+    const theme = suppliedTheme ?? resolved.theme;
+    const fallbackIcon = linkFallbackIcon ?? resolved.config.icons?.link;
+    const onOpenUrl = suppliedOnOpenUrl ?? resolved.onOpenUrl;
+    const resolveReference = suppliedResolveReference ?? resolved.config.resolveReference;
     const RootStyle = useMemo((): ViewStyle => ({
         alignItems: "flex-start",
         flexDirection: "row",
         flexWrap: "wrap",
-        minHeight: (textStyle?.lineHeight ?? (textStyle?.fontSize ?? theme.fontSize) * 1.5) + 4
-    }), [ textStyle?.fontSize, textStyle?.lineHeight, theme.fontSize ]);
+        minHeight: (textStyle?.lineHeight ?? (textStyle?.fontSize ?? theme.document.fontSize) * 1.5) + 4
+    }), [ textStyle?.fontSize, textStyle?.lineHeight, theme.document.fontSize ]);
 
     return (
         <View
@@ -291,12 +308,12 @@ export function MarkdownRichTextView({
             testID={ testID }>
             {
                 (items ?? [ ]).map((item: MarkdownRichTextItem, index: number) => (
-                    <RichItem dark={ dark }
-                        item={ item }
+                    <RichItem item={ item }
                         key={ index }
-                        linkFallbackIcon={ linkFallbackIcon }
+                        linkFallbackIcon={ fallbackIcon }
                         onOpenUrl={ onOpenUrl }
                         resolveReference={ resolveReference }
+                        t={ resolved.t }
                         textStyle={ textStyle }
                         theme={ theme }
                     />

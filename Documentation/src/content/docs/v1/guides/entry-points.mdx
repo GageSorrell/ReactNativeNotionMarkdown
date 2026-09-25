@@ -15,6 +15,10 @@ Use the root export or `./renderer` when an application needs to display markdow
 
 Use `./editor` for authoring flows and `./editor/ui` for editor controls. These layers can share the same document representation as the renderer.
 
+## Provider
+
+`./provider` exports `MarkdownProvider`, the theme, and the message catalog. Both `./editor/ui` and `./renderer/ui` re-export it, so you rarely need to import it directly. See [Customization](/docs/v1/guides/customization).
+
 ## Document and native layers
 
 `./document` is the platform-independent engine. `./native` contains platform adapters. Keeping these boundaries explicit makes it easier to test transformations outside a device runtime.

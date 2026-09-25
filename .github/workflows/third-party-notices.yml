@@ -1,0 +1,29 @@
+name: Third-party notice checks
+
+on:
+  pull_request:
+    paths:
+      - Package/react-native-notion-markdown/**
+      - package-lock.json
+      - .github/workflows/third-party-notices.yml
+  push:
+    branches: [Master]
+    paths:
+      - Package/react-native-notion-markdown/**
+      - package-lock.json
+      - .github/workflows/third-party-notices.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:licenses --workspace react-native-notion-markdown

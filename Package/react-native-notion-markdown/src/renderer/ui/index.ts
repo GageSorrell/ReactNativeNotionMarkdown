@@ -8,9 +8,10 @@
  */
 
 export * from "./types.ts";
-export * from "./theme.ts";
+export * from "../../provider/index.ts";
 export * from "./RichText.tsx";
 export * from "./MathView.tsx";
 export * from "./MermaidView.tsx";
+export { MERMAID_THIRD_PARTY_NOTICES } from "./mermaidRuntime.ts";
 export * from "./Previews.tsx";
 export * from "./MarkdownRenderer.tsx";

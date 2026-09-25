@@ -26,7 +26,8 @@ import {
     type MarkdownRichText,
     type MarkdownRichTextItem,
     type MarkdownSelection,
-    type MarkdownSelectionPoint
+    type MarkdownSelectionPoint,
+    isMarkdownColor
 } from "./types.ts";
 import { asRecord } from "../internal.ts";
 
@@ -333,7 +334,7 @@ export function richTextToFieldMarks(richText: MarkdownRichText): FieldMarks
             }
         }
 
-        if (typeof annotations?.color === "string" && annotations.color !== "default")
+        if (isMarkdownColor(annotations?.color))
         {
             marks.push({
                 color: annotations.color as MarkdownColor,
@@ -415,13 +416,17 @@ export function fieldMarksToRichText(text: string, marks: ReadonlyArray<Markdown
             const active = runMarks.filter((mark: MarkdownInlineRangeMark) =>
                 mark.start <= segmentStart && mark.end >= segmentEnd);
             const annotations: Record<string, boolean> = { };
-            let color: MarkdownColor | undefined;
+            const colors = active
+                .filter((mark: MarkdownInlineRangeMark) => mark.kind === "color")
+                .map((mark: MarkdownInlineRangeMark) => mark.color)
+                .filter(isMarkdownColor);
+            const color: MarkdownColor | undefined = colors.length === 1 ? colors[ 0 ] : undefined;
             let url: string | undefined;
 
             for (const mark of active)
             {
-                if (mark.kind === "color") {color = mark.color;}
-                else if (mark.kind === "link") {url = mark.url;}
+                if (mark.kind === "color") {continue;}
+                if (mark.kind === "link") {url = mark.url;}
                 else {annotations[ mark.kind ] = true;}
             }
 
@@ -634,7 +639,6 @@ export function toggleFieldRangeMark(
 ): Array<MarkdownInlineMark>
 {
     if (start >= end) {return [ ...marks ];}
-
     const others = marks.filter((mark: MarkdownInlineMark) => mark.kind !== kind);
     const existing = marks
         .filter((mark: MarkdownInlineMark): mark is MarkdownInlineRangeMark => mark.kind === kind)
@@ -666,6 +670,7 @@ export function setFieldValueMark(
 ): Array<MarkdownInlineMark>
 {
     if (start >= end) {return [ ...marks ];}
+    if (value !== undefined && kind === "color" && !isMarkdownColor(value)) {return [ ...marks ];}
 
     const clipped = marks.flatMap((mark: MarkdownInlineMark): Array<MarkdownInlineMark> =>
     {

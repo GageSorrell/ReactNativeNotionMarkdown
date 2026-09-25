@@ -2,7 +2,6 @@ package expo.modules.markdown
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.text.style.ReplacementSpan
 import kotlin.math.ceil
@@ -12,7 +11,6 @@ private const val INLINE_CODE_MARGIN_DP = 4f
 private const val INLINE_CODE_RADIUS_DP = 4f
 private const val INLINE_CODE_BACKGROUND_VERTICAL_EXTENSION_DP = 2f
 private const val INLINE_CODE_FONT_SIZE_REDUCTION = 3f
-internal const val INLINE_CODE_FOREGROUND = 0xFFCF5148.toInt()
 
 /**
  * Draws inline code with the same colors, font-size reduction, padding, and corner radius as the
@@ -80,12 +78,12 @@ internal class InlineCodeSpan(
   }
 }
 
-/** Creates the inline-code background from the renderer's light/dark theme constants. */
-internal fun inlineCodeSpan(context: Context): InlineCodeSpan {
+/** Creates the inline-code span from the theme's inline-code colors, matching the renderer. */
+internal fun inlineCodeSpan(context: Context, theme: EditorTheme): InlineCodeSpan {
   val density = context.resources.displayMetrics.density
   return InlineCodeSpan(
-    backgroundColor = Color.argb(13, 33, 27, 23), // rgba(33, 27, 23, .05)
-    foregroundColor = INLINE_CODE_FOREGROUND,
+    backgroundColor = theme.inlineCodeBackground,
+    foregroundColor = theme.inlineCodeForeground,
     padding = INLINE_CODE_PADDING_DP * density,
     margin = INLINE_CODE_MARGIN_DP * density,
     fontSizeReduction = INLINE_CODE_FONT_SIZE_REDUCTION,
@@ -93,3 +91,9 @@ internal fun inlineCodeSpan(context: Context): InlineCodeSpan {
     backgroundVerticalExtension = INLINE_CODE_BACKGROUND_VERTICAL_EXTENSION_DP * density
   )
 }
+
+/** The default inline-code foreground, used by `MarkdownTextFieldView`, which is not themed. */
+internal val INLINE_CODE_FOREGROUND: Int = EditorTheme.DEFAULT.inlineCodeForeground
+
+/** Creates the inline-code span with the default theme's colors, for `MarkdownTextFieldView`. */
+internal fun inlineCodeSpan(context: Context): InlineCodeSpan = inlineCodeSpan(context, EditorTheme.DEFAULT)

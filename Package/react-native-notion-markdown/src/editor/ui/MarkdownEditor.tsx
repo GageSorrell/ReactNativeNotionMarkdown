@@ -1,4 +1,9 @@
 /**
+ * The "batteries included" editor: the native WYSIWYG surface plus its keyboard-adjacent toolbar,
+ * panels, and sheets. Theme, strings, icons, toolbar and panel composition, and layout come from
+ * the nearest `MarkdownProvider`; any of them passed as props override the provider for this
+ * instance.
+ *
  * @module react-native-notion-markdown/editor/ui/MarkdownEditor
  *
  * @file      MarkdownEditor.tsx
@@ -12,10 +17,10 @@ import {
     AcceptEditorEvent,
     CreateEditorDocument,
     type EditorBlock,
+    type EditorBlockActionScope,
     type EditorColumnCount,
     type EditorCommand,
     type EditorEvent,
-    type EditorBlockActionScope,
     type EditorPoint,
     type EditorSnapshot,
     type EditorTableSelection,
@@ -23,139 +28,73 @@ import {
     type EditorTextMarkKind
 } from "../../prototype.ts";
 import Animated, { FadeIn, FadeOut, useAnimatedStyle } from "react-native-reanimated";
+import { Circle, Svg } from "react-native-svg";
+import {
+    type EditorColorChoice,
+    type MarkdownEditorButton,
+    type MarkdownEditorConfig,
+    type MarkdownEditorCustomButton,
+    type MarkdownEditorCustomInsertItem,
+    type MarkdownEditorFormatToolbarItem,
+    type MarkdownEditorIconProps,
+    type MarkdownEditorIcons,
+    type MarkdownEditorInsertItem,
+    type MarkdownEditorInsertSection,
+    type MarkdownEditorMainToolbarItem,
+    type MarkdownEditorTurnIntoItem,
+    type ResolvedToolbarItem,
+    defaultMarkdownEditorInsertSections,
+    defaultMarkdownEditorToolbar,
+    defaultMarkdownEditorTurnIntoItems,
+    editorColorChoices,
+    editorFontStyle,
+    resolveToolbarItems
+} from "./customization.ts";
 import {
     KeyboardStickyView,
     useKeyboardState,
     useReanimatedKeyboardAnimation
 } from "react-native-keyboard-controller";
 import {
-    type NativeBlockActionsPressEvent,
-    type NativeContentSizeEvent,
-    NativeEditor,
-    type NativeEditorProps,
-    type NativePageReferencePressEvent
-} from "../../NativeEditor.tsx";
-import {
+    type LayoutChangeEvent,
     Pressable,
     ScrollView,
+    type StyleProp,
     StyleSheet,
     Text,
+    type TextStyle,
     View,
-    useColorScheme,
+    type ViewProps,
     useWindowDimensions
 } from "react-native";
-import { Circle, Svg } from "react-native-svg";
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
-import { AudioBottomSheet } from "./AudioBottomSheet.tsx";
-import type { ComponentType } from "react";
-import type { EditorMessageId } from "./messages.ts";
-import { EmojiBottomSheet } from "./EmojiBottomSheet.tsx";
-import type { LayoutChangeEvent } from "react-native";
-import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
-import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
 import type {
     MarkdownEditorBlockAction,
     MarkdownEditorTableAction
 } from "./ActionsBottomSheet.tsx";
+import { type MarkdownMessageId, defaultMarkdownMessages } from "../../provider/messages.ts";
+import {
+    MarkdownProvider,
+    type MarkdownSharedConfig,
+    useResolvedEditorConfig
+} from "../../provider/MarkdownProvider.tsx";
+import {
+    type NativeBlockActionsPressEvent,
+    type NativeContentSizeEvent,
+    NativeEditor,
+    type NativeEditorLabels,
+    type NativePageReferencePressEvent,
+    nativeEditorTheme
+} from "../../NativeEditor.tsx";
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
+import { AudioBottomSheet } from "./AudioBottomSheet.tsx";
+import type { ComponentType } from "react";
+import { EmojiBottomSheet } from "./EmojiBottomSheet.tsx";
+import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
 import type { MarkdownColor } from "../../document/types.ts";
+import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
-import { useMarkdownEditorTranslate } from "./config.tsx";
-
-/**
- * Buttons that can display an icon in the editor UI.
- *
- * @since 1.0.0
- */
-export type MarkdownEditorButton =
-    | "insert"
-    | "color"
-    | "gallery"
-    | "picture"
-    | "video"
-    | "format"
-    | "bold"
-    | "italic"
-    | "strikethrough"
-    | "underline"
-    | "code"
-    | "mermaid"
-    | "eraseFormatting"
-    | "link"
-    | "speech"
-    | "record"
-    | "stop"
-    | "play"
-    | "pause"
-    | "filePicker"
-    | "turnInto"
-    | "undo"
-    | "redo"
-    | "remove"
-    | "indent"
-    | "outdent"
-    | "moveUp"
-    | "moveDown"
-    | "back"
-    | "close"
-    | "cancel"
-    | "check"
-    | "copy"
-    | "cut"
-    | "paste"
-    | "edit"
-    | "linkToPage"
-    | "hideKeyboard"
-    | "text"
-    | "bulletedList"
-    | "numberedList"
-    | "toggleList"
-    | "table"
-    | "divider"
-    | "tableOfContents"
-    | "columns"
-    | "columns2"
-    | "columns3"
-    | "columns4"
-    | "columns5"
-    | "toDo"
-    | "callout"
-    | "quote"
-    | "more"
-    | "heading1"
-    | "heading2"
-    | "heading3"
-    | "heading4"
-    | "toggleHeading1"
-    | "toggleHeading2"
-    | "toggleHeading3"
-    | "toggleHeading4"
-    | "returnToKeyboard";
-
-/**
- * Props accepted by an icon component supplied by the host application.
- *
- * @since 1.0.0
- */
-export interface MarkdownEditorIconProps
-{
-    readonly color: string;
-    readonly size: number;
-    readonly strokeWidth: number;
-}
-
-/**
- * Optional per-button icon overrides. Toolbar buttons with no entry here fall back to a plain text
- * label. The built-in media sheet uses these overrides first, then the optional Lucide peer, then
- * its dependency-free SVG fallback. Import {@link markdownEditorLucideIcons} from
- * `react-native-notion-markdown/editor/ui/lucide-icons` for a ready-made toolbar icon set.
- *
- * @since 1.0.0
- */
-export interface MarkdownEditorComponents extends Partial<Record<
-    MarkdownEditorButton,
-    ComponentType<MarkdownEditorIconProps>
->> { }
+import { withAlpha } from "../../provider/theme.ts";
 
 /** Dependency-free rendering of Lucide's Ellipsis icon for the built-in cell-actions button. */
 function DefaultMoreIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
@@ -295,103 +234,17 @@ export type MarkdownEditorLinkPromptResult =
     | Promise<MarkdownEditorLinkResult | null | undefined>;
 
 /**
- * Theme and control values handed to a {@link MarkdownEditorCustomPanel}'s `render` function, so
- * custom panel content can match the editor's current theme without re-deriving dark/light
- * itself, and can close the panel the same way the built-in "Return to keyboard" option does.
+ * Props for the "batteries included" editor.
+ *
+ * Configuration -- the color scheme, theme, localization, link opening, and every
+ * {@link MarkdownEditorConfig} field -- defaults to the nearest `MarkdownProvider`'s; passing any of
+ * it here overrides the provider for this editor only. The remaining props (document state and
+ * callbacks about this document) exist only on the component.
  *
  * @since 1.0.0
  */
-export interface MarkdownEditorCustomPanelContext
+export interface MarkdownEditorProps extends ViewProps, MarkdownSharedConfig, MarkdownEditorConfig
 {
-    /** Raised-card surface color, matching the built-in insert panel's block options. */
-    readonly cardBackground: string;
-
-    /** Closes this panel and refocuses the native keyboard. */
-    readonly close: () => void;
-
-    /** Regular text color. */
-    readonly foreground: string;
-
-    /** Muted icon/label color, matching the toolbar's icon color. */
-    readonly iconColor: string;
-
-    /** Recessed panel surface color, matching the built-in insert panel. */
-    readonly panelBackground: string;
-}
-
-/**
- * A panel that replaces the on-screen keyboard while its owning {@link MarkdownEditorCustomButton}
- * is active -- the custom equivalent of the built-in "Basic blocks" insert panel.
- *
- * @since 1.0.0
- */
-export interface MarkdownEditorCustomPanel
-{
-    /** Fixed panel height, used to reserve space above the keyboard while the panel is open. */
-    readonly height: number;
-
-    /** Renders the panel's content. */
-    readonly render: ComponentType<MarkdownEditorCustomPanelContext>;
-}
-
-/**
- * Placement of a {@link MarkdownEditorCustomButton} relative to another button's id -- a built-in
- * main-row id (`"insert" | "format" | "speech" | "filePicker" | "turnInto" | "undo" | "redo" |
- * "remove" | "indent" | "outdent" | "moveUp" | "moveDown" | "copy" | "cut" | "paste" | "edit"` -- the last
- * four are not shown by
- * default, but remain valid anchors; `"redo"` only renders once there is a redo available, and
- * `"moveUp"`/`"moveDown"` only render once the selection identifies block(s) that can move in
- * that direction) or another custom button's `id`. At most one of `after`/`before` may be
- * supplied; omitting both appends the button to the end of the row.
- *
- * @since 1.0.0
- */
-export type MarkdownEditorCustomButtonPlacement =
-    | { readonly after: string; readonly before?: undefined }
-    | { readonly after?: undefined; readonly before: string }
-    | { readonly after?: undefined; readonly before?: undefined };
-
-interface MarkdownEditorCustomButtonBase
-{
-    /** Icon for this button. Omit for a plain text label, matching the built-in buttons. */
-    readonly icon?: ComponentType<MarkdownEditorIconProps>;
-
-    /** Unique id for this button, used for placement and to identify its open panel. */
-    readonly id: string;
-
-    readonly label: string;
-}
-
-/**
- * A consumer-supplied button spliced into the main toolbar row -- never the format row or the
- * trailing hide-keyboard/close slot. Supply either `onPress` for a plain action button, or
- * `panel` to pair the button with a {@link MarkdownEditorCustomPanel}: pressing it then opens that
- * panel in place of the on-screen keyboard, and the button is highlighted the same way the
- * built-in "Insert" button is while its panel is open.
- *
- * @since 1.0.0
- */
-export type MarkdownEditorCustomButton =
-    MarkdownEditorCustomButtonBase
-    & MarkdownEditorCustomButtonPlacement
-    & (
-        | { readonly onPress: () => void; readonly panel?: undefined }
-        | { readonly onPress?: undefined; readonly panel: MarkdownEditorCustomPanel }
-    );
-
-/**
- * Props for the configured editor UI.
- *
- * @since 1.0.0
- */
-export interface MarkdownEditorProps extends Omit<NativeEditorProps, "command" | "onEdit" | "snapshot">
-{
-    /** Horizontal inset applied to the WYSIWYG page content. The MAB is not affected. */
-    readonly pagePaddingHorizontal?: number;
-
-    /** Maximum width of the centered WYSIWYG page content. The default is 960 logical pixels. */
-    readonly pageMaxWidth?: number;
-
     /** Document state. When omitted, a starter document is created and managed internally. */
     readonly snapshot?: EditorSnapshot;
 
@@ -405,14 +258,11 @@ export interface MarkdownEditorProps extends Omit<NativeEditorProps, "command" |
     readonly onCommand?: (
         Action: EditorCommand["action"],
         Extra?: Pick<EditorCommand,
-            "level" | "color" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
+            "level" | "color" | "colorTarget" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
             | "label" | "blockId"
             | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize"
             | "selection" | "row" | "column">
     ) => void;
-
-    /** Optional icon overrides for the editor UI. */
-    readonly components?: MarkdownEditorComponents;
 
     /**
      * Replaces the built-in insert-media sheet. This is also the fallback for applications that
@@ -459,9 +309,6 @@ export interface MarkdownEditorProps extends Omit<NativeEditorProps, "command" |
         Selection: MarkdownEditorLinkSelection
     ) => MarkdownEditorLinkPromptResult;
 
-    /** Handles page-reference taps, or falls back to the optional expo-linking peer. */
-    readonly onOpenPageReference?: (url: string) => void | Promise<void>;
-
     /**
      * Replaces the built-in block-actions sheet -- opened by tapping a block that doesn't
      * otherwise receive the text cursor, currently the divider.
@@ -469,49 +316,33 @@ export interface MarkdownEditorProps extends Omit<NativeEditorProps, "command" |
     readonly onBlockActions?: (
         Selection: MarkdownEditorBlockActionsSelection
     ) => void | Promise<void>;
-
-    /** Buttons spliced into the main toolbar row. Never shown in the format row or trailing slot. */
-    readonly customButtons?: Array<MarkdownEditorCustomButton>;
 }
 
 interface ActionButtonProps
 {
     /** Highlights the button as the active toggle for an open panel (e.g. "Insert" while open). */
     readonly active?: boolean;
-    readonly activeBackground?: string;
     readonly button?: MarkdownEditorButton;
-    readonly color: string;
-    readonly components?: MarkdownEditorComponents;
     /** Dims the button and blocks presses, e.g. "Undo" with no history to undo. */
     readonly disabled?: boolean;
-    /** Icon to use directly, taking precedence over `button`/`components` lookup -- for custom buttons. */
+    /** Icon to use directly, taking precedence over the `button` icon lookup -- for custom buttons. */
     readonly icon?: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
     readonly onPress: () => void;
 }
 
+/** How a panel option card is sized within its section. */
+type BlockOptionLayout = "full" | "grid" | "half";
+
 interface BlockOptionProps
 {
-    readonly background: string;
     readonly button?: MarkdownEditorButton;
-    /** Icon color -- muted, matching the toolbar's icon color. */
-    readonly color: string;
-    readonly components?: MarkdownEditorComponents;
-    readonly fullWidth?: boolean;
-    readonly grid?: boolean;
-    readonly label: string;
-    /** Label text color -- the editor's regular foreground, for contrast against the muted icon. */
-    readonly labelColor: string;
     readonly disabled?: boolean;
+    /** Icon to use directly, taking precedence over the `button` icon lookup -- for custom items. */
+    readonly icon?: ComponentType<MarkdownEditorIconProps>;
+    readonly label: string;
+    readonly layout: BlockOptionLayout;
     readonly onPress: () => void;
-}
-
-/** Resolve the MAB's text-label color while leaving each option's icon color untouched. */
-function resolveMabLabelColor(labelColor: string): string
-{
-    if (labelColor === "#ada9a3") {return "#A8A8A8";}
-    if (labelColor === "#8e8b86") {return "#646464";}
-    return labelColor;
 }
 
 /**
@@ -523,15 +354,15 @@ function resolveMabLabelColor(labelColor: string): string
  * `editor/ui` to install it, and a *hidden* one (e.g. via `eval("require")`) is never bundled at
  * all and can thus never succeed even when the peer is present. Either way, this module cannot
  * auto-detect and load Lucide itself. Consumers who have the peer installed opt in explicitly by
- * importing {@link markdownEditorLucideIcons} from `react-native-notion-markdown/editor/ui/
+ * importing `markdownEditorLucideIcons` from `react-native-notion-markdown/editor/ui/
  * lucide-icons` -- a separate module Metro only needs to resolve `lucide-react-native` for when
- * something actually imports it -- and passing it as `components`.
+ * something actually imports it -- and passing it as `icons`.
  *
  * @since 1.0.0
  */
 function getButtonIcon(
     button: MarkdownEditorButton | undefined,
-    components: MarkdownEditorComponents | undefined
+    icons: MarkdownEditorIcons | undefined
 ): ComponentType<MarkdownEditorIconProps> | undefined
 {
     if (button === undefined)
@@ -539,45 +370,46 @@ function getButtonIcon(
         return undefined;
     }
 
-    if (button === "more" && components?.more === undefined)
+    if (button === "more" && icons?.more === undefined)
     {
         return DefaultMoreIcon;
     }
 
-    if (components === undefined)
+    if (icons === undefined)
     {
         return undefined;
     }
 
-    /* Keep the original `columns` override working for hosts that have not yet added the
-       count-specific icons. */
-    return components[ button ]
+    /* Keep a single `columns` override working for hosts that have not added the count-specific
+       icons. */
+    return icons[ button ]
         ?? (button === "columns2" || button === "columns3" || button === "columns4" || button === "columns5"
-            ? components.columns
+            ? icons.columns
             : undefined);
 }
 
 /**
- * Render an accessible editor action with a host-supplied icon override, or a text fallback.
+ * Render an accessible toolbar action with a host-supplied icon, or a text fallback.
  *
  * @since 1.0.0
  */
 function ActionButton({
     active,
-    activeBackground,
     button,
-    color,
-    components,
     disabled,
     icon,
     label,
     onPress
 }: ActionButtonProps)
 {
-    const Icon = icon ?? getButtonIcon(button, components);
-    const textStyle = useMemo(() => ({ color }), [ color ]);
+    const { config, theme } = useResolvedEditorConfig();
+    const { iconSize, iconStrokeWidth, toolbar } = theme.editor;
+    const color = toolbar.icon;
+    const Icon = icon ?? getButtonIcon(button, config.icons);
+    const { fontFamily } = editorFontStyle(theme.editor);
+    const textStyle = useMemo(() => ({ color, fontFamily }), [ color, fontFamily ]);
     /* Borderless ripple to match Material's icon-button treatment; ignored on iOS. */
-    const ripple = useMemo(() => ({ borderless: true, color: `${color}33` }), [ color ]);
+    const ripple = useMemo(() => ({ borderless: true, color: withAlpha(color, 0.2) }), [ color ]);
     const accessibilityState = useMemo(
         () => ({ disabled: disabled === true, selected: active === true }),
         [ active, disabled ]
@@ -586,10 +418,10 @@ function ActionButton({
         () => [
             styles.button,
             active === true ? styles.buttonActive : undefined,
-            active === true ? { backgroundColor: activeBackground, borderRadius: 8 } : undefined,
+            active === true ? { backgroundColor: toolbar.activeBackground, borderRadius: 8 } : undefined,
             disabled === true ? styles.buttonDisabled : undefined
         ],
-        [ active, activeBackground, disabled ]
+        [ active, disabled, toolbar.activeBackground ]
     );
 
     return <Pressable
@@ -603,46 +435,46 @@ function ActionButton({
         {
             Icon === undefined
                 ? <Text style={ textStyle }>{ label }</Text>
-                : createElement(Icon, { color, size: 22, strokeWidth: 2 })
+                : createElement(Icon, { color, size: iconSize, strokeWidth: iconStrokeWidth })
         }
     </Pressable>;
 }
 
 /**
- * Render a labeled block option for the "Basic blocks" panel -- an icon-and-label card, matching
- * Markdown's own insert-block picker rather than the toolbar's icon-only buttons.
+ * Render a labeled option card for the insert and turn-into panels -- an icon-and-label card,
+ * matching Notion's own insert-block picker rather than the toolbar's icon-only buttons.
  *
  * @since 1.0.0
  */
 function BlockOption({
-    background,
     button,
-    color,
-    components,
     disabled,
-    fullWidth,
-    grid,
+    icon,
     label,
-    labelColor,
+    layout,
     onPress
 }: BlockOptionProps)
 {
-    const Icon = getButtonIcon(button, components);
-    const ripple = useMemo(() => ({ color: `${color}22` }), [ color ]);
+    const { config, theme } = useResolvedEditorConfig();
+    const { iconSize, iconStrokeWidth, panel, toolbar } = theme.editor;
+    const color = toolbar.icon;
+    const Icon = icon ?? getButtonIcon(button, config.icons);
+    const ripple = useMemo(() => ({ color: withAlpha(color, 0.13) }), [ color ]);
     const cardStyle = useMemo(
         () => [
             styles.blockOption,
-            fullWidth === true
+            layout === "full"
                 ? styles.blockOptionFull
-                : grid === true ? styles.blockOptionGrid : styles.blockOptionHalf,
+                : layout === "grid" ? styles.blockOptionGrid : styles.blockOptionHalf,
             disabled === true ? styles.buttonDisabled : undefined,
-            { backgroundColor: background }
+            { backgroundColor: panel.card }
         ],
-        [ background, disabled, fullWidth, grid ]
+        [ disabled, layout, panel.card ]
     );
+    const { fontFamily } = editorFontStyle(theme.editor);
     const labelStyle = useMemo(
-        () => [ styles.blockOptionLabel, { color: resolveMabLabelColor(labelColor) } ],
-        [ labelColor ]
+        () => [ styles.blockOptionLabel, { color: panel.label, fontFamily } ],
+        [ fontFamily, panel.label ]
     );
     const accessibilityState = useMemo(
         () => ({ disabled: disabled === true }), [ disabled ]
@@ -656,46 +488,21 @@ function BlockOption({
         onPress={ onPress }
         style={ cardStyle }>
         {
-            Icon !== undefined && createElement(Icon, { color, size: 22, strokeWidth: 2 })
+            Icon !== undefined && createElement(Icon, { color, size: iconSize, strokeWidth: iconStrokeWidth })
         }
         <Text style={ labelStyle }>{ label }</Text>
     </Pressable>;
 }
 
-interface EditorColorOption
-{
-    readonly background: boolean;
-    readonly color: MarkdownColor | undefined;
-    readonly hex: string | undefined;
-}
-
-/* The Markdown-formatted content text colors, plus their `_bg` background variants, offered by the
-   selection color panel. `undefined` clears the selected blocks back to their default color. */
-const editorColorOptions: ReadonlyArray<EditorColorOption> =
-    [
-        { background: false, color: undefined, hex: undefined },
-        { background: false, color: "gray", hex: "#787774" },
-        { background: false, color: "brown", hex: "#9F6B53" },
-        { background: false, color: "orange", hex: "#D9730D" },
-        { background: false, color: "yellow", hex: "#CB912F" },
-        { background: false, color: "green", hex: "#448361" },
-        { background: false, color: "blue", hex: "#337EA9" },
-        { background: false, color: "purple", hex: "#9065B0" },
-        { background: false, color: "pink", hex: "#C14C8A" },
-        { background: false, color: "red", hex: "#D44C47" },
-        { background: true, color: "gray_bg", hex: "#787774" },
-        { background: true, color: "brown_bg", hex: "#9F6B53" },
-        { background: true, color: "orange_bg", hex: "#D9730D" },
-        { background: true, color: "yellow_bg", hex: "#CB912F" },
-        { background: true, color: "green_bg", hex: "#448361" },
-        { background: true, color: "blue_bg", hex: "#337EA9" },
-        { background: true, color: "purple_bg", hex: "#9065B0" },
-        { background: true, color: "pink_bg", hex: "#C14C8A" },
-        { background: true, color: "red_bg", hex: "#D44C47" }
-    ];
-
 const editorTurnIntoTypes: ReadonlyArray<EditorBlock["type"]> =
-    [ "text", "heading_1", "heading_2", "heading_3", "heading_4" ];
+    [
+        "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
+        "numbered_list_item", "to_do", "toggle", "code", "quote", "callout", "equation",
+        "synced_block"
+    ];
+const editorTurnIntoTargetTypes: ReadonlyArray<EditorBlock["type"]> = [
+    ...editorTurnIntoTypes, "column_list"
+];
 
 const editorColumnButtons: Readonly<Record<EditorColumnCount, Extract<MarkdownEditorButton,
     "columns2" | "columns3" | "columns4" | "columns5">>> =
@@ -707,13 +514,15 @@ const editorColumnButtons: Readonly<Record<EditorColumnCount, Extract<MarkdownEd
     };
 
 /** Message id naming each block type, for the actions sheet's section-title label. */
-const editorBlockNameMessageIds: Readonly<Record<EditorBlock["type"], EditorMessageId>> =
+const editorBlockNameMessageIds: Readonly<Record<EditorBlock["type"], MarkdownMessageId>> =
     {
         audio: "blockName.audio",
         bulleted_list_item: "blockName.bulletedListItem",
         callout: "blockName.callout",
+        code: "blockName.code",
         column_list: "blockName.columnList",
         divider: "blockName.divider",
+        equation: "blockName.equation",
         file: "blockName.file",
         heading_1: "blockName.heading1",
         heading_2: "blockName.heading2",
@@ -723,17 +532,19 @@ const editorBlockNameMessageIds: Readonly<Record<EditorBlock["type"], EditorMess
         link_to_page: "blockName.linkToPage",
         numbered_list_item: "blockName.numberedListItem",
         quote: "blockName.quote",
+        synced_block: "blockName.syncedBlock",
         table_of_contents: "blockName.tableOfContents",
         table: "blockName.table",
         text: "blockName.text",
         to_do: "blockName.toDo",
+        toggle: "blockName.toggle",
         video: "blockName.video"
     };
 
 /** Return whether an editor block supports conversion to the requested editor block type. */
 function canConvertEditorBlock(block: EditorBlock, type: EditorBlock["type"]): boolean
 {
-    return editorTurnIntoTypes.includes(block.type) && editorTurnIntoTypes.includes(type);
+    return editorTurnIntoTypes.includes(block.type) && editorTurnIntoTargetTypes.includes(type);
 }
 
 /**
@@ -750,30 +561,10 @@ function editorCursorTouchesWord(text: string, offset: number): boolean
     return (before !== undefined && !/\s/.test(before)) || (after !== undefined && !/\s/.test(after));
 }
 
-/**
- * A human-readable accessibility label for a color swatch. The color catalog is a fixed, small
- * set of Markdown-defined names rather than host-facing copy, so it isn't routed through `t()`.
- *
- * @since 1.0.0
- */
-function editorColorLabel(option: EditorColorOption, defaultLabel: string): string
-{
-    if (option.color === undefined) {return defaultLabel;}
-
-    const base = option.background ? option.color.slice(0, -3) : option.color;
-    const name = base.charAt(0).toUpperCase() + base.slice(1);
-    return option.background ? `${name} background` : name;
-}
-
 interface ColorChoiceProps
 {
-    readonly cardBackground: string;
-    readonly foreground: string;
-    readonly iconColor: string;
-    readonly label: string;
-    readonly onPress: () => void;
-    readonly option: EditorColorOption;
-    readonly selected: boolean;
+    readonly choice: EditorColorChoice;
+    readonly onSelect: (color: MarkdownColor | undefined) => void;
 }
 
 /**
@@ -782,59 +573,62 @@ interface ColorChoiceProps
  *
  * @since 1.0.0
  */
-function ColorChoice({
-    cardBackground,
-    foreground,
-    iconColor,
-    label,
-    onPress,
-    option,
-    selected
-}: ColorChoiceProps)
+function ColorChoice({ choice, onSelect }: ColorChoiceProps)
 {
-    const ripple = useMemo(() => ({ borderless: true, color: `${iconColor}33` }), [ iconColor ]);
-    const iconBackground = option.background && option.hex !== undefined ? option.hex : "transparent";
-    const iconForeground = option.background ? foreground : (option.hex ?? foreground);
-    const iconBorder = option.background ? (selected ? foreground : "transparent") : iconColor;
+    const { theme } = useResolvedEditorConfig();
+    const { panel, toolbar } = theme.editor;
+    const hueText = choice.hue === undefined ? undefined : theme.palette.text[ choice.hue ];
+    const backgroundSwatch = choice.hue !== undefined && choice.background;
+    const iconBackground = backgroundSwatch && choice.hue !== undefined
+        ? theme.palette.background[ choice.hue ]
+        : "transparent";
+    const iconForeground = backgroundSwatch ? panel.foreground : (hueText ?? panel.foreground);
+    const iconBorder = backgroundSwatch ? "transparent" : toolbar.icon;
+    const { fontFamily } = editorFontStyle(theme.editor);
+    const ripple = useMemo(
+        () => ({ borderless: true, color: withAlpha(toolbar.icon, 0.2) }),
+        [ toolbar.icon ]
+    );
     const iconStyle = useMemo(() => [
         styles.colorIcon,
         { backgroundColor: iconBackground, borderColor: iconBorder }
     ], [ iconBackground, iconBorder ]);
     const iconTextStyle = useMemo(
-        () => [ styles.colorIconText, { color: iconForeground } ], [ iconForeground ]
+        () => [ styles.colorIconText, { color: iconForeground, fontFamily } ],
+        [ fontFamily, iconForeground ]
     );
-    const labelStyle = useMemo(() => [ styles.blockOptionLabel, { color: foreground } ], [ foreground ]);
-    const accessibilityState = useMemo(() => ({ selected }), [ selected ]);
+    const labelStyle = useMemo(
+        () => [ styles.blockOptionLabel, { color: panel.foreground, fontFamily } ],
+        [ fontFamily, panel.foreground ]
+    );
     const cardStyle = useMemo(
-        () => [ styles.blockOption, styles.blockOptionHalf, { backgroundColor: cardBackground } ],
-        [ cardBackground ]
+        () => [ styles.blockOption, styles.blockOptionHalf, { backgroundColor: panel.card } ],
+        [ panel.card ]
     );
+    const handlePress = useCallback(() => onSelect(choice.color), [ choice.color, onSelect ]);
 
-    return <Pressable accessibilityLabel={ label }
+    return <Pressable accessibilityLabel={ choice.label }
         accessibilityRole="button"
-        accessibilityState={ accessibilityState }
         android_ripple={ ripple }
-        onPress={ onPress }
+        onPress={ handlePress }
         style={ cardStyle }>
         <View style={ iconStyle }>
             <Text style={ iconTextStyle }>A</Text>
         </View>
-        <Text style={ labelStyle }>{ label }</Text>
+        <Text style={ labelStyle }>{ choice.label }</Text>
     </Pressable>;
 }
 
-/** Split color options into rows of two for the color panel's two-column grids. */
-function editorColorRows(
-    options: ReadonlyArray<EditorColorOption>
-): Array<Readonly<[EditorColorOption, EditorColorOption | undefined]>>
+/** Split items into rows of two for the panels' two-column layouts. */
+function rowsOfTwo<Item>(items: ReadonlyArray<Item>): Array<Readonly<[Item, Item | undefined]>>
 {
-    const rows: Array<Readonly<[EditorColorOption, EditorColorOption | undefined]>> = [ ];
-    for (let index = 0; index < options.length; index += 2)
+    const rows: Array<Readonly<[Item, Item | undefined]>> = [ ];
+    for (let index = 0; index < items.length; index += 2)
     {
-        const first = options[ index ];
+        const first = items[ index ];
         if (first !== undefined)
         {
-            rows.push([ first, options[ index + 1 ] ]);
+            rows.push([ first, items[ index + 1 ] ]);
         }
     }
 
@@ -843,55 +637,300 @@ function editorColorRows(
 
 interface ColorOptionGridProps
 {
-    readonly cardBackground: string;
-    readonly defaultLabel: string;
-    readonly foreground: string;
-    readonly iconColor: string;
-    readonly onSelect: (color: MarkdownColor | undefined) => () => void;
-    readonly options: ReadonlyArray<EditorColorOption>;
+    readonly choices: ReadonlyArray<EditorColorChoice>;
+    readonly onSelect: (color: MarkdownColor | undefined) => void;
 }
 
-/** Render one two-column color-option grid for a color-panel section. */
-function ColorOptionGrid({
-    cardBackground,
-    defaultLabel,
-    foreground,
-    iconColor,
-    onSelect,
-    options
-}: ColorOptionGridProps)
+/** Render one two-column color-choice grid for a color-panel section. */
+function ColorOptionGrid({ choices, onSelect }: ColorOptionGridProps)
 {
+    const rows = useMemo(() => rowsOfTwo(choices), [ choices ]);
+
     return <View>
         {
-            editorColorRows(options).map((row: Readonly<[EditorColorOption, EditorColorOption | undefined]>) =>
-            {
-                const firstKey = row[ 0 ].color ?? "default";
-                return <View key={ firstKey }
+            rows.map((row: Readonly<[EditorColorChoice, EditorColorChoice | undefined]>) =>
+                <View key={ row[ 0 ].color ?? "default" }
                     style={ styles.blockRow }>
-                    <ColorChoice
-                        cardBackground={ cardBackground }
-                        foreground={ foreground }
-                        iconColor={ iconColor }
-                        label={ editorColorLabel(row[ 0 ], defaultLabel) }
-                        onPress={ onSelect(row[ 0 ].color) }
-                        option={ row[ 0 ] }
-                        selected={ false } />
+                    <ColorChoice choice={ row[ 0 ] }
+                        onSelect={ onSelect } />
                     {
                         row[ 1 ] === undefined
                             ? <View style={ styles.blockOptionSpacer } />
-                            : <ColorChoice
-                                cardBackground={ cardBackground }
-                                foreground={ foreground }
-                                iconColor={ iconColor }
-                                label={ editorColorLabel(row[ 1 ], defaultLabel) }
-                                onPress={ onSelect(row[ 1 ].color) }
-                                option={ row[ 1 ] }
-                                selected={ false } />
+                            : <ColorChoice choice={ row[ 1 ] }
+                                onSelect={ onSelect } />
                     }
-                </View>;
-            })
+                </View>)
         }
     </View>;
+}
+
+/** Return whether a string names a message in the catalog, rather than being literal text. */
+function isMessageId(value: string): value is MarkdownMessageId
+{
+    return Object.prototype.hasOwnProperty.call(defaultMarkdownMessages, value);
+}
+
+const editorBlockColorTypes: ReadonlyArray<EditorBlock[ "type" ]> = [
+    "text",
+    "heading_1",
+    "heading_2",
+    "heading_3",
+    "heading_4",
+    "bulleted_list_item",
+    "numbered_list_item",
+    "to_do",
+    "quote",
+    "callout"
+];
+
+/** A built-in toolbar button, resolved against the editor's current state. */
+interface ToolbarButtonModel
+{
+    readonly active?: boolean;
+    readonly button: MarkdownEditorButton;
+    readonly disabled?: boolean;
+    readonly label: string;
+    readonly onPress: () => void;
+
+    /** `false` while the button's action doesn't apply, so it takes no slot. */
+    readonly visible?: boolean;
+}
+
+/** Every built-in main-row button, by id. */
+type MainToolbarModels = Readonly<Record<MarkdownEditorMainToolbarItem, ToolbarButtonModel>>;
+
+/** Every built-in format-row button, by id. */
+type FormatToolbarModels = Readonly<Record<MarkdownEditorFormatToolbarItem, ToolbarButtonModel>>;
+
+/** One row of the turn-into panel: two options, or a final lone option. */
+type TurnIntoRow = Readonly<[MarkdownEditorTurnIntoItem, MarkdownEditorTurnIntoItem | undefined]>;
+
+/** A built-in insert-panel option, resolved against the editor's current state. */
+interface InsertOptionModel
+{
+    readonly button: MarkdownEditorButton;
+    readonly label: string;
+    readonly onPress: () => void;
+}
+
+/** The ids of the built-in main-row buttons, used to resolve `toolbar.main`. */
+const mainToolbarItems: ReadonlyArray<MarkdownEditorMainToolbarItem> =
+    [
+        "color", "insert", "format", "speech", "filePicker", "turnInto", "undo", "redo", "remove", "indent",
+        "outdent", "moveUp", "moveDown", "copy", "cut", "paste", "edit"
+    ];
+
+/** The ids of the built-in format-row buttons, used to resolve `toolbar.format`. */
+const formatToolbarItems: ReadonlyArray<MarkdownEditorFormatToolbarItem> =
+    [ "bold", "italic", "strikethrough", "underline", "code", "link", "eraseFormatting" ];
+
+/** The icon, label, and native command of each turn-into option. */
+const turnIntoOptions: Readonly<Record<MarkdownEditorTurnIntoItem, {
+    readonly button: MarkdownEditorButton;
+    readonly message: MarkdownMessageId;
+    readonly command: Pick<EditorCommand, "type" | "toggle" | "columnCount">;
+}>> =
+    {
+        bulleted_list_item: {
+            button: "bulletedList",
+            command: { type: "bulleted_list_item" },
+            message: "insertPanel.bulletedList"
+        },
+        callout: { button: "callout", command: { type: "callout" }, message: "insertPanel.callout" },
+        code: { button: "code", command: { type: "code" }, message: "insertPanel.code" },
+        columns2: {
+            button: "columns2",
+            command: { columnCount: 2, type: "column_list" },
+            message: "insertPanel.columns2"
+        },
+        columns3: {
+            button: "columns3",
+            command: { columnCount: 3, type: "column_list" },
+            message: "insertPanel.columns3"
+        },
+        columns4: {
+            button: "columns4",
+            command: { columnCount: 4, type: "column_list" },
+            message: "insertPanel.columns4"
+        },
+        columns5: {
+            button: "columns5",
+            command: { columnCount: 5, type: "column_list" },
+            message: "insertPanel.columns5"
+        },
+        equation: {
+            button: "code", command: { type: "equation" }, message: "insertPanel.blockEquation"
+        },
+        heading_1: {
+            button: "heading1", command: { type: "heading_1" }, message: "insertPanel.heading1"
+        },
+        heading_2: {
+            button: "heading2", command: { type: "heading_2" }, message: "insertPanel.heading2"
+        },
+        heading_3: {
+            button: "heading3", command: { type: "heading_3" }, message: "insertPanel.heading3"
+        },
+        heading_4: {
+            button: "heading4", command: { type: "heading_4" }, message: "insertPanel.heading4"
+        },
+        numbered_list_item: {
+            button: "numberedList",
+            command: { type: "numbered_list_item" },
+            message: "insertPanel.numberedList"
+        },
+        quote: { button: "quote", command: { type: "quote" }, message: "insertPanel.quote" },
+        synced_block: {
+            button: "copy", command: { type: "synced_block" }, message: "insertPanel.syncedBlock"
+        },
+        text: { button: "text", command: { type: "text" }, message: "insertPanel.text" },
+        to_do: { button: "toDo", command: { type: "to_do" }, message: "insertPanel.toDo" },
+        toggle: { button: "toggleList", command: { type: "toggle" }, message: "insertPanel.toggleList" },
+        toggle_heading_1: {
+            button: "toggleHeading1",
+            command: { toggle: true, type: "heading_1" },
+            message: "insertPanel.toggleHeading1"
+        },
+        toggle_heading_2: {
+            button: "toggleHeading2",
+            command: { toggle: true, type: "heading_2" },
+            message: "insertPanel.toggleHeading2"
+        },
+        toggle_heading_3: {
+            button: "toggleHeading3",
+            command: { toggle: true, type: "heading_3" },
+            message: "insertPanel.toggleHeading3"
+        },
+        toggle_heading_4: {
+            button: "toggleHeading4",
+            command: { toggle: true, type: "heading_4" },
+            message: "insertPanel.toggleHeading4"
+        }
+    };
+
+interface CustomInsertOptionProps
+{
+    readonly close: () => void;
+    readonly item: MarkdownEditorCustomInsertItem;
+}
+
+/** Render a host-supplied insert-panel option. */
+function CustomInsertOption({ close, item }: CustomInsertOptionProps)
+{
+    const handlePress = useCallback(() => item.onPress({ close }), [ close, item ]);
+
+    return <BlockOption icon={ item.icon }
+        label={ item.label }
+        layout="grid"
+        onPress={ handlePress } />;
+}
+
+interface InsertPanelSectionProps
+{
+    readonly close: () => void;
+    readonly models: Readonly<Record<MarkdownEditorInsertItem, InsertOptionModel>>;
+    readonly section: MarkdownEditorInsertSection;
+    readonly titleStyle: StyleProp<TextStyle>;
+}
+
+/** Render one titled section of the insert panel. */
+function InsertPanelSection({ close, models, section, titleStyle }: InsertPanelSectionProps)
+{
+    const { t } = useResolvedEditorConfig();
+
+    return <View>
+        <Text accessibilityRole="header"
+            style={ titleStyle }>
+            { isMessageId(section.title) ? t(section.title) : section.title }
+        </Text>
+        <View style={ styles.blockGrid }>
+            {
+                section.items.map((item: MarkdownEditorInsertItem | MarkdownEditorCustomInsertItem) =>
+                {
+                    if (typeof item !== "string")
+                    {
+                        return <CustomInsertOption close={ close }
+                            item={ item }
+                            key={ item.id } />;
+                    }
+
+                    const model = models[ item ] as InsertOptionModel | undefined;
+                    return model === undefined
+                        ? null
+                        : <BlockOption button={ model.button }
+                            key={ item }
+                            label={ model.label }
+                            layout="grid"
+                            onPress={ model.onPress } />;
+                })
+            }
+        </View>
+    </View>;
+}
+
+interface CustomToolbarButtonProps
+{
+    readonly button: MarkdownEditorCustomButton;
+    readonly onOpenPanel: (id: string) => () => void;
+    readonly openPanel: OpenPanel;
+}
+
+/** Render one custom toolbar button, highlighted while its panel is open. */
+function CustomToolbarButton({ button, onOpenPanel, openPanel }: CustomToolbarButtonProps)
+{
+    const handlePress = useMemo(
+        () => button.panel === undefined ? button.onPress : onOpenPanel(button.id),
+        [ button, onOpenPanel ]
+    );
+    const active = button.panel === undefined
+        ? undefined
+        : openPanel.kind === "custom" && openPanel.id === button.id;
+
+    return <ActionButton active={ active }
+        icon={ button.icon }
+        label={ button.label }
+        onPress={ handlePress } />;
+}
+
+interface ToolbarRowItemsProps<Builtin extends string>
+{
+    readonly items: ReadonlyArray<ResolvedToolbarItem<Builtin>>;
+    readonly models: Readonly<Record<Builtin, ToolbarButtonModel>>;
+    readonly onOpenPanel: (id: string) => () => void;
+    readonly openPanel: OpenPanel;
+}
+
+/** Render one toolbar row's resolved items: built-in buttons (when they apply), or custom ones. */
+function ToolbarRowItems<Builtin extends string>({
+    items,
+    models,
+    onOpenPanel,
+    openPanel
+}: ToolbarRowItemsProps<Builtin>)
+{
+    return <>
+        {
+            items.map((item: ResolvedToolbarItem<Builtin>) =>
+            {
+                if (item.kind === "custom")
+                {
+                    return <CustomToolbarButton button={ item.button }
+                        key={ item.button.id }
+                        onOpenPanel={ onOpenPanel }
+                        openPanel={ openPanel } />;
+                }
+
+                const model = models[ item.id ];
+                return model.visible === false
+                    ? null
+                    : <ActionButton active={ model.active }
+                        button={ model.button }
+                        disabled={ model.disabled }
+                        key={ item.id }
+                        label={ model.label }
+                        onPress={ model.onPress } />;
+            })
+        }
+    </>;
 }
 
 type ToolbarRow =
@@ -907,24 +946,11 @@ type OpenPanel =
 
 const NoPanelOpen: OpenPanel = { kind: "none" };
 
-/**
- * Height of the main toolbar row, shared between its style and the
- * footer-height calculation below so the two can't drift out of sync.
- */
-const ToolbarHeight = 48;
-
 /** Default horizontal inset for the WYSIWYG page content, in logical pixels. */
 const DefaultPagePaddingHorizontal = 24;
 
 /** Default maximum width for the WYSIWYG page content, in logical pixels. */
 const DefaultPageMaxWidth = 960;
-
-/* Fixed height of the "Basic blocks" panel. Its content scrolls internally, so this only needs
-   to comfortably fit the color row plus a few block options above the fold. */
-const BasicBlocksPanelHeight = 300;
-
-/* Fixed height of the color panel. Its two-column sections scroll vertically. */
-const ColorPanelHeight = 300;
 
 /** Width of the fade that blends the scrollable toolbar into the fixed trailing button. */
 const ScrollFadeWidth = 20;
@@ -940,16 +966,9 @@ const KeyboardGeometryTolerance = 2;
  */
 const ScrollFadeSteps = 8;
 
-/**
- * The ready-to-use editor surface, including the keyboard-adjacent editor controls.
- *
- * @since 1.0.0
- */
-export function MarkdownEditor({
+/** The editor body, reading its theme and configuration from the scoped provider. */
+function MarkdownEditorContent({
     command: suppliedCommand,
-    components,
-    customButtons,
-    dark: suppliedDark,
     onBlockActions,
     onCommand,
     onCreatePageReference,
@@ -962,17 +981,16 @@ export function MarkdownEditor({
     onAudioSelected,
     onFileSelected,
     onMediaSelected,
-    onOpenPageReference,
-    emptyTogglePlaceholder: suppliedEmptyTogglePlaceholder,
-    pageReferenceFallbackIcon: suppliedPageReferenceFallbackIcon,
-    pagePaddingHorizontal = DefaultPagePaddingHorizontal,
-    pageMaxWidth = DefaultPageMaxWidth,
-    imageMaxWidth = DefaultPageMaxWidth,
     snapshot: suppliedSnapshot,
     ...viewProps
-}: MarkdownEditorProps)
+}: MarkdownEditorContentProps)
 {
-    const t = useMarkdownEditorTranslate();
+    const { config, onOpenUrl, t, theme } = useResolvedEditorConfig();
+    const { icons } = config;
+    const customButtons = useMemo(() => config.customButtons ?? [ ], [ config.customButtons ]);
+    const pagePaddingHorizontal = config.layout?.pagePaddingHorizontal ?? DefaultPagePaddingHorizontal;
+    const pageMaxWidth = config.layout?.pageMaxWidth ?? DefaultPageMaxWidth;
+    const imageMaxWidth = config.layout?.imageMaxWidth ?? DefaultPageMaxWidth;
     const [ defaultSnapshot ] = useState(CreateEditorDocument);
     const [ internalSnapshot, setInternalSnapshot ] = useState<EditorSnapshot>();
     const [ internalCommand, setInternalCommand ] = useState<EditorCommand>();
@@ -1022,33 +1040,20 @@ export function MarkdownEditor({
     const [ bottomGap, setBottomGap ] = useState(0);
     const bottomGapRef = useRef(0);
     const { height: windowHeight } = useWindowDimensions();
-    const systemDark = useColorScheme() === "dark";
-    const dark = suppliedDark ?? systemDark;
     const keyboardState = useKeyboardState();
     const previousKeyboardVisibility = useRef(keyboardState.isVisible);
     const { height, progress } = useReanimatedKeyboardAnimation();
-    const foreground = dark ? "#eeeeee" : "#2C2C2B";
-    const background = dark ? "#191919" : "#ffffff";
-    /* Matches Markdown's own above-the-keyboard toolbar icon/label color, sampled from its
-       mobile action bar in both themes -- a warm gray, not a neutral one. */
-    const iconColor = dark ? "#ada9a3" : "#8e8b86";
-    /* The "Basic blocks" panel sits on a slightly recessed surface, with raised cards for each
-       option -- matching Markdown's own insert-block picker. */
-    const panelBackground = dark ? "#2b2b2a" : "#f7f7f5";
-    const cardBackground = dark ? "#3a3a39" : "#ffffff";
-    const activeBackground = dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
-    const dividerColor = dark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.12)";
-    /* RGB channels of `background` (the toolbar's own surface), so the scroll fade can blend into
-       it at increasing opacity instead of a plain, harder-edged divider. */
-    const backgroundRgb = dark ? "25, 25, 25" : "255, 255, 255";
+    const { panel, toolbar } = theme.editor;
+    const { fontFamily } = editorFontStyle(theme.editor);
     const snapshot = suppliedSnapshot ?? internalSnapshot ?? defaultSnapshot;
-    const columnLabels: Record<EditorColumnCount, string> =
+    const columnLabels = useMemo<Readonly<Record<EditorColumnCount, string>>>(() => (
         {
             2: t("insertPanel.columns2"),
             3: t("insertPanel.columns3"),
             4: t("insertPanel.columns4"),
             5: t("insertPanel.columns5")
-        };
+        }
+    ), [ t ]);
     const command = suppliedCommand ?? internalCommand;
     /* The contiguous block range spanned by the current selection, by index into `snapshot.
        blocks` -- or `undefined` when either endpoint no longer resolves to a block. */
@@ -1077,12 +1082,11 @@ export function MarkdownEditor({
         && (selectionAnchorBlockId !== selectionFocusBlockId
             || selectionAnchorOffset !== selectionFocusOffset);
     const canColorSelection = hasTextSelection && selectionBlockRange !== undefined
-        && snapshot.blocks.slice(selectionBlockRange.low, selectionBlockRange.high + 1).some(
-            (block: EditorBlock) => block.type === "text"
-                || block.type === "heading_1"
-                || block.type === "heading_2"
-                || block.type === "heading_3"
-                || block.type === "heading_4"
+        && snapshot.blocks.slice(selectionBlockRange.low, selectionBlockRange.high + 1).every(
+            (block: EditorBlock) => [
+                "text", "heading_1", "heading_2", "heading_3", "heading_4",
+                "bulleted_list_item", "numbered_list_item", "to_do", "quote", "callout", "table"
+            ].includes(block.type)
         );
     /* A collapsed cursor (no range selected) formats the word it touches, so the sub-menu
        buttons stay enabled at the start, middle, or end of a word -- not just over a range. */
@@ -1159,73 +1163,38 @@ export function MarkdownEditor({
     {
         if (selectionBlockRange === undefined)
         {
-            return new Set<EditorBlock["type"]>();
+            return new Set<MarkdownEditorTurnIntoItem>();
         }
 
         const selectedBlocks = snapshot.blocks.slice(
             selectionBlockRange.low, selectionBlockRange.high + 1
         );
-        return new Set<EditorBlock["type"]>(editorTurnIntoTypes.filter(
-            (type: EditorBlock["type"]) => selectedBlocks.length > 0
-                && selectedBlocks.every((block: EditorBlock) => canConvertEditorBlock(block, type))
-        ));
+        return new Set<MarkdownEditorTurnIntoItem>(
+            (Object.keys(turnIntoOptions) as Array<MarkdownEditorTurnIntoItem>).filter(
+                (item: MarkdownEditorTurnIntoItem) => selectedBlocks.length > 0
+                    && turnIntoOptions[ item ].command.type !== undefined
+                    && selectedBlocks.every((block: EditorBlock) =>
+                        canConvertEditorBlock(block, turnIntoOptions[ item ].command.type!))
+            )
+        );
     }, [ selectionBlockRange, snapshot.blocks ]);
     const customButtonsById = useMemo(() =>
     {
         const map = new Map<string, MarkdownEditorCustomButton>();
-        customButtons?.forEach((button: MarkdownEditorCustomButton) => map.set(button.id, button));
+        customButtons.forEach((button: MarkdownEditorCustomButton) => map.set(button.id, button));
         return map;
     }, [ customButtons ]);
-    const mainRowOrder = useMemo(() =>
-    {
-        const order: Array<string> = canColorSelection ? [ "color" ] : [ ];
-        order.push(
-            "insert", "format", "speech", "filePicker", "turnInto", "undo", "redo", "remove", "indent",
-            "outdent", "moveUp", "moveDown"
-        );
-        if (canEditPageReference)
-        {
-            order.push("edit");
-        }
-
-        customButtons?.forEach((button: MarkdownEditorCustomButton) =>
-        {
-            const existingIndex = order.indexOf(button.id);
-            if (existingIndex !== -1)
-            {
-                /* A duplicate id (including one colliding with a built-in) -- the later entry
-                   wins by replacing the earlier position below. */
-                order.splice(existingIndex, 1);
-            }
-
-            let insertAt = order.length;
-            if (button.after !== undefined)
-            {
-                const anchor = order.indexOf(button.after);
-                insertAt = anchor === -1 ? order.length : anchor + 1;
-            }
-            else if (button.before !== undefined)
-            {
-                const anchor = order.indexOf(button.before);
-                insertAt = anchor === -1 ? order.length : anchor;
-            }
-
-            order.splice(insertAt, 0, button.id);
-        });
-
-        return order;
-    }, [ canColorSelection, canEditPageReference, customButtons ]);
     const panelOpen = openPanel.kind !== "none";
     const activeCustomPanel = openPanel.kind === "custom"
         ? customButtonsById.get(openPanel.id)?.panel
         : undefined;
     const CustomPanelContent = activeCustomPanel?.render;
     const openPanelHeight = openPanel.kind === "insert" || openPanel.kind === "turnInto"
-        ? BasicBlocksPanelHeight
+        ? panel.height
         : openPanel.kind === "color"
-            ? ColorPanelHeight
+            ? panel.colorHeight
             : activeCustomPanel?.height ?? 0;
-    const footerHeight = ToolbarHeight + openPanelHeight;
+    const footerHeight = toolbar.height + openPanelHeight;
     const canMoveUp = selectionBlockRange !== undefined && selectionBlockRange.low > 0;
     const canMoveDown = selectionBlockRange !== undefined
         && selectionBlockRange.high < snapshot.blocks.length - 1;
@@ -1281,7 +1250,7 @@ export function MarkdownEditor({
     const send = useCallback((
         action: EditorCommand["action"],
         extra?: Pick<EditorCommand,
-            "level" | "color" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
+            "level" | "color" | "colorTarget" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
             | "label" | "blockId"
             | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize"
             | "selection" | "row" | "column">
@@ -1396,15 +1365,8 @@ export function MarkdownEditor({
         nativeEvent
     }: { nativeEvent: NativePageReferencePressEvent }) =>
     {
-        if (onOpenPageReference !== undefined)
-        {
-            void onOpenPageReference(nativeEvent.url);
-        }
-        else
-        {
-            void openPageReferenceUrl(nativeEvent.url);
-        }
-    }, [ onOpenPageReference ]);
+        void (onOpenUrl ?? openPageReferenceUrl)(nativeEvent.url);
+    }, [ onOpenUrl ]);
     const handleBlockActionsPress = useCallback(({
         nativeEvent
     }: { nativeEvent: NativeBlockActionsPressEvent }) =>
@@ -1551,7 +1513,7 @@ export function MarkdownEditor({
             send("focus");
             return;
         }
-        send("color", { blockId, color });
+        send("color", { blockId, color, colorTarget: "block" });
     }, [ blockActionsRequest, send ]);
     const handleEditCalloutIcon = useCallback(() =>
     {
@@ -1818,13 +1780,13 @@ export function MarkdownEditor({
         setOpenPanel({ kind: "turnInto" });
         send("dismiss");
     }, [ send ]);
-    const handleTurnInto = useCallback((type: EditorBlock["type"]) => () =>
+    const handleTurnInto = useCallback((item: MarkdownEditorTurnIntoItem) => () =>
     {
         /* Turning a block into another type ends the MAB interaction. Close the panel before
            dispatching the native command so the toolbar immediately returns to its compact
            keyboard-adjacent state; the native transform requests the IME again. */
         setOpenPanel(NoPanelOpen);
-        send("turnInto", { type });
+        send("turnInto", turnIntoOptions[ item ].command);
     }, [ send ]);
     const handleColor = useCallback(() =>
     {
@@ -1961,7 +1923,7 @@ export function MarkdownEditor({
         await onAudioSelected?.(selection);
     }, [ audioReplacementBlockId, onAudioSelected, send ]);
     const handleSelectColor = useCallback(
-        (color: MarkdownColor | undefined) => () => send("color", { color }), [ send ]
+        (color: MarkdownColor | undefined) => send("color", { color, colorTarget: "inline" }), [ send ]
     );
     const handleCopy = useCallback(() => send("copy"), [ send ]);
     const handleCut = useCallback(() => send("cut"), [ send ]);
@@ -1973,31 +1935,38 @@ export function MarkdownEditor({
     const stickyViewStyle = useMemo(
         () => [
             styles.footer,
-            keyboardIsOutsideApp ? styles.floatingFooter : undefined,
-            { backgroundColor: background }
+            { backgroundColor: toolbar.background, borderColor: toolbar.border },
+            keyboardIsOutsideApp ? [ styles.floatingFooter, { shadowColor: theme.editor.shadow } ] : undefined
         ],
-        [ background, keyboardIsOutsideApp ]
+        [ keyboardIsOutsideApp, theme.editor.shadow, toolbar.background, toolbar.border ]
     );
+    const toolbarStyle = useMemo(() => [ styles.toolbar, { height: toolbar.height } ], [ toolbar.height ]);
     const surfaceStyle = useMemo(() => [ styles.surface, viewport ], [ viewport ]);
     const panelStyle = useMemo(
-        () => [ styles.panel, { backgroundColor: panelBackground } ],
-        [ panelBackground ]
+        () => [ styles.panel, { backgroundColor: panel.background, height: panel.height } ],
+        [ panel.background, panel.height ]
     );
     const colorPanelStyle = useMemo(
-        () => [ styles.panel, styles.colorPanel, { backgroundColor: panelBackground } ],
-        [ panelBackground ]
+        () => [ styles.panel, { backgroundColor: panel.background, height: panel.colorHeight } ],
+        [ panel.background, panel.colorHeight ]
     );
-    const panelTitleStyle = useMemo(() => [ styles.title, { color: iconColor } ], [ iconColor ]);
-    const colorLabelStyle = useMemo(() => [ styles.colorLabel, { color: iconColor } ], [ iconColor ]);
+    const panelTitleStyle = useMemo(
+        () => [ styles.title, { color: panel.title, fontFamily } ],
+        [ fontFamily, panel.title ]
+    );
+    const colorLabelStyle = useMemo(
+        () => [ styles.colorLabel, { color: panel.title, fontFamily } ],
+        [ fontFamily, panel.title ]
+    );
     const customPanelStyle = useMemo(
         () => activeCustomPanel === undefined
             ? undefined
-            : [ styles.panel, { backgroundColor: panelBackground, height: activeCustomPanel.height } ],
-        [ activeCustomPanel, panelBackground ]
+            : [ styles.panel, { backgroundColor: panel.background, height: activeCustomPanel.height } ],
+        [ activeCustomPanel, panel.background ]
     );
     const trailingButtonStyle = useMemo(
-        () => [ styles.trailingButton, { borderLeftColor: dividerColor } ],
-        [ dividerColor ]
+        () => [ styles.trailingButton, { borderLeftColor: toolbar.divider } ],
+        [ toolbar.divider ]
     );
     const pageStyle = useMemo(
         () => [ styles.page, { maxWidth: pageMaxWidth, paddingHorizontal: pagePaddingHorizontal } ],
@@ -2016,12 +1985,13 @@ export function MarkdownEditor({
         () => Array.from({ length: ScrollFadeSteps }, (_unused: unknown, index: number) =>
         {
             const alpha = (index / (ScrollFadeSteps - 1)) * 0.92;
-            return { backgroundColor: `rgba(${backgroundRgb}, ${alpha})`, flex: 1 };
+            return { backgroundColor: withAlpha(toolbar.background, alpha), flex: 1 };
         }),
-        [ backgroundRgb ]
+        [ toolbar.background ]
     );
     const mediaLabels = useMemo(() => ({
         captureVideo: t("mediaSheet.captureVideo"),
+        dismiss: t("mediaSheet.dismiss"),
         openGallery: t("mediaSheet.openGallery"),
         takePicture: t("mediaSheet.takePicture"),
         title: t("mediaSheet.title")
@@ -2030,13 +2000,16 @@ export function MarkdownEditor({
        callouts for now, so a generic icon title would imply support we do not expose yet. */
     const emojiLabels = useMemo(() => ({
         common: t("emojiSheet.common"),
+        dismiss: t("emojiSheet.dismiss"),
         filter: t("emojiSheet.filter"),
+        shuffle: t("emojiSheet.shuffle"),
         title: t("emojiSheet.title")
     }), [ t ]);
     const audioLabels = useMemo(() => ({
         cancel: t("audioSheet.cancel"),
         chooseFile: t("audioSheet.chooseFile"),
         confirm: t("audioSheet.confirm"),
+        dismiss: t("audioSheet.dismiss"),
         error: t("audioSheet.error"),
         noAudio: t("audioSheet.noAudio"),
         pause: t("audioSheet.pause"),
@@ -2049,14 +2022,16 @@ export function MarkdownEditor({
         replace: t("audioSheet.replace"),
         start: t("audioSheet.start"),
         stop: t("audioSheet.stop"),
-        title: t("audioSheet.title")
+        title: t("audioSheet.title"),
+        untitled: t("audioSheet.untitled")
     }), [ t ]);
     const linkLabels = useMemo(() => ({
         apply: t("linkSheet.apply"),
         cancel: t("linkSheet.cancel"),
         label: t("linkSheet.label"),
         title: t("linkSheet.title"),
-        url: t("linkSheet.url")
+        url: t("linkSheet.url"),
+        urlPlaceholder: t("linkSheet.urlPlaceholder")
     }), [ t ]);
     const actionsLabels = useMemo(() => ({
         background: t("actionsSheet.background"),
@@ -2065,6 +2040,7 @@ export function MarkdownEditor({
         color: t("actionsSheet.color"),
         defaultColor: t("actionsSheet.defaultColor"),
         delete: t("actionsSheet.delete"),
+        dismiss: t("actionsSheet.dismiss"),
         duplicate: t("actionsSheet.duplicate"),
         editIcon: t("actionsSheet.editIcon"),
         insertAbove: t("actionsSheet.insertAbove"),
@@ -2095,6 +2071,329 @@ export function MarkdownEditor({
     const blockActionsTable = blockActionsRequest?.blockType === "table"
         ? snapshot.blocks.find((block: EditorBlock) => block.id === blockActionsRequest.blockId)?.table
         : undefined;
+    const handleMainRow = useMemo(() => handleMode("main"), [ handleMode ]);
+    const handleFormatRow = useMemo(() => handleMode("format"), [ handleMode ]);
+    const handleLinkDismiss = useCallback(() => handleLinkResult(undefined), [ handleLinkResult ]);
+    const handleReplaceBlockImage = useCallback(
+        (url: string) => blockActionsRequest === undefined
+            ? undefined
+            : handleReplaceImage(blockActionsRequest.blockId, url),
+        [ blockActionsRequest, handleReplaceImage ]
+    );
+
+    /* Every built-in button, resolved against the editor's current state. `toolbar.main` and
+       `toolbar.format` choose which of these appear, and in what order. */
+    const mainToolbarModels = useMemo<MainToolbarModels>(() => (
+        {
+            color: {
+                active: openPanel.kind === "color",
+                button: "color",
+                label: t("toolbar.color"),
+                onPress: handleColor,
+                visible: canColorSelection
+            },
+            copy: { button: "copy", label: t("toolbar.copy"), onPress: handleCopy },
+            cut: { button: "cut", label: t("toolbar.cut"), onPress: handleCut },
+            edit: {
+                button: "edit",
+                label: t("toolbar.edit"),
+                onPress: handleEditPageReference,
+                visible: canEditPageReference
+            },
+            filePicker: { button: "gallery", label: t("toolbar.filePicker"), onPress: handleInsertMedia },
+            format: { button: "format", label: t("toolbar.format"), onPress: handleFormatRow },
+            indent: {
+                button: "indent",
+                disabled: !canIndent,
+                label: t("toolbar.indent"),
+                onPress: handleIndent
+            },
+            insert: {
+                active: openPanel.kind === "insert",
+                button: "insert",
+                label: t("toolbar.insert"),
+                onPress: handleInsert
+            },
+            moveDown: {
+                button: "moveDown",
+                label: t("toolbar.moveDown"),
+                onPress: handleMoveDown,
+                visible: canMoveDown
+            },
+            moveUp: {
+                button: "moveUp",
+                label: t("toolbar.moveUp"),
+                onPress: handleMoveUp,
+                visible: canMoveUp
+            },
+            outdent: {
+                button: "outdent",
+                disabled: !canOutdent,
+                label: t("toolbar.outdent"),
+                onPress: handleOutdent
+            },
+            paste: { button: "paste", label: t("toolbar.paste"), onPress: handlePaste },
+            redo: { button: "redo", label: t("toolbar.redo"), onPress: handleRedo, visible: canRedo },
+            remove: { button: "remove", label: t("toolbar.remove"), onPress: handleRemove },
+            speech: { button: "speech", label: t("toolbar.speech"), onPress: handleInsertAudio },
+            turnInto: {
+                active: openPanel.kind === "turnInto",
+                button: "turnInto",
+                label: t("toolbar.turnInto"),
+                onPress: handleTurnIntoPanel
+            },
+            undo: { button: "undo", disabled: !canUndo, label: t("toolbar.undo"), onPress: handleUndo }
+        }
+    ), [
+        canColorSelection,
+        canEditPageReference,
+        canIndent,
+        canMoveDown,
+        canMoveUp,
+        canOutdent,
+        canRedo,
+        canUndo,
+        handleColor,
+        handleCopy,
+        handleCut,
+        handleEditPageReference,
+        handleFormatRow,
+        handleIndent,
+        handleInsert,
+        handleInsertAudio,
+        handleInsertMedia,
+        handleMoveDown,
+        handleMoveUp,
+        handleOutdent,
+        handlePaste,
+        handleRedo,
+        handleRemove,
+        handleTurnIntoPanel,
+        handleUndo,
+        openPanel.kind,
+        t
+    ]);
+    const formatToolbarModels = useMemo<FormatToolbarModels>(() => (
+        {
+            bold: {
+                button: "bold",
+                disabled: !canFormatSelection,
+                label: t("toolbar.bold"),
+                onPress: handleFormat("bold")
+            },
+            code: {
+                button: "code",
+                disabled: !canFormatSelection,
+                label: t("toolbar.code"),
+                onPress: handleFormat("code")
+            },
+            eraseFormatting: {
+                button: "eraseFormatting",
+                disabled: !canFormatSelection,
+                label: t("toolbar.eraseFormatting"),
+                onPress: handleEraseFormatting
+            },
+            italic: {
+                button: "italic",
+                disabled: !canFormatSelection,
+                label: t("toolbar.italic"),
+                onPress: handleFormat("italic")
+            },
+            link: {
+                button: "link",
+                disabled: !canLinkSelection,
+                label: t("toolbar.link"),
+                onPress: handleLink
+            },
+            strikethrough: {
+                button: "strikethrough",
+                disabled: !canFormatSelection,
+                label: t("toolbar.strikethrough"),
+                onPress: handleFormat("strikethrough")
+            },
+            underline: {
+                button: "underline",
+                disabled: !canFormatSelection,
+                label: t("toolbar.underline"),
+                onPress: handleFormat("underline")
+            }
+        }
+    ), [ canFormatSelection, canLinkSelection, handleEraseFormatting, handleFormat, handleLink, t ]);
+    const mainToolbarList = config.toolbar?.main ?? defaultMarkdownEditorToolbar.main;
+    const formatToolbarList = config.toolbar?.format ?? defaultMarkdownEditorToolbar.format;
+    const mainRowItems = useMemo(
+        () => resolveToolbarItems(mainToolbarList, mainToolbarItems, customButtons, {
+            appendUnlisted: true,
+            otherRows: [ formatToolbarList ]
+        }),
+        [ customButtons, formatToolbarList, mainToolbarList ]
+    );
+    const formatRowItems = useMemo(
+        () => resolveToolbarItems(formatToolbarList, formatToolbarItems, customButtons),
+        [ customButtons, formatToolbarList ]
+    );
+
+    /* Every built-in insert-panel option. `insertPanel.sections` chooses which appear, where. */
+    const insertOptionModels = useMemo<Readonly<Record<MarkdownEditorInsertItem, InsertOptionModel>>>(() => (
+        {
+            audio: { button: "speech", label: t("insertPanel.audio"), onPress: handleInsertAudio },
+            blockEquation: {
+                button: "code",
+                label: t("insertPanel.blockEquation"),
+                onPress: handleUnavailableInsert
+            },
+            bulletedList: {
+                button: "bulletedList",
+                label: t("insertPanel.bulletedList"),
+                onPress: handleBulletedList
+            },
+            callout: { button: "callout", label: t("insertPanel.callout"), onPress: handleCallout },
+            code: { button: "code", label: t("insertPanel.code"), onPress: handleUnavailableInsert },
+            columns2: {
+                button: editorColumnButtons[ 2 ],
+                label: columnLabels[ 2 ],
+                onPress: handleColumns(2)
+            },
+            columns3: {
+                button: editorColumnButtons[ 3 ],
+                label: columnLabels[ 3 ],
+                onPress: handleColumns(3)
+            },
+            columns4: {
+                button: editorColumnButtons[ 4 ],
+                label: columnLabels[ 4 ],
+                onPress: handleColumns(4)
+            },
+            columns5: {
+                button: editorColumnButtons[ 5 ],
+                label: columnLabels[ 5 ],
+                onPress: handleColumns(5)
+            },
+            divider: { button: "divider", label: t("insertPanel.divider"), onPress: handleDivider },
+            file: { button: "filePicker", label: t("insertPanel.file"), onPress: handleInsertFile },
+            heading1: { button: "heading1", label: t("insertPanel.heading1"), onPress: handleHeading1 },
+            heading2: { button: "heading2", label: t("insertPanel.heading2"), onPress: handleHeading2 },
+            heading3: { button: "heading3", label: t("insertPanel.heading3"), onPress: handleHeading3 },
+            heading4: { button: "heading4", label: t("insertPanel.heading4"), onPress: handleHeading4 },
+            image: { button: "picture", label: t("insertPanel.image"), onPress: handleInsertMedia },
+            link: { button: "link", label: t("insertPanel.link"), onPress: handleUnavailableInsert },
+            mermaidDiagram: {
+                button: "mermaid",
+                label: t("insertPanel.mermaidDiagram"),
+                onPress: handleUnavailableInsert
+            },
+            numberedList: {
+                button: "numberedList",
+                label: t("insertPanel.numberedList"),
+                onPress: handleNumberedList
+            },
+            pageReference: {
+                button: "linkToPage",
+                label: t("insertPanel.pageReference"),
+                onPress: onCreatePageReference === undefined
+                    ? handleUnavailableInsert
+                    : handleCreatePageReference
+            },
+            quote: { button: "quote", label: t("insertPanel.quote"), onPress: handleQuote },
+            syncedBlock: {
+                button: "copy",
+                label: t("insertPanel.syncedBlock"),
+                onPress: handleUnavailableInsert
+            },
+            table: { button: "table", label: t("insertPanel.table"), onPress: handleTable },
+            tableOfContents: {
+                button: "tableOfContents",
+                label: t("insertPanel.tableOfContents"),
+                onPress: handleTableOfContents
+            },
+            text: { button: "text", label: t("insertPanel.text"), onPress: handleSplit },
+            toDo: { button: "toDo", label: t("insertPanel.toDo"), onPress: handleToDo },
+            toggleHeading1: {
+                button: "toggleHeading1",
+                label: t("insertPanel.toggleHeading1"),
+                onPress: handleToggleHeading1
+            },
+            toggleHeading2: {
+                button: "toggleHeading2",
+                label: t("insertPanel.toggleHeading2"),
+                onPress: handleToggleHeading2
+            },
+            toggleHeading3: {
+                button: "toggleHeading3",
+                label: t("insertPanel.toggleHeading3"),
+                onPress: handleToggleHeading3
+            },
+            toggleHeading4: {
+                button: "toggleHeading4",
+                label: t("insertPanel.toggleHeading4"),
+                onPress: handleToggleHeading4
+            },
+            toggleList: {
+                button: "toggleList",
+                label: t("insertPanel.toggleList"),
+                onPress: handleUnavailableInsert
+            },
+            video: { button: "video", label: t("insertPanel.video"), onPress: handleInsertMedia }
+        }
+    ), [
+        columnLabels,
+        handleBulletedList,
+        handleCallout,
+        handleColumns,
+        handleCreatePageReference,
+        handleDivider,
+        handleHeading1,
+        handleHeading2,
+        handleHeading3,
+        handleHeading4,
+        handleInsertAudio,
+        handleInsertFile,
+        handleInsertMedia,
+        handleNumberedList,
+        handleQuote,
+        handleSplit,
+        handleTable,
+        handleTableOfContents,
+        handleToDo,
+        handleToggleHeading1,
+        handleToggleHeading2,
+        handleToggleHeading3,
+        handleToggleHeading4,
+        handleUnavailableInsert,
+        onCreatePageReference,
+        t
+    ]);
+    const insertSections = config.insertPanel?.sections ?? defaultMarkdownEditorInsertSections;
+    const turnIntoRows = useMemo(
+        () => rowsOfTwo(config.turnIntoPanel?.items ?? defaultMarkdownEditorTurnIntoItems),
+        [ config.turnIntoPanel?.items ]
+    );
+    const colorChoices = useMemo(
+        () => editorColorChoices(config.colorPanel, t, t("colorPanel.default")),
+        [ config.colorPanel, t ]
+    );
+    const nativeTheme = useMemo(() => nativeEditorTheme(theme), [ theme ]);
+    const nativeLabels = useMemo<NativeEditorLabels>(() => (
+        {
+            audio: t("native.audio"),
+            editableTableCells: t("native.editableTableCells"),
+            emptyToDoPlaceholder: t("native.emptyToDoPlaceholder"),
+            emptyTogglePlaceholder: t("native.emptyTogglePlaceholder"),
+            file: t("native.file"),
+            fitTableWidth: t("native.fitTableWidth"),
+            selectTableColumn: t("native.selectTableColumn"),
+            selectTableRow: t("native.selectTableRow"),
+            tableActions: t("native.tableActions"),
+            tableCell: t("native.tableCell"),
+            tableOfContents: t("native.tableOfContents"),
+            tableSelectionEnd: t("native.tableSelectionEnd"),
+            tableSelectionStart: t("native.tableSelectionStart"),
+            unknownFileSize: t("native.unknownFileSize")
+        }
+    ), [ t ]);
+    const pageReferenceFallbackGlyph = config.pageReferenceFallbackGlyph
+        ?? (icons?.linkToPage !== undefined ? "↗" : undefined);
+
     return (
         <View
             { ...nativeViewProps }
@@ -2108,20 +2407,18 @@ export function MarkdownEditor({
                     style={ styles.pageScroll }>
                     <View style={ pageStyle }>
                         <NativeEditor
-                            { ...nativeViewProps }
                             command={ command }
-                            dark={ dark }
-                            emptyTogglePlaceholder={ suppliedEmptyTogglePlaceholder }
                             imageMaxWidth={ imageMaxWidth }
+                            labels={ nativeLabels }
                             onBlockActionsPress={ handleBlockActionsPress }
                             onContentSize={ handleContentSize }
                             onEdit={ receiveEdit }
                             onPageReferencePress={ handlePageReferencePress }
-                            pageReferenceFallbackIcon={ suppliedPageReferenceFallbackIcon
-                                ?? (components?.linkToPage !== undefined ? "↗" : undefined) }
+                            pageReferenceFallbackIcon={ pageReferenceFallbackGlyph }
                             snapshot={ snapshot }
                             style={ editorStyle }
                             testID={ testID }
+                            theme={ nativeTheme }
                         />
                     </View>
                 </ScrollView>
@@ -2130,7 +2427,7 @@ export function MarkdownEditor({
                 enabled={ !keyboardIsOutsideApp }
                 offset={ stickyViewOffset }
                 style={ stickyViewStyle }>
-                <View style={ styles.toolbar }>
+                <View style={ toolbarStyle }>
                     <View style={ styles.scrollArea }>
                         <ScrollView
                             horizontal
@@ -2139,206 +2436,16 @@ export function MarkdownEditor({
                             {
                                 row === "format" ? <>
                                     <ActionButton button="back"
-                                        color={ iconColor }
-                                        components={ components }
                                         label={ t("toolbar.back") }
-                                        onPress={ handleMode("main") } />
-                                    <ActionButton button="bold"
-                                        color={ iconColor }
-                                        components={ components }
-                                        disabled={ !canFormatSelection }
-                                        label={ t("toolbar.bold") }
-                                        onPress={ handleFormat("bold") } />
-                                    <ActionButton button="italic"
-                                        color={ iconColor }
-                                        components={ components }
-                                        disabled={ !canFormatSelection }
-                                        label={ t("toolbar.italic") }
-                                        onPress={ handleFormat("italic") } />
-                                    <ActionButton button="strikethrough"
-                                        color={ iconColor }
-                                        components={ components }
-                                        disabled={ !canFormatSelection }
-                                        label={ t("toolbar.strikethrough") }
-                                        onPress={ handleFormat("strikethrough") } />
-                                    <ActionButton button="underline"
-                                        color={ iconColor }
-                                        components={ components }
-                                        disabled={ !canFormatSelection }
-                                        label={ t("toolbar.underline") }
-                                        onPress={ handleFormat("underline") } />
-                                    <ActionButton button="code"
-                                        color={ iconColor }
-                                        components={ components }
-                                        disabled={ !canFormatSelection }
-                                        label={ t("toolbar.code") }
-                                        onPress={ handleFormat("code") } />
-                                    <ActionButton button="link"
-                                        color={ iconColor }
-                                        components={ components }
-                                        disabled={ !canLinkSelection }
-                                        label={ t("toolbar.link") }
-                                        onPress={ handleLink } />
-                                    <ActionButton button="eraseFormatting"
-                                        color={ iconColor }
-                                        components={ components }
-                                        disabled={ !canFormatSelection }
-                                        label={ t("toolbar.eraseFormatting") }
-                                        onPress={ handleEraseFormatting } />
-                                </> : mainRowOrder.map((id: string) =>
-                                {
-                                    switch (id)
-                                    {
-                                        case "color": return <ActionButton
-                                            active={ openPanel.kind === "color" }
-                                            activeBackground={ activeBackground }
-                                            button="color"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="color"
-                                            label={ t("toolbar.color") }
-                                            onPress={ handleColor } />;
-                                        case "insert": return <ActionButton
-                                            active={ openPanel.kind === "insert" }
-                                            activeBackground={ activeBackground }
-                                            button="insert"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="insert"
-                                            label={ t("toolbar.insert") }
-                                            onPress={ handleInsert } />;
-                                        case "format": return <ActionButton button="format"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="format"
-                                            label={ t("toolbar.format") }
-                                            onPress={ handleMode("format") } />;
-                                        case "speech": return <ActionButton button="speech"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="speech"
-                                            label={ t("toolbar.speech") }
-                                            onPress={ handleInsertAudio } />;
-                                        case "filePicker": return <ActionButton button="gallery"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="filePicker"
-                                            label={ t("toolbar.filePicker") }
-                                            onPress={ handleInsertMedia } />;
-                                        case "turnInto": return <ActionButton
-                                            active={ openPanel.kind === "turnInto" }
-                                            activeBackground={ activeBackground }
-                                            button="turnInto"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="turnInto"
-                                            label={ t("toolbar.turnInto") }
-                                            onPress={ handleTurnIntoPanel } />;
-                                        case "undo": return <ActionButton button="undo"
-                                            color={ iconColor }
-                                            components={ components }
-                                            disabled={ !canUndo }
-                                            key="undo"
-                                            label={ t("toolbar.undo") }
-                                            onPress={ handleUndo } />;
-                                        /* Only occupies a slot once an undo has made a redo available. */
-                                        case "redo": return canRedo
-                                            ? <ActionButton button="redo"
-                                                color={ iconColor }
-                                                components={ components }
-                                                key="redo"
-                                                label={ t("toolbar.redo") }
-                                                onPress={ handleRedo } />
-                                            : null;
-                                        case "remove": return <ActionButton button="remove"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="remove"
-                                            label={ t("toolbar.remove") }
-                                            onPress={ handleRemove } />;
-                                        case "indent": return <ActionButton button="indent"
-                                            color={ iconColor }
-                                            components={ components }
-                                            disabled={ !canIndent }
-                                            key="indent"
-                                            label={ t("toolbar.indent") }
-                                            onPress={ handleIndent } />;
-                                        case "outdent": return <ActionButton button="outdent"
-                                            color={ iconColor }
-                                            components={ components }
-                                            disabled={ !canOutdent }
-                                            key="outdent"
-                                            label={ t("toolbar.outdent") }
-                                            onPress={ handleOutdent } />;
-                                        /* Only occupies a slot once the selection identifies
-                                           block(s) that aren't already at the top of the document. */
-                                        case "moveUp": return canMoveUp
-                                            ? <ActionButton button="moveUp"
-                                                color={ iconColor }
-                                                components={ components }
-                                                key="moveUp"
-                                                label={ t("toolbar.moveUp") }
-                                                onPress={ handleMoveUp } />
-                                            : null;
-                                        /* Only occupies a slot once the selection identifies
-                                           block(s) that aren't already at the bottom of the document. */
-                                        case "moveDown": return canMoveDown
-                                            ? <ActionButton button="moveDown"
-                                                color={ iconColor }
-                                                components={ components }
-                                                key="moveDown"
-                                                label={ t("toolbar.moveDown") }
-                                                onPress={ handleMoveDown } />
-                                            : null;
-                                        case "copy": return <ActionButton button="copy"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="copy"
-                                            label={ t("toolbar.copy") }
-                                            onPress={ handleCopy } />;
-                                        case "cut": return <ActionButton button="cut"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="cut"
-                                            label={ t("toolbar.cut") }
-                                            onPress={ handleCut } />;
-                                        case "paste": return <ActionButton button="paste"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="paste"
-                                            label={ t("toolbar.paste") }
-                                            onPress={ handlePaste } />;
-                                        case "edit": return <ActionButton button="edit"
-                                            color={ iconColor }
-                                            components={ components }
-                                            key="edit"
-                                            label={ t("toolbar.edit") }
-                                            onPress={ handleEditPageReference } />;
-                                        default:
-                                        {
-                                            const custom = customButtonsById.get(id);
-                                            if (custom === undefined)
-                                            {
-                                                return null;
-                                            }
-
-                                            const isActive = custom.panel !== undefined
-                                                && openPanel.kind === "custom"
-                                                && openPanel.id === custom.id;
-
-                                            return <ActionButton
-                                                active={ custom.panel === undefined ? undefined : isActive }
-                                                activeBackground={ activeBackground }
-                                                color={ iconColor }
-                                                icon={ custom.icon }
-                                                key={ custom.id }
-                                                label={ custom.label }
-                                                onPress={ custom.panel === undefined
-                                                    ? custom.onPress
-                                                    : handleCustomPanelOpen(custom.id) } />;
-                                        }
-                                    }
-                                })
+                                        onPress={ handleMainRow } />
+                                    <ToolbarRowItems items={ formatRowItems }
+                                        models={ formatToolbarModels }
+                                        onOpenPanel={ handleCustomPanelOpen }
+                                        openPanel={ openPanel } />
+                                </> : <ToolbarRowItems items={ mainRowItems }
+                                    models={ mainToolbarModels }
+                                    onOpenPanel={ handleCustomPanelOpen }
+                                    openPanel={ openPanel } />
                             }
                         </ScrollView>
                         <View
@@ -2360,28 +2467,20 @@ export function MarkdownEditor({
                         {
                             panelOpen
                                 ? <ActionButton button="close"
-                                    color={ iconColor }
-                                    components={ components }
                                     label={ t("toolbar.close") }
                                     onPress={ closePanel } />
                                 : <ActionButton button="hideKeyboard"
-                                    color={ iconColor }
-                                    components={ components }
                                     label={ t("toolbar.hideKeyboard") }
                                     onPress={ handleDismiss } />
                         }
                         {
                             selectedCallout
                                 ? <ActionButton
-                                button="more"
-                                color={ iconColor }
-                                components={ components }
-                                label={ t("actionsSheet.title") }
-                                onPress={ handleCalloutActions } />
+                                    button="more"
+                                    label={ t("actionsSheet.title") }
+                                    onPress={ handleCalloutActions } />
                                 : tableCellActions && <ActionButton
                                     button="more"
-                                    color={ iconColor }
-                                    components={ components }
                                     label={ t("actionsSheet.title") }
                                     onPress={ handleTableCellActions } />
                         }
@@ -2395,264 +2494,15 @@ export function MarkdownEditor({
                             keyboardShouldPersistTaps="always"
                             showsVerticalScrollIndicator={ false }
                             style={ styles.panelScroll }>
-                            <Text accessibilityRole="header"
-                                style={ panelTitleStyle }>{ t("insertPanel.title") }</Text>
-                            <View style={ styles.blockGrid }>
-                                <BlockOption background={ cardBackground }
-                                    button="text"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.text") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleSplit } />
-                                <BlockOption background={ cardBackground }
-                                    button="heading1"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.heading1") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleHeading1 } />
-                                <BlockOption background={ cardBackground }
-                                    button="heading2"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.heading2") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleHeading2 } />
-                                <BlockOption background={ cardBackground }
-                                    button="heading3"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.heading3") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleHeading3 } />
-                                <BlockOption background={ cardBackground }
-                                    button="heading4"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.heading4") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleHeading4 } />
-                                <BlockOption background={ cardBackground }
-                                    button="bulletedList"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.bulletedList") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleBulletedList } />
-                                <BlockOption background={ cardBackground }
-                                    button="numberedList"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.numberedList") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleNumberedList } />
-                                <BlockOption background={ cardBackground }
-                                    button="toDo"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.toDo") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleToDo } />
-                                <BlockOption background={ cardBackground }
-                                    button="toggleList"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.toggleList") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleUnavailableInsert } />
-                                <BlockOption background={ cardBackground }
-                                    button="callout"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.callout") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleCallout } />
-                                <BlockOption background={ cardBackground }
-                                    button="quote"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.quote") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleQuote } />
-                                <BlockOption background={ cardBackground }
-                                    button="table"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.table") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleTable } />
-                                <BlockOption background={ cardBackground }
-                                    button="divider"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.divider") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleDivider } />
-                                <BlockOption background={ cardBackground }
-                                    button="linkToPage"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.pageReference") }
-                                    labelColor={ iconColor }
-                                    onPress={ onCreatePageReference === undefined
-                                        ? handleUnavailableInsert
-                                        : handleCreatePageReference } />
-                                { ([ 2, 3, 4, 5 ] as const).map((columnCount: EditorColumnCount) =>
-                                    <BlockOption background={ cardBackground }
-                                        button={ editorColumnButtons[ columnCount ] }
-                                        color={ iconColor }
-                                        components={ components }
-                                        grid
-                                        key={ columnCount }
-                                        label={ columnLabels[ columnCount ] }
-                                        labelColor={ iconColor }
-                                        onPress={ handleColumns(columnCount) } />
-                                ) }
-                            </View>
-                            <Text accessibilityRole="header"
-                                style={ panelTitleStyle }>{ t("insertPanel.mediaTitle") }</Text>
-                            <View style={ styles.blockGrid }>
-                                <BlockOption background={ cardBackground }
-                                    button="picture"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.image") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleInsertMedia } />
-                                <BlockOption background={ cardBackground }
-                                    button="video"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.video") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleInsertMedia } />
-                                <BlockOption background={ cardBackground }
-                                    button="speech"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.audio") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleInsertAudio } />
-                                <BlockOption background={ cardBackground }
-                                    button="code"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.code") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleUnavailableInsert } />
-                                <BlockOption background={ cardBackground }
-                                    button="filePicker"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.file") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleInsertFile } />
-                                <BlockOption background={ cardBackground }
-                                    button="link"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.link") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleUnavailableInsert } />
-                            </View>
-                            <Text accessibilityRole="header"
-                                style={ panelTitleStyle }>{ t("insertPanel.advancedTitle") }</Text>
-                            <View style={ styles.blockGrid }>
-                                <BlockOption background={ cardBackground }
-                                    button="tableOfContents"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.tableOfContents") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleTableOfContents } />
-                                <BlockOption background={ cardBackground }
-                                    button="code"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.blockEquation") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleUnavailableInsert } />
-                                <BlockOption background={ cardBackground }
-                                    button="copy"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.syncedBlock") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleUnavailableInsert } />
-                                <BlockOption background={ cardBackground }
-                                    button="toggleHeading1"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.toggleHeading1") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleToggleHeading1 } />
-                                <BlockOption background={ cardBackground }
-                                    button="toggleHeading2"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.toggleHeading2") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleToggleHeading2 } />
-                                <BlockOption background={ cardBackground }
-                                    button="toggleHeading3"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.toggleHeading3") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleToggleHeading3 } />
-                                <BlockOption background={ cardBackground }
-                                    button="toggleHeading4"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.toggleHeading4") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleToggleHeading4 } />
-                                <BlockOption background={ cardBackground }
-                                    button="mermaid"
-                                    color={ iconColor }
-                                    components={ components }
-                                    grid
-                                    label={ t("insertPanel.mermaidDiagram") }
-                                    labelColor={ iconColor }
-                                    onPress={ handleUnavailableInsert } />
-                            </View>
+                            {
+                                insertSections.map((section: MarkdownEditorInsertSection) =>
+                                    <InsertPanelSection close={ closePanel }
+                                        key={ section.id }
+                                        models={ insertOptionModels }
+                                        section={ section }
+                                        titleStyle={ panelTitleStyle } />)
+                            }
                         </ScrollView>
-                        {/* <BlockOption background={ cardBackground }
-                            button="returnToKeyboard"
-                            color={ iconColor }
-                            components={ components }
-                            fullWidth
-                            label={ t("insertPanel.returnToKeyboard") }
-                            labelColor={ iconColor }
-                            onPress={ closePanel } /> */}
                     </Animated.View>
                 }
                 {
@@ -2661,51 +2511,30 @@ export function MarkdownEditor({
                         style={ panelStyle }>
                         <Text accessibilityRole="header"
                             style={ panelTitleStyle }>{ t("turnIntoPanel.title") }</Text>
-                        <View style={ styles.blockRow }>
-                            <BlockOption background={ cardBackground }
-                                button="text"
-                                color={ iconColor }
-                                components={ components }
-                                disabled={ !allowedTurnIntoTypes.has("text") }
-                                label={ t("insertPanel.text") }
-                                labelColor={ iconColor }
-                                onPress={ handleTurnInto("text") } />
-                            <BlockOption background={ cardBackground }
-                                button="heading1"
-                                color={ iconColor }
-                                components={ components }
-                                disabled={ !allowedTurnIntoTypes.has("heading_1") }
-                                label={ t("insertPanel.heading1") }
-                                labelColor={ iconColor }
-                                onPress={ handleTurnInto("heading_1") } />
-                        </View>
-                        <View style={ styles.blockRow }>
-                            <BlockOption background={ cardBackground }
-                                button="heading2"
-                                color={ iconColor }
-                                components={ components }
-                                disabled={ !allowedTurnIntoTypes.has("heading_2") }
-                                label={ t("insertPanel.heading2") }
-                                labelColor={ iconColor }
-                                onPress={ handleTurnInto("heading_2") } />
-                            <BlockOption background={ cardBackground }
-                                button="heading3"
-                                color={ iconColor }
-                                components={ components }
-                                disabled={ !allowedTurnIntoTypes.has("heading_3") }
-                                label={ t("insertPanel.heading3") }
-                                labelColor={ iconColor }
-                                onPress={ handleTurnInto("heading_3") } />
-                        </View>
-                        <BlockOption background={ cardBackground }
-                            button="heading4"
-                            color={ iconColor }
-                            components={ components }
-                            disabled={ !allowedTurnIntoTypes.has("heading_4") }
-                            fullWidth
-                            label={ t("insertPanel.heading4") }
-                            labelColor={ iconColor }
-                            onPress={ handleTurnInto("heading_4") } />
+                        {
+                            turnIntoRows.map((
+                                pair: TurnIntoRow
+                            ) => pair[ 1 ] === undefined
+                                ? <BlockOption button={ turnIntoOptions[ pair[ 0 ] ].button }
+                                    disabled={ !allowedTurnIntoTypes.has(pair[ 0 ]) }
+                                    key={ pair[ 0 ] }
+                                    label={ t(turnIntoOptions[ pair[ 0 ] ].message) }
+                                    layout="full"
+                                    onPress={ handleTurnInto(pair[ 0 ]) } />
+                                : <View key={ pair[ 0 ] }
+                                    style={ styles.blockRow }>
+                                    {
+                                        pair.map((type: MarkdownEditorTurnIntoItem | undefined) =>
+                                            type !== undefined
+                                            && <BlockOption button={ turnIntoOptions[ type ].button }
+                                                disabled={ !allowedTurnIntoTypes.has(type) }
+                                                key={ type }
+                                                label={ t(turnIntoOptions[ type ].message) }
+                                                layout="half"
+                                                onPress={ handleTurnInto(type) } />)
+                                    }
+                                </View>)
+                        }
                     </Animated.View>
                 }
                 {
@@ -2717,28 +2546,13 @@ export function MarkdownEditor({
                             keyboardShouldPersistTaps="always"
                             showsVerticalScrollIndicator={ false }>
                             <Text style={ colorLabelStyle }>{ t("colorPanel.foreground") }</Text>
-                            <ColorOptionGrid
-                                cardBackground={ cardBackground }
-                                defaultLabel={ t("colorPanel.default") }
-                                foreground={ foreground }
-                                iconColor={ iconColor }
-                                onSelect={ handleSelectColor }
-                                options={ editorColorOptions.filter(
-                                    (option: EditorColorOption) => !option.background
-                                ) } />
+                            <ColorOptionGrid choices={ colorChoices.text }
+                                onSelect={ handleSelectColor } />
                             <Text style={ colorLabelStyle }>
                                 { t("colorPanel.background") }
                             </Text>
-                            <ColorOptionGrid
-                                cardBackground={ cardBackground }
-                                defaultLabel={ t("colorPanel.default") }
-                                foreground={ foreground }
-                                iconColor={ iconColor }
-                                onSelect={ handleSelectColor }
-                                options={ editorColorOptions.filter(
-                                    (option: EditorColorOption) => option.background
-                                        || option.color === undefined
-                                ) } />
+                            <ColorOptionGrid choices={ colorChoices.background }
+                                onSelect={ handleSelectColor } />
                         </ScrollView>
                     </Animated.View>
                 }
@@ -2747,31 +2561,25 @@ export function MarkdownEditor({
                         exiting={ FadeOut.duration(120) }
                         style={ customPanelStyle }>
                         <CustomPanelContent
-                            cardBackground={ cardBackground }
                             close={ closePanel }
-                            foreground={ foreground }
-                            iconColor={ iconColor }
-                            panelBackground={ panelBackground } />
+                            theme={ theme } />
                     </Animated.View>
                 }
             </KeyboardStickyView>
             {
                 mediaSheetVisible && <MediaBottomSheet
-                    components={ components }
                     labels={ mediaLabels }
                     onDismiss={ handleMediaSheetDismiss }
                     onSelected={ handleMediaSelected } />
             }
             {
                 emojiSheetVisible && <EmojiBottomSheet
-                    dark={ dark }
                     labels={ emojiLabels }
                     onDismiss={ handleEmojiSheetDismiss }
                     onSelected={ handleCalloutIcon } />
             }
             {
                 audioSheetVisible && <AudioBottomSheet
-                    components={ components }
                     initialAction={ audioSheetInitialAction }
                     labels={ audioLabels }
                     onDismiss={ handleAudioSheetDismiss }
@@ -2780,39 +2588,93 @@ export function MarkdownEditor({
             }
             {
                 linkSheetVisible && linkRequest !== undefined && <LinkBottomSheet
-                    dark={ dark }
                     initialLabel={ linkRequest.label }
                     initialUrl={ linkRequest.url }
                     labels={ linkLabels }
-                    onDismiss={ () => handleLinkResult(undefined) }
+                    onDismiss={ handleLinkDismiss }
                     onSubmit={ handleLinkResult } />
             }
             {
                 blockActionsRequest !== undefined && blockActionsName !== undefined
                     && <ActionsBottomSheet
                         blockName={ blockActionsName }
-                        components={ components }
-                        dark={ dark }
                         labels={ actionsLabels }
                         onAction={ handleBlockAction }
-                        onTableAction={ handleTableAction }
-                        onTableColor={ handleTableColor }
                         onColor={ handleCalloutColor }
                         onDismiss={ handleBlockActionsDismiss }
                         onEditIcon={ handleEditCalloutIcon }
                         onReplaceAudio={ handleReplaceAudio }
-                        onReplaceImage={ (url: string) =>
-                            handleReplaceImage(blockActionsRequest.blockId, url) }
-                        tableActionScope={ blockActionsRequest.scope ?? "table" }
-                        tableFitPageWidth={ blockActionsTable?.fitPageWidth ?? false }
+                        onReplaceImage={ handleReplaceBlockImage }
+                        onTableAction={ handleTableAction }
+                        onTableColor={ handleTableColor }
+                        showBlockColorActions={ editorBlockColorTypes.includes(blockActionsRequest.blockType) }
                         showCalloutActions={ blockActionsRequest.blockType === "callout" }
-                        showTableActions={ blockActionsRequest.blockType === "table" }
                         showInsertAbove={ blockActionsRequest.blockType !== "divider" }
                         showReplaceAudio={ blockActionsRequest.blockType === "audio" }
-                        showReplaceImage={ blockActionsRequest.blockType === "image" } />
+                        showReplaceImage={ blockActionsRequest.blockType === "image" }
+                        showTableActions={ blockActionsRequest.blockType === "table" }
+                        tableActionScope={ blockActionsRequest.scope ?? "table" }
+                        tableFitPageWidth={ blockActionsTable?.fitPageWidth ?? false } />
             }
         </View>
     );
+}
+
+/** The editor's props, less the configuration handed to its scoped `MarkdownProvider`. */
+type MarkdownEditorContentProps =
+    Omit<MarkdownEditorProps, keyof MarkdownSharedConfig | keyof MarkdownEditorConfig>;
+
+/**
+ * The ready-to-use editor surface, including the keyboard-adjacent editor controls. Configuration
+ * props override the nearest `MarkdownProvider` for this editor only.
+ *
+ * @since 1.0.0
+ */
+export function MarkdownEditor({
+    colorPanel,
+    colorScheme,
+    customButtons,
+    icons,
+    insertPanel,
+    layout,
+    localization,
+    onOpenUrl,
+    pageReferenceFallbackGlyph,
+    theme,
+    toolbar,
+    turnIntoPanel,
+    ...props
+}: MarkdownEditorProps)
+{
+    const editor = useMemo<MarkdownEditorConfig>(() => (
+        {
+            colorPanel,
+            customButtons,
+            icons,
+            insertPanel,
+            layout,
+            pageReferenceFallbackGlyph,
+            toolbar,
+            turnIntoPanel
+        }
+    ), [
+        colorPanel,
+        customButtons,
+        icons,
+        insertPanel,
+        layout,
+        pageReferenceFallbackGlyph,
+        toolbar,
+        turnIntoPanel
+    ]);
+
+    return <MarkdownProvider colorScheme={ colorScheme }
+        editor={ editor }
+        localization={ localization }
+        onOpenUrl={ onOpenUrl }
+        theme={ theme }>
+        <MarkdownEditorContent { ...props } />
+    </MarkdownProvider>;
 }
 
 const styles = StyleSheet.create({
@@ -2904,10 +2766,6 @@ const styles = StyleSheet.create({
         marginBottom: 6,
         textTransform: "uppercase"
     },
-    colorPanel:
-    {
-        height: ColorPanelHeight
-    },
     colorRow:
     {
         marginBottom: 8
@@ -2927,14 +2785,12 @@ const styles = StyleSheet.create({
         left: 12,
         overflow: "hidden",
         right: 12,
-        shadowColor: "#000000",
         shadowOffset: { height: 2, width: 0 },
         shadowOpacity: 0.16,
         shadowRadius: 6
     },
     footer:
     {
-        borderColor: "#888888",
         borderTopWidth: StyleSheet.hairlineWidth,
         bottom: 0,
         left: 0,
@@ -2957,7 +2813,6 @@ const styles = StyleSheet.create({
     },
     panel:
     {
-        height: BasicBlocksPanelHeight,
         paddingBottom: 12,
         paddingHorizontal: 12,
         paddingTop: 12
@@ -3013,7 +2868,6 @@ const styles = StyleSheet.create({
     {
         alignItems: "center",
         flexDirection: "row",
-        height: ToolbarHeight,
         paddingLeft: 8
     },
     trailingButton:

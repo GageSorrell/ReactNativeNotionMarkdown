@@ -10,7 +10,7 @@
  */
 
 import { Path, Rect, Svg } from "react-native-svg";
-import type { MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
+import type { MarkdownEditorIconProps } from "./customization.ts";
 
 /** Render the duplicate ("copy") icon. */
 export function CopyActionIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)

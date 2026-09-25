@@ -14,6 +14,36 @@ export default [
         files: [ "src/**/*.ts", "src/**/*.tsx" ]
     },
     {
+        /* Every color and the color scheme come from MarkdownProvider's theme (src/provider), never
+           from literals or the device setting in UI code. */
+        files: [ "src/editor/ui/**/*.{ts,tsx}", "src/renderer/ui/**/*.{ts,tsx}" ],
+        rules: {
+            "no-restricted-imports": [
+                "error",
+                {
+                    paths: [
+                        {
+                            importNames: [ "useColorScheme" ],
+                            message: "Resolve the color scheme through MarkdownProvider (useMarkdownColorScheme).",
+                            name: "react-native"
+                        }
+                    ]
+                }
+            ],
+            "no-restricted-syntax": [
+                "error",
+                {
+                    message: "Colors come from the MarkdownTheme (src/provider/theme.ts).",
+                    selector: "Literal[value=/^#[0-9a-fA-F]{3,8}$/]"
+                },
+                {
+                    message: "Colors come from the MarkdownTheme (src/provider/theme.ts).",
+                    selector: "Literal[value=/^rgba?\\(/]"
+                }
+            ]
+        }
+    },
+    {
         files: [ "src/renderer/ui/**/*.{ts,tsx}" ],
         rules: {
             "@stylistic/max-len": "off",

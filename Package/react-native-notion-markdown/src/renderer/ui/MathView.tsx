@@ -1,5 +1,5 @@
 /**
- *
+ * Renders equations to SVG with the provider's theme.
  *
  * @module react-native-notion-markdown/renderer/ui/MathView
  *
@@ -12,8 +12,9 @@
 import { Text, View } from "react-native";
 import { renderToSvg, uniffiInitAsync } from "react-native-ratex";
 import { useEffect, useMemo, useState } from "react";
-import type { MarkdownRendererTheme } from "./types.ts";
+import type { MarkdownTheme } from "../../provider/theme.ts";
 import { SvgXml } from "react-native-svg";
+import { useResolvedRendererConfig } from "../../provider/MarkdownProvider.tsx";
 
 /**
  * Props for rendering a given mathematical expression as SVG.
@@ -25,7 +26,9 @@ export interface MarkdownMathViewProps
 {
     readonly expression: string;
     readonly display?: boolean;
-    readonly theme: MarkdownRendererTheme;
+
+    /** Overrides the nearest `MarkdownProvider`'s theme. */
+    readonly theme?: MarkdownTheme;
 }
 
 /**
@@ -34,8 +37,10 @@ export interface MarkdownMathViewProps
  * @category Functions
  * @since 1.0.0
  */
-export function MarkdownMathView({ expression, display = false, theme }: MarkdownMathViewProps)
+export function MarkdownMathView({ expression, display = false, theme: suppliedTheme }: MarkdownMathViewProps)
 {
+    const { t, theme: resolvedTheme } = useResolvedRendererConfig();
+    const { document: theme } = suppliedTheme ?? resolvedTheme;
     const key = `${ expression }\u0000${ display }\u0000${ theme.fontSize }\u0000${ theme.foreground }`;
     const [ result, setResult ] = useState<{ key: string; svg?: string; error?: boolean }>();
 
@@ -98,7 +103,7 @@ export function MarkdownMathView({ expression, display = false, theme }: Markdow
     {
         return (
             <Text
-                accessibilityLabel={ `Invalid equation: ${ expression }` }
+                accessibilityLabel={ t("renderer.invalidEquation", { expression }) }
                 style={ ErrorStyle }>
                 ${ expression }$
             </Text>
@@ -109,7 +114,7 @@ export function MarkdownMathView({ expression, display = false, theme }: Markdow
     {
         return (
             <Text
-                accessibilityLabel="Loading equation"
+                accessibilityLabel={ t("renderer.loadingEquation") }
                 style={ LoadingStyle }>
                 { expression }
             </Text>
@@ -117,7 +122,7 @@ export function MarkdownMathView({ expression, display = false, theme }: Markdow
     }
     return (
         <View
-            accessibilityLabel={ `Equation: ${ expression }` }
+            accessibilityLabel={ t("renderer.equation", { expression }) }
             style={ RootStyle }>
             <SvgXml
                 height={ display ? theme.fontSize * 3 : theme.fontSize * 1.7 }

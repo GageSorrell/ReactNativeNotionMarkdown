@@ -12,6 +12,7 @@ import android.text.Editable
 import android.text.InputType
 import android.text.Spanned
 import android.text.TextWatcher
+import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
@@ -46,6 +47,30 @@ private val markColors: Map<String, Int> = mapOf(
   "purple" to Color.rgb(144, 101, 176),
   "pink" to Color.rgb(193, 76, 138),
   "red" to Color.rgb(212, 76, 71)
+)
+
+private val markBackgroundColors: Map<String, Int> = mapOf(
+  "gray_bg" to Color.rgb(233, 233, 231),
+  "brown_bg" to Color.rgb(238, 224, 214),
+  "orange_bg" to Color.rgb(249, 225, 204),
+  "yellow_bg" to Color.rgb(249, 237, 197),
+  "green_bg" to Color.rgb(218, 236, 223),
+  "blue_bg" to Color.rgb(217, 234, 250),
+  "purple_bg" to Color.rgb(233, 223, 241),
+  "pink_bg" to Color.rgb(244, 220, 232),
+  "red_bg" to Color.rgb(248, 222, 221)
+)
+
+private val markBackgroundColorsDark: Map<String, Int> = mapOf(
+  "gray_bg" to Color.rgb(54, 54, 54),
+  "brown_bg" to Color.rgb(73, 55, 47),
+  "orange_bg" to Color.rgb(77, 56, 41),
+  "yellow_bg" to Color.rgb(76, 68, 43),
+  "green_bg" to Color.rgb(45, 68, 53),
+  "blue_bg" to Color.rgb(44, 65, 80),
+  "purple_bg" to Color.rgb(64, 52, 73),
+  "pink_bg" to Color.rgb(74, 52, 65),
+  "red_bg" to Color.rgb(77, 51, 50)
 )
 
 /**
@@ -289,6 +314,7 @@ class MarkdownTextFieldView(context: Context, appContext: AppContext) : ExpoView
     editable.getSpans(0, editable.length, StrikethroughSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TypefaceSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, ForegroundColorSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, BackgroundColorSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, InlineCodeSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, MarkdownAtomSpan::class.java).forEach { editable.removeSpan(it) }
   }
@@ -313,6 +339,11 @@ class MarkdownTextFieldView(context: Context, appContext: AppContext) : ExpoView
         }
         "color" -> markColors[mark["color"] as? String]?.let {
           editable.setSpan(ForegroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } ?: (mark["color"] as? String)?.let { name ->
+          val background = if (dark) markBackgroundColorsDark[name] else markBackgroundColors[name]
+          background?.let {
+            editable.setSpan(BackgroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          }
         }
         "atom" -> {
           val atomKind = mark["atomKind"] as? String ?: "mention"
@@ -344,7 +375,16 @@ class MarkdownTextFieldView(context: Context, appContext: AppContext) : ExpoView
     editable.getSpans(0, editable.length, ForegroundColorSpan::class.java).forEach { span ->
       if (span.foregroundColor == INLINE_CODE_FOREGROUND) return@forEach
       val name = markColors.entries.firstOrNull { it.value == span.foregroundColor }?.key
-      result.add(mapOf("kind" to "color", "start" to editable.getSpanStart(span), "end" to editable.getSpanEnd(span), "color" to name))
+      if (name != null) {
+        result.add(mapOf("kind" to "color", "start" to editable.getSpanStart(span), "end" to editable.getSpanEnd(span), "color" to name))
+      }
+    }
+    editable.getSpans(0, editable.length, BackgroundColorSpan::class.java).forEach { span ->
+      val palette = if (dark) markBackgroundColorsDark else markBackgroundColors
+      val name = palette.entries.firstOrNull { it.value == span.backgroundColor }?.key
+      if (name != null) {
+        result.add(mapOf("kind" to "color", "start" to editable.getSpanStart(span), "end" to editable.getSpanEnd(span), "color" to name))
+      }
     }
     editable.getSpans(0, editable.length, MarkdownAtomSpan::class.java).forEach { span ->
       result.add(
@@ -465,6 +505,12 @@ class MarkdownTextFieldView(context: Context, appContext: AppContext) : ExpoView
             }
             "color" -> markColors[mark.optString("color")]?.let {
               editable.setSpan(ForegroundColorSpan(it), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            } ?: run {
+              val name = mark.optString("color")
+              val palette = if (dark) markBackgroundColorsDark else markBackgroundColors
+              palette[name]?.let {
+                editable.setSpan(BackgroundColorSpan(it), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              }
             }
             "atom" -> editable.setSpan(
               MarkdownAtomSpan(mark.optString("atomKind"), mark.optString("label"), jsonToMap(mark.optJSONObject("item")), dark),

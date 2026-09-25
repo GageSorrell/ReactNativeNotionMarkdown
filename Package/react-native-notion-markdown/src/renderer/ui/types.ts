@@ -14,51 +14,8 @@ import type {
     MarkdownDocument,
     MarkdownBlockType
 } from "../../document/types.ts";
-
-/**
- * Colors and typography settings used by the Markdown renderer.
- *
- * @category Interfaces
- * @since 1.0.0
- */
-export interface MarkdownRendererTheme
-{
-    readonly background: string;
-    readonly surface: string;
-    readonly foreground: string;
-    readonly muted: string;
-    readonly border: string;
-    readonly accent: string;
-    readonly codeBackground: string;
-
-    /**
-     * Background color of an inline `code` span, distinct from {@link codeBackground}'s fenced code block.
-     */
-    readonly inlineCodeBackground: string;
-
-    /** Text color of an inline `code` span. */
-    readonly inlineCodeForeground: string;
-    readonly error: string;
-
-    /** Color used for destructive actions and labels (e.g. a "Delete" button). */
-    readonly danger: string;
-    readonly fontSize: number;
-    readonly spacing: number;
-
-    /**
-     * The font family used for all non-monospace text. Defaults to `"Inter"`, which renders
-     * using the platform's system font unless the optional `Inter` peer dependency is installed
-     * and loaded -- see `renderer/ui/inter-font`. Override to use a different font entirely.
-     */
-    readonly fontFamily: string;
-
-    /**
-     * The font family used for page-title-equivalent text (`heading_1`). Defaults to
-     * `"Inter-Black"`, the heaviest Inter weight -- see `renderer/ui/inter-font`. Falls back to
-     * the platform's bold system font when that family isn't loaded.
-     */
-    readonly titleFontFamily: string;
-}
+import type { MarkdownSharedConfig } from "../../provider/MarkdownProvider.tsx";
+import type { MarkdownTheme } from "../../provider/theme.ts";
 
 /**
  * Request data for resolving a page, database, or block reference.
@@ -110,7 +67,7 @@ export interface MarkdownBlockViewProps
 {
     readonly block: MarkdownBlock;
     readonly children: ReactNode;
-    readonly theme: MarkdownRendererTheme;
+    readonly theme: MarkdownTheme;
 }
 
 /**
@@ -149,39 +106,51 @@ export interface MarkdownReferenceIconProps
  */
 export type MarkdownReferenceIconComponent = ComponentType<MarkdownReferenceIconProps>;
 
-export/**
-       * The default hint shown inside an empty toggle child.
-       *
-       * @category Constants
-       * @since 1.0.0
-       */
-const defaultEmptyTogglePlaceholder = "Empty toggle.  Tap to edit.";
-
 /**
- * Options controlling document rendering and reference handling.
+ * Fallback icons the renderer draws when a reference has no fetched icon.
  *
  * @category Interfaces
  * @since 1.0.0
  */
-export interface MarkdownRendererOptions
+export interface MarkdownRendererIcons
 {
-    readonly colorScheme?: "light" | "dark" | "system";
-    readonly theme?: Partial<MarkdownRendererTheme>;
+    /** Icon used when a page reference has no fetched page icon. */
+    readonly pageReference?: MarkdownReferenceIconComponent;
 
-    /**
-     * Hint shown when an expanded toggle has no content.
-     */
-    readonly emptyTogglePlaceholder?: string;
+    /** Icon used when an arbitrary link has no downloadable favicon. */
+    readonly link?: MarkdownReferenceIconComponent;
+}
+
+/**
+ * Every configurable aspect of the renderer. Set app-wide through `MarkdownProvider`'s
+ * `renderer` prop, or per instance as `MarkdownRenderer` props of the same names. A prop's
+ * object-valued field merges key by key over the provider's; any other value replaces it.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
+export interface MarkdownRendererConfig
+{
+    /** Custom components keyed by the block type they render. */
     readonly components?: MarkdownBlockComponents;
     readonly checkboxComponent?: MarkdownCheckboxComponent;
-    readonly pageReferenceFallbackIcon?: MarkdownReferenceIconComponent;
-    /** Icon used when an arbitrary link has no downloadable favicon. */
-    readonly linkFallbackIcon?: MarkdownReferenceIconComponent;
-    readonly onDiagnostics?: (diagnostics: ReadonlyArray<MarkdownDiagnostic>) => void;
-    readonly onOpenUrl?: (url: string) => void;
+    readonly icons?: MarkdownRendererIcons;
     readonly resolveReference?: (request: MarkdownReferenceRequest) => Promise<MarkdownReferenceDisplay | null>;
     readonly resolveSyncedBlock?: (url: string) => Promise<MarkdownDocument | null>;
     readonly resolveMediaUrl?: (request: MarkdownMediaRequest) => Promise<string | null>;
+}
+
+/**
+ * Options controlling document rendering: the shared provider-backed settings (color scheme,
+ * theme, localization, link opening) and the renderer's configuration, each overriding
+ * `MarkdownProvider` for this instance, plus per-document callbacks.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
+export interface MarkdownRendererOptions extends MarkdownSharedConfig, MarkdownRendererConfig
+{
+    readonly onDiagnostics?: (diagnostics: ReadonlyArray<MarkdownDiagnostic>) => void;
     readonly testID?: string;
 }
 

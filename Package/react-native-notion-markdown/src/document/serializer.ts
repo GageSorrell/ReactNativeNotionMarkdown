@@ -15,7 +15,8 @@ import {
     type MarkdownDocument,
     type MarkdownMetadata,
     type MarkdownRichText,
-    type SerializeMarkdownOptions
+    type SerializeMarkdownOptions,
+    isMarkdownColor
 } from "./types.ts";
 import { asRecord, getMarkdownBlockPayload, getMarkdownMetadata } from "../internal.ts";
 
@@ -147,7 +148,7 @@ function richTextItem(item: MarkdownRichText[number]): string
         spanAttributes.push(`underline=${quoteAttribute("true")}`);
     }
 
-    if (typeof annotations.color === "string" && annotations.color !== "default")
+    if (isMarkdownColor(annotations.color))
     {
         spanAttributes.push(`color=${quoteAttribute(annotations.color)}`);
     }
@@ -196,7 +197,7 @@ function codeText(items: unknown): string
 function blockAttributes(meta: MarkdownMetadata, includeToggle = false): string
 {
     const attrs: Array<string> = [ ];
-    if (meta.color !== undefined)
+    if (isMarkdownColor(meta.color))
     {
         attrs.push(`color=${ quoteAttribute(meta.color) }`);
     }
@@ -220,7 +221,7 @@ function blockAttributes(meta: MarkdownMetadata, includeToggle = false): string
 function tagAttributes(meta: MarkdownMetadata): string
 {
     const attrs: Array<string> = [ ];
-    if (meta.color !== undefined) {
+    if (isMarkdownColor(meta.color)) {
         attrs.push(`color=${quoteAttribute(meta.color)}`);
     }
 
@@ -343,7 +344,7 @@ function serializeBlock(
                 `${"\t".repeat(indent + 1)}<colgroup>`,
                 ...columnColors.map((color: MarkdownColor | undefined) =>
                     "\t".repeat(indent + 2) +
-                    `<col${color === undefined ? "" : ` color=${ quoteAttribute(color) }` }>`),
+                    `<col${isMarkdownColor(color) ? ` color=${ quoteAttribute(color) }` : "" }>`),
                 `${"\t".repeat(indent + 1)}</colgroup>`
             ];
 
@@ -418,7 +419,7 @@ function serializeTableRow(block: MarkdownBlock, indent: number): Array<string>
     const rowMeta = getMarkdownMetadata(block);
     const cells = Array.isArray(data.cells) ? data.cells : [ ];
     const cellColors = rowMeta.table?.cellColors;
-    const rowColor = rowMeta.table?.rowColor === undefined
+    const rowColor = !isMarkdownColor(rowMeta.table?.rowColor)
         ? ""
         : ` color=${ quoteAttribute(rowMeta.table.rowColor) }`;
 
@@ -435,7 +436,7 @@ function serializeTableRow(block: MarkdownBlock, indent: number): Array<string>
                 : "";
 
             return (
-                `<td${ cellColor === undefined ? "" : ` color=${ quoteAttribute(cellColor) }` }>` +
+                `<td${ isMarkdownColor(cellColor) ? ` color=${ quoteAttribute(cellColor) }` : "" }>` +
                 `${cellValue}</td>`
             );
         }).join("") }</tr>`

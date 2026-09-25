@@ -15,6 +15,7 @@ import { Image, Text, View } from "react-native";
 import type { MarkdownReferenceIconComponent } from "./types.ts";
 import { createElement, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
+import { useResolvedRendererConfig } from "../../provider/MarkdownProvider.tsx";
 
 interface FaviconIconProps
 {
@@ -131,6 +132,7 @@ export function FaviconIcon({
     url
 }: FaviconIconProps)
 {
+    const { t } = useResolvedRendererConfig();
     const [ favicon, setFavicon ] = useState<{ readonly url: string; readonly value?: string }>();
     const [ failedUrl, setFailedUrl ] = useState<string>();
     const LucideDocument = getDocumentIcon();
@@ -155,7 +157,7 @@ export function FaviconIcon({
     if (favicon?.url === url && favicon.value !== undefined && failedUrl !== url)
     {
         return <Image
-            accessibilityLabel="Web page favicon"
+            accessibilityLabel={ t("renderer.webPageFavicon") }
             onError={ () => setFailedUrl(url) }
             source={ { uri: favicon.value } }
             style={ imageStyle }

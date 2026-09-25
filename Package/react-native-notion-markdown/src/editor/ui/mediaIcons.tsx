@@ -10,7 +10,7 @@
  */
 
 import { Circle, Path, Polygon, Rect, Svg } from "react-native-svg";
-import type { MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
+import type { MarkdownEditorIconProps } from "./customization.ts";
 
 /**
  * Render the gallery icon.

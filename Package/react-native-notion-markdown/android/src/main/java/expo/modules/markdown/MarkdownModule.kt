@@ -17,8 +17,8 @@ class MarkdownModule : Module() {
       Events("onEdit", "onPageReferencePress", "onBlockActionsPress", "onContentSize")
       Prop("snapshot") { view: MarkdownEditorView, value: Map<String, Any?> -> view.setSnapshot(value) }
       Prop("command") { view: MarkdownEditorView, value: Map<String, Any?>? -> value?.let { view.command(it) } }
-      Prop("dark") { view: MarkdownEditorView, value: Boolean -> view.setDark(value) }
-      Prop("emptyTogglePlaceholder") { view: MarkdownEditorView, value: String? -> view.setEmptyTogglePlaceholder(value) }
+      Prop("theme") { view: MarkdownEditorView, value: Map<String, Any?>? -> view.setTheme(value) }
+      Prop("labels") { view: MarkdownEditorView, value: Map<String, Any?>? -> view.setLabels(value) }
       Prop("pageReferenceFallbackIcon") { view: MarkdownEditorView, value: String? -> view.setPageReferenceFallbackIcon(value) }
       Prop("imageMaxWidth") { view: MarkdownEditorView, value: Int? -> view.setImageMaxWidth(value) }
     }

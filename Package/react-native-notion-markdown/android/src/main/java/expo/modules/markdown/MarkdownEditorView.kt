@@ -72,74 +72,33 @@ private const val AUDIO_WAVEFORM_BAR_COUNT = 32
 /** Relative text size applied to each heading level's span, matching Markdown's own descending scale. */
 private val headingScale = mapOf(1 to 1.875f, 2 to 1.5f, 3 to 1.25f, 4 to 1.125f)
 
-/** Solid text colors -- the same nine named colors and RGB values as `MarkdownTextFieldView`'s
- *  inline `markColors`, kept in sync manually since this is a block-level, not inline, span. */
-private val editorTextColors: Map<String, Int> = mapOf(
-  "gray" to Color.rgb(120, 119, 116),
-  "brown" to Color.rgb(159, 107, 83),
-  "orange" to Color.rgb(217, 115, 13),
-  "yellow" to Color.rgb(203, 145, 47),
-  "green" to Color.rgb(68, 131, 97),
-  "blue" to Color.rgb(51, 126, 169),
-  "purple" to Color.rgb(144, 101, 176),
-  "pink" to Color.rgb(193, 76, 138),
-  "red" to Color.rgb(212, 76, 71)
-)
-
-/** The `_bg` background variants -- the same nine hues as `editorTextColors`, applied as a
- *  translucent tint so they read against both light and dark editor backgrounds. */
-private val editorBackgroundColors: Map<String, Int> = mapOf(
-  "gray_bg" to Color.argb(56, 120, 119, 116),
-  "brown_bg" to Color.argb(56, 159, 107, 83),
-  "orange_bg" to Color.argb(56, 217, 115, 13),
-  "yellow_bg" to Color.argb(56, 203, 145, 47),
-  "green_bg" to Color.argb(56, 68, 131, 97),
-  "blue_bg" to Color.argb(56, 51, 126, 169),
-  "purple_bg" to Color.argb(56, 144, 101, 176),
-  "pink_bg" to Color.argb(56, 193, 76, 138),
-  "red_bg" to Color.argb(56, 212, 76, 71)
-)
-
 private val editorValidBlockTypes = listOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
-  "numbered_list_item", "to_do", "callout", "quote", "table", "divider", "table_of_contents", "column_list", "image", "audio", "video", "file",
+  "numbered_list_item", "to_do", "toggle", "code", "callout", "quote", "equation", "synced_block", "table", "divider", "table_of_contents", "column_list", "image", "audio", "video", "file",
   "link_to_page"
 )
-private val editorValidColors = editorTextColors.keys + editorBackgroundColors.keys
 
 /** Block types with mergeable text content -- eligible on either side of an atomic-block-skipping
  *  backspace merge (see [MarkdownEditorView.handleAtomicBlockBackspace]). */
 private val editorMergeableBlockTypes = setOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4",
-  "bulleted_list_item", "numbered_list_item", "to_do", "callout", "quote"
+  "bulleted_list_item", "numbered_list_item", "to_do", "toggle", "code", "callout", "quote", "equation", "synced_block"
+)
+
+private val editorInlineColorBlockTypes = setOf(
+  "text", "heading_1", "heading_2", "heading_3", "heading_4",
+  "bulleted_list_item", "numbered_list_item", "to_do", "toggle", "callout", "quote"
 )
 
 /** Block types with no navigable text of their own -- see [MarkdownEditorView.handleAtomicBlockBackspace]. */
 private val editorAtomicBlockTypes = setOf("divider", "table", "image", "audio", "video", "file")
 
-/** A checked to-do's checkbox fill and its unchecked border, matching the renderer's theme accent. */
-private fun editorAccentColor(dark: Boolean) = if (dark) Color.rgb(0x81, 0xB8, 0xE7) else Color.rgb(0x2F, 0x6E, 0xAB)
-
-/** A checked to-do's text color, matching the renderer theme's muted foreground. */
-private fun editorMutedColor(dark: Boolean) = if (dark) Color.rgb(0xA0, 0xA0, 0xA0) else Color.rgb(0x73, 0x73, 0x73)
-
-/** An unchecked to-do checkbox's border color, matching the renderer theme's border. */
-private fun editorCheckboxBorderColor(dark: Boolean) = if (dark) Color.rgb(0x41, 0x41, 0x41) else Color.rgb(0xDE, 0xDE, 0xDB)
-
-/** A callout's default box tint when no `_bg` color is chosen, matching the renderer theme's surface. */
-private fun editorCalloutDefaultBackground(dark: Boolean) = if (dark) Color.rgb(0x25, 0x25, 0x25) else Color.rgb(0xF7, 0xF7, 0xF5)
-
-/** A quote's default left-border bar color when no color is chosen, matching the renderer's blockquote border. */
-private fun editorQuoteBarColor(dark: Boolean) = if (dark) Color.rgb(0x41, 0x41, 0x41) else Color.rgb(0xDE, 0xDE, 0xDB)
 private const val DIVIDER_TEXT = "\u200B"
 private const val TABLE_OF_CONTENTS_TEXT = "\u200B"
 private const val COLUMNS_TEXT = "\u200B"
 private const val EMPTY_BLOCK_TEXT = "\u200B"
 private const val TABLE_TEXT = "\uFFFC"
 private const val MEDIA_TEXT = "\uFFFC"
-private const val TABLE_OF_CONTENTS_LABEL = "Table of contents"
-private const val DEFAULT_EMPTY_TOGGLE_PLACEHOLDER = "Empty toggle.  Tap to add text or create a new block."
-private const val DEFAULT_EMPTY_TODO_PLACEHOLDER = "To do"
 private const val DEFAULT_CALLOUT_ICON = "\uD83D\uDCAC"
 private const val TOGGLE_BUTTON_WIDTH_SCALE = 1.5f
 private const val TODO_CHECKBOX_WIDTH_SCALE = 1.5f
@@ -199,6 +158,8 @@ private data class EditorBlock(
   var mimeType: String? = null,
   var fileName: String? = null,
   var fileSize: Double? = null,
+  var language: String? = null,
+  var expression: String? = null,
   var waveform: List<Float>? = null,
   var table: EditorTable? = null
 ) {
@@ -209,6 +170,9 @@ private data class EditorBlock(
     if (toggle) base["toggle"] = true
     if (toggle && collapsed) base["collapsed"] = true
     if (type == "to_do") base["checked"] = checked
+    if (type == "code") base["language"] = language ?: "plain text"
+    if (type == "equation") base["expression"] = text
+    if (type == "synced_block") base["synced_from"] = null
     if (type == "column_list") base["columnCount"] = (columnCount ?: 2).coerceIn(2, 5)
     if (type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file") {
       url?.let { base["url"] = it }
@@ -232,7 +196,8 @@ private data class EditorBlock(
           "kind" to it.kind,
           "start" to it.start,
           "end" to it.end,
-          "url" to it.url
+          "url" to it.url,
+          "color" to it.color
         ).filterValues { value -> value != null }
       }
     }
@@ -246,9 +211,9 @@ private data class EditorTableCell(
   var color: String? = null
 ) {
   fun payload(): Map<String, Any?> = mapOf(
-    "text" to text,
+      "text" to text,
     "marks" to marks.map { mark ->
-      mapOf("kind" to mark.kind, "start" to mark.start, "end" to mark.end, "url" to mark.url)
+      mapOf("kind" to mark.kind, "start" to mark.start, "end" to mark.end, "url" to mark.url, "color" to mark.color)
         .filterValues { value -> value != null }
     },
     "color" to color
@@ -299,10 +264,13 @@ private fun parseEditorTable(value: Any?): EditorTable? {
         val start = (mark["start"] as? Number)?.toInt() ?: return@forEach
         val end = (mark["end"] as? Number)?.toInt() ?: return@forEach
         val url = (mark["url"] as? String)?.takeIf { kind == "link" }
+        val color = (mark["color"] as? String)?.takeIf { kind == "color" && it in editorValidColors }
         if (start >= 0 && end > start && end <= text.length &&
           (kind in listOf("bold", "italic", "strikethrough", "underline", "code") ||
-            (kind == "link" && !url.isNullOrBlank()))) marks.add(EditorMark(kind, start, end, url))
+            (kind == "color" && color != null) ||
+            (kind == "link" && !url.isNullOrBlank()))) marks.add(EditorMark(kind, start, end, url, color))
       }
+      if (hasOverlappingColorMarks(marks)) return@mapNotNull null
       EditorTableCell(text, marks, (cell["color"] as? String)?.takeIf { it in editorValidColors })
     }
     if (cells.size != rawCells.size) return@mapNotNull null
@@ -326,8 +294,14 @@ private data class EditorMark(
   val kind: String,
   var start: Int,
   var end: Int,
-  val url: String? = null
+  val url: String? = null,
+  val color: String? = null
 )
+
+private fun hasOverlappingColorMarks(marks: List<EditorMark>): Boolean {
+  val colors = marks.filter { it.kind == "color" }.sortedBy { it.start }
+  return colors.zipWithNext().any { (first, second) -> second.start < first.end }
+}
 
 private data class TableCellAddress(
   val blockIndex: Int,
@@ -352,7 +326,11 @@ private data class EditorPasteBlock(
 )
 
 /** Marker span used to preserve inline marks while Android adjusts ranges during text edits. */
-private class EditorInlineMarkSpan(val kind: String, val url: String? = null) : android.text.style.CharacterStyle() {
+private class EditorInlineMarkSpan(
+  val kind: String,
+  val url: String? = null,
+  val color: String? = null
+) : android.text.style.CharacterStyle() {
   override fun updateDrawState(textPaint: android.text.TextPaint) = Unit
 }
 
@@ -451,6 +429,7 @@ private class DividerSpan(
   ) {
     val previousStyle = paint.style
     val previousStrokeWidth = paint.strokeWidth
+    val previousTextSize = paint.textSize
     val previousAlpha = paint.alpha
     paint.style = Paint.Style.STROKE
     paint.alpha = (previousAlpha * 0.55f).toInt()
@@ -465,6 +444,7 @@ private class DividerSpan(
     )
     paint.style = previousStyle
     paint.strokeWidth = previousStrokeWidth
+    paint.textSize = previousTextSize
     paint.alpha = previousAlpha
   }
 }
@@ -473,7 +453,8 @@ private class DividerSpan(
 private class EditorImageSpan(
   private val input: EditText,
   source: String,
-  private val maxWidth: Int
+  private val maxWidth: Int,
+  private val theme: EditorTheme
 ) : ReplacementSpan() {
   private val bitmap = runCatching {
     val uri = Uri.parse(source)
@@ -534,7 +515,7 @@ private class EditorImageSpan(
       paint.isFilterBitmap = previousFilter
     } ?: run {
       val previousColor = paint.color
-      paint.color = Color.LTGRAY
+      paint.color = theme.mediaPlaceholder
       canvas.drawRect(rect, paint)
       paint.color = previousColor
     }
@@ -545,7 +526,8 @@ private class EditorImageSpan(
 private class EditorVideoSpan(
   private val input: EditText,
   source: String,
-  private val maxWidth: Int
+  private val maxWidth: Int,
+  private val theme: EditorTheme
 ) : ReplacementSpan() {
   private val frame: Bitmap? = runCatching {
     val retriever = MediaMetadataRetriever()
@@ -611,7 +593,7 @@ private class EditorVideoSpan(
       paint.isFilterBitmap = previousFilter
     } ?: run {
       val previousColor = paint.color
-      paint.color = Color.DKGRAY
+      paint.color = theme.mediaPlaceholderError
       canvas.drawRect(rect, paint)
       paint.color = previousColor
     }
@@ -620,7 +602,7 @@ private class EditorVideoSpan(
     val previousColor = paint.color
     val previousAlpha = paint.alpha
     paint.style = Paint.Style.FILL
-    paint.color = Color.argb(110, 0, 0, 0)
+    paint.color = theme.mediaOverlay
     canvas.drawRect(rect, paint)
     val centerX = rect.centerX()
     val centerY = rect.centerY()
@@ -631,7 +613,7 @@ private class EditorVideoSpan(
       lineTo(centerX - radius * 0.35f, centerY + radius)
       close()
     }
-    paint.color = Color.WHITE
+    paint.color = theme.mediaOverlayIcon
     canvas.drawPath(play, paint)
     paint.style = previousStyle
     paint.color = previousColor
@@ -675,7 +657,8 @@ private class EditorAudioSpan(
   private val label: String,
   private val durationSeconds: Double?,
   private val waveform: List<Float>,
-  private val dark: Boolean,
+  private val theme: EditorTheme,
+  private val fallbackLabel: String,
   private val currentTimeSeconds: () -> Double,
   private val playing: () -> Boolean
 ) : ReplacementSpan() {
@@ -716,13 +699,13 @@ private class EditorAudioSpan(
     val previousColor = paint.color
     val previousStyle = paint.style
     paint.style = Paint.Style.FILL
-    paint.color = if (dark) Color.rgb(45, 54, 59) else Color.rgb(240, 246, 248)
+    paint.color = theme.audioSurface
     canvas.drawRoundRect(rect, 12 * density, 12 * density, paint)
-    paint.color = if (dark) Color.rgb(142, 193, 219) else Color.rgb(51, 126, 169)
+    paint.color = theme.audioAccent
     val centerY = rect.centerY()
     val iconX = rect.left + 26 * density
     canvas.drawCircle(iconX, centerY, 15 * density, paint)
-    paint.color = Color.WHITE
+    paint.color = theme.audioOnAccent
     if (playing()) {
       canvas.drawRoundRect(iconX - 6 * density, centerY - 6 * density,
         iconX - 1 * density, centerY + 6 * density, 1 * density, 1 * density, paint)
@@ -737,9 +720,9 @@ private class EditorAudioSpan(
       }
       canvas.drawPath(triangle, paint)
     }
-    paint.color = if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+    paint.color = theme.attachmentForeground
     paint.textSize = 16 * density
-    canvas.drawText(label.ifBlank { "Audio" }.take(42), rect.left + 52 * density, centerY - 22 * density, paint)
+    canvas.drawText(label.ifBlank { fallbackLabel }.take(42), rect.left + 52 * density, centerY - 22 * density, paint)
 
     val current = currentTimeSeconds().coerceAtLeast(0.0).coerceAtMost(durationSeconds ?: Double.MAX_VALUE)
     val progress = if (durationSeconds != null && durationSeconds > 0) {
@@ -752,8 +735,8 @@ private class EditorAudioSpan(
     val barSlotWidth = ((waveformWidth - gap * (waveform.size - 1)) / waveform.size).coerceAtLeast(1f)
     val barWidth = barSlotWidth / 2
     val waveformCenter = centerY - 1 * density
-    val lightWaveformColor = if (dark) Color.rgb(91, 127, 148) else Color.rgb(169, 201, 216)
-    val darkWaveformColor = if (dark) Color.rgb(142, 193, 219) else Color.rgb(51, 126, 169)
+    val lightWaveformColor = theme.audioWaveformInactive
+    val darkWaveformColor = theme.audioAccent
     waveform.forEachIndexed { index, amplitude ->
       val startProgress = index.toFloat() / waveform.size
       val endProgress = (index + 1).toFloat() / waveform.size
@@ -765,10 +748,10 @@ private class EditorAudioSpan(
         waveformCenter + barHeight / 2, barWidth / 2, barWidth / 2, paint)
     }
 
-    paint.color = if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+    paint.color = theme.attachmentForeground
     paint.textSize = 12 * density
     paint.alpha = 175
-    val duration = durationSeconds?.takeIf { it.isFinite() && it >= 0 }?.let { formatAudioTime(it) } ?: "Audio"
+    val duration = durationSeconds?.takeIf { it.isFinite() && it >= 0 }?.let { formatAudioTime(it) } ?: fallbackLabel
     canvas.drawText("${formatAudioTime(current)} / $duration", rect.left + 52 * density, centerY + 30 * density, paint)
     paint.alpha = 255
     paint.color = previousColor
@@ -781,8 +764,8 @@ private class EditorAudioSpan(
   }
 }
 
-private fun formatFileSize(bytes: Double?): String {
-  if (bytes == null || !bytes.isFinite() || bytes < 0) return "Unknown size"
+private fun formatFileSize(bytes: Double?, unknownLabel: String): String {
+  if (bytes == null || !bytes.isFinite() || bytes < 0) return unknownLabel
   val units = arrayOf("B", "KB", "MB", "GB", "TB")
   var value = bytes
   var unit = 0
@@ -799,7 +782,8 @@ private class EditorFileSpan(
   private val input: EditText,
   private val fileName: String?,
   private val fileSize: Double?,
-  private val dark: Boolean
+  private val theme: EditorTheme,
+  private val labels: EditorLabels
 ) : ReplacementSpan() {
   private val density = input.resources.displayMetrics.density
   private val cardHeight = (72 * density).roundToInt().coerceAtLeast(1)
@@ -838,17 +822,18 @@ private class EditorFileSpan(
     val previousColor = paint.color
     val previousStyle = paint.style
     val previousStrokeWidth = paint.strokeWidth
+    val previousTextSize = paint.textSize
     paint.style = Paint.Style.FILL
-    paint.color = if (dark) Color.rgb(45, 45, 44) else Color.rgb(247, 247, 245)
+    paint.color = theme.attachmentSurface
     canvas.drawRoundRect(rect, 12 * density, 12 * density, paint)
 
     val iconLeft = rect.left + 16 * density
     val iconTop = rect.centerY() - 18 * density
     val iconRight = iconLeft + 28 * density
     val iconBottom = iconTop + 36 * density
-    paint.color = if (dark) Color.rgb(142, 193, 219) else Color.rgb(51, 126, 169)
+    paint.color = theme.attachmentAccent
     canvas.drawRoundRect(iconLeft, iconTop, iconRight, iconBottom, 4 * density, 4 * density, paint)
-    paint.color = if (dark) Color.rgb(45, 45, 44) else Color.rgb(247, 247, 245)
+    paint.color = theme.attachmentSurface
     val fold = Path().apply {
       moveTo(iconRight - 10 * density, iconTop)
       lineTo(iconRight, iconTop + 10 * density)
@@ -858,31 +843,32 @@ private class EditorFileSpan(
     canvas.drawPath(fold, paint)
     paint.style = Paint.Style.STROKE
     paint.strokeWidth = 1.5f * density
-    paint.color = if (dark) Color.rgb(45, 54, 59) else Color.WHITE
+    paint.color = theme.attachmentIconSurface
     canvas.drawLine(iconLeft + 7 * density, iconTop + 19 * density,
       iconRight - 7 * density, iconTop + 19 * density, paint)
     canvas.drawLine(iconLeft + 7 * density, iconTop + 25 * density,
       iconRight - 7 * density, iconTop + 25 * density, paint)
 
     paint.style = Paint.Style.FILL
-    paint.color = if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+    paint.color = theme.attachmentForeground
     paint.textSize = 16 * density
-    canvas.drawText((fileName ?: "File").ifBlank { "File" }.take(48),
+    canvas.drawText((fileName ?: labels.file).ifBlank { labels.file }.take(48),
       rect.left + 58 * density, rect.centerY() - 3 * density, paint)
-    paint.color = if (dark) Color.rgb(173, 169, 163) else Color.rgb(120, 119, 116)
+    paint.color = theme.attachmentMuted
     paint.textSize = 12 * density
-    canvas.drawText(formatFileSize(fileSize), rect.left + 58 * density,
+    canvas.drawText(formatFileSize(fileSize, labels.unknownFileSize), rect.left + 58 * density,
       rect.centerY() + 19 * density, paint)
     paint.color = previousColor
     paint.style = previousStyle
     paint.strokeWidth = previousStrokeWidth
+    paint.textSize = previousTextSize
   }
 }
 
 /** Draws a compact table-of-contents placeholder for the editor's non-text block. */
-private class TableOfContentsSpan : ReplacementSpan() {
+private class TableOfContentsSpan(private val label: String) : ReplacementSpan() {
   override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int =
-    (paint.measureText(TABLE_OF_CONTENTS_LABEL) + paint.textSize * 2.5f).toInt()
+    (paint.measureText(label) + paint.textSize * 2.5f).toInt()
 
   override fun draw(
     canvas: Canvas,
@@ -902,7 +888,7 @@ private class TableOfContentsSpan : ReplacementSpan() {
     paint.strokeWidth = maxOf(1f, paint.textSize / 16f)
     canvas.drawRoundRect(x, top + 2f, x + width, bottom - 2f, 6f, 6f, paint)
     paint.style = Paint.Style.FILL
-    canvas.drawText(TABLE_OF_CONTENTS_LABEL, x + paint.textSize * 1.25f, y.toFloat(), paint)
+    canvas.drawText(label, x + paint.textSize * 1.25f, y.toFloat(), paint)
     paint.style = previousStyle
     paint.strokeWidth = previousStrokeWidth
   }
@@ -937,6 +923,12 @@ private class ColumnsSpan(private val columnCount: Int) : ReplacementSpan() {
       val left = x + index * (columnWidth + gap)
       canvas.drawRoundRect(left, top + 2f, left + columnWidth, bottom - 2f, 6f, 6f, paint)
     }
+    val content = text.subSequence(start, end).toString()
+    if (content.isNotEmpty() && content != COLUMNS_TEXT) {
+      paint.style = Paint.Style.FILL
+      paint.textSize = paint.textSize * 0.85f
+      canvas.drawText(content, x + gap, y.toFloat(), paint)
+    }
     paint.style = previousStyle
     paint.strokeWidth = previousStrokeWidth
   }
@@ -946,38 +938,18 @@ private class ColumnsSpan(private val columnCount: Int) : ReplacementSpan() {
 private class TableSpan(
   private val input: EditText,
   private val table: EditorTable,
-  private val dark: Boolean
+  private val theme: EditorTheme
 ) : ReplacementSpan() {
   private val density = input.resources.displayMetrics.density
   private val rowHeight = (TABLE_CELL_HEIGHT_DP * density).roundToInt().coerceAtLeast(1)
-  private val border = if (dark) Color.rgb(65, 65, 65) else Color.rgb(222, 222, 219)
-  private val surface = if (dark) Color.rgb(45, 45, 44) else Color.rgb(247, 247, 245)
-  private val background = if (dark) Color.rgb(25, 25, 25) else Color.WHITE
+  private val border = theme.tableBorder
+  private val surface = theme.tableHeaderBackground
+  private val background = theme.background
 
   private fun width(): Int = tableDisplayWidthPx(input, table)
   private fun columnCount(): Int = maxOf(1, table.rows.maxOfOrNull { it.cells.size } ?: 1)
   private fun height(): Int = table.rows.size * rowHeight + density.roundToInt()
-  private fun namedColor(value: String?): Int? = when (value) {
-    "gray" -> Color.rgb(120, 119, 116)
-    "brown" -> Color.rgb(159, 107, 83)
-    "orange" -> Color.rgb(217, 115, 13)
-    "yellow" -> Color.rgb(203, 145, 47)
-    "green" -> Color.rgb(68, 131, 97)
-    "blue" -> Color.rgb(51, 126, 169)
-    "purple" -> Color.rgb(144, 101, 176)
-    "pink" -> Color.rgb(193, 76, 138)
-    "red" -> Color.rgb(212, 76, 71)
-    "gray_bg" -> Color.rgb(233, 233, 231)
-    "brown_bg" -> Color.rgb(238, 224, 214)
-    "orange_bg" -> Color.rgb(249, 225, 204)
-    "yellow_bg" -> Color.rgb(249, 237, 197)
-    "green_bg" -> Color.rgb(218, 236, 223)
-    "blue_bg" -> Color.rgb(217, 234, 250)
-    "purple_bg" -> Color.rgb(233, 223, 241)
-    "pink_bg" -> Color.rgb(244, 220, 232)
-    "red_bg" -> Color.rgb(248, 222, 221)
-    else -> null
-  }
+  private fun namedColor(value: String?): Int? = theme.namedColor(value)
 
   override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
     val h = height()
@@ -1139,7 +1111,8 @@ private class TodoCheckboxSpan(
   private val checkboxWidth: Int,
   private val checked: Boolean,
   private val accentColor: Int,
-  private val borderColor: Int
+  private val borderColor: Int,
+  private val checkColor: Int
 ) : LeadingMarginSpan {
   override fun getLeadingMargin(first: Boolean): Int = checkboxWidth
 
@@ -1175,7 +1148,7 @@ private class TodoCheckboxSpan(
       paint.strokeWidth = maxOf(1.5f, paint.textSize / 11f)
       paint.strokeCap = Paint.Cap.ROUND
       paint.strokeJoin = Paint.Join.ROUND
-      paint.color = Color.WHITE
+      paint.color = checkColor
       val path = android.graphics.Path()
       path.moveTo(left + size * 0.24f, topEdge + size * 0.52f)
       path.lineTo(left + size * 0.43f, topEdge + size * 0.74f)
@@ -1358,7 +1331,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private val onContentSize by EventDispatcher()
   private var lastReportedContentHeightPx = -1
   private var pageReferenceFallbackIcon: String? = null
-  private var emptyTogglePlaceholder = DEFAULT_EMPTY_TOGGLE_PLACEHOLDER
+  private var labels = EditorLabels.DEFAULT
   private var imageMaxWidth = 960
   private var epoch = -1
   private var revision = 0
@@ -1366,7 +1339,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private var applying = false
   private var emissionPending = false
   private var source = "selection"
-  private var dark = false
+  private var theme = EditorTheme.DEFAULT
+  private var bodyTypeface: Typeface = Typeface.DEFAULT
+  private var titleTypeface: Typeface = Typeface.DEFAULT_BOLD
+  private var monospaceTypeface: Typeface = Typeface.MONOSPACE
   private val blocks = mutableListOf<EditorBlock>()
   // Android may dispatch selection callbacks while the inner EditText is still being constructed.
   private var inputInitialized = false
@@ -1401,7 +1377,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
       InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
     input.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
-    input.setTextSize(16f)
+    input.setTextSize(theme.fontSize)
     // BlockPaddingSpan measures each wrapped line before adding its own padding and wrap gap.
     input.setLineSpacing(0f, 1f)
     input.useGlyphHeightCursor()
@@ -1418,7 +1394,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     tableOverlay.setWillNotDraw(true)
     tableOverlay.isClickable = false
     tableOverlay.isFocusable = false
-    tableOverlay.contentDescription = "Editable table cells"
+    tableOverlay.contentDescription = labels.editableTableCells
     inputContainer.addView(
       tableOverlay,
       FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -1470,7 +1446,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         }
       }
     })
-    setDark(false)
+    setTheme(null)
     inputInitialized = true
   }
 
@@ -1491,7 +1467,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val type = block["type"] as? String ?: return@mapNotNull null
       val color = (block["color"] as? String)?.takeIf { it in editorValidColors }
       val depth = (block["depth"] as? Number)?.toInt()?.takeIf { it >= 0 } ?: 0
-      val toggle = (block["toggle"] as? Boolean) == true && type.startsWith("heading_")
+      val toggle = (block["toggle"] as? Boolean) == true
+        && (type.startsWith("heading_") || type == "toggle")
       val collapsed = (block["collapsed"] as? Boolean) == true && toggle
       val checked = (block["checked"] as? Boolean) == true && type == "to_do"
       val url = block["url"] as? String
@@ -1499,6 +1476,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val mimeType = block["mimeType"] as? String
       val fileName = block["fileName"] as? String
       val fileSize = (block["fileSize"] as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0 }
+      val language = (block["language"] as? String)?.takeIf { it.isNotBlank() }
+      val expression = block["expression"] as? String
       val waveform = (block["waveform"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat()?.takeIf { value -> value.isFinite() } }
         ?.take(AUDIO_WAVEFORM_BAR_COUNT)?.takeIf { it.isNotEmpty() }
       val icon = block["icon"] as? String
@@ -1509,18 +1488,42 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         val start = (mark["start"] as? Number)?.toInt() ?: return@forEach
         val end = (mark["end"] as? Number)?.toInt() ?: return@forEach
         val markUrl = (mark["url"] as? String)?.takeIf { kind == "link" }
+        val markColor = (mark["color"] as? String)?.takeIf { kind == "color" && it in editorValidColors }
         if ((kind in listOf("bold", "italic", "strikethrough", "underline", "code")
+          || (kind == "color" && markColor != null)
           || (kind == "link" && !markUrl.isNullOrBlank())) &&
           start >= 0 && end > start && end <= text.length) {
-          marks.add(EditorMark(kind, start, end, markUrl))
+          marks.add(EditorMark(kind, start, end, markUrl, markColor))
         }
       }
       val columnCount = (block["columnCount"] as? Number)?.toInt()?.takeIf { it in 2..5 }
       val table = parseEditorTable(block["table"])
       if (text.contains('\n') || type !in editorValidBlockTypes
         || (type == "table" && table == null) || (type != "table" && block["table"] != null)
+        || hasOverlappingColorMarks(marks)
         || ((type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file") && url.isNullOrBlank())) null
-      else EditorBlock(id, type, text, color, depth, toggle, collapsed, marks, checked, url, icon, columnCount, duration, mimeType, fileName, fileSize, waveform, table)
+      else EditorBlock(
+        id = id,
+        type = type,
+        text = text,
+        color = color,
+        depth = depth,
+        toggle = toggle,
+        collapsed = collapsed,
+        marks = marks,
+        checked = checked,
+        url = url,
+        icon = icon,
+        columnCount = columnCount,
+        duration = duration,
+        mimeType = mimeType,
+        fileName = fileName,
+        fileSize = fileSize,
+        language = if (type == "code") language ?: "plain text" else null,
+        expression = if (type == "equation") expression ?: text else null,
+        waveform = waveform,
+        table = table
+      )
     }
     if (nextBlocks.isEmpty() || nextBlocks.size != supplied.size || nextBlocks.map { it.id }.distinct().size != nextBlocks.size) return
     applying = true
@@ -1666,20 +1669,29 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     }
   }
 
-  fun setDark(dark: Boolean) {
-    this.dark = dark
-    input.setTextColor(if (dark) Color.rgb(238, 238, 238) else Color.rgb(44, 44, 43))
-    input.setHintTextColor(if (dark) Color.LTGRAY else Color.DKGRAY)
+  /** Applies the flattened `MarkdownTheme` from JS; see `nativeEditorTheme` in NativeEditor.tsx. */
+  fun setTheme(value: Map<String, Any?>?) {
+    theme = EditorTheme.from(value)
+    val assets = context.assets
+    bodyTypeface = editorTypeface(theme.fontFamily, Typeface.NORMAL, assets)
+    titleTypeface = editorTypeface(theme.titleFontFamily, Typeface.BOLD, assets)
+    monospaceTypeface = editorTypeface(theme.monospaceFontFamily, Typeface.NORMAL, assets)
+    input.typeface = bodyTypeface
+    input.setTextSize(theme.fontSize)
+    input.setTextColor(theme.foreground)
+    input.setHintTextColor(theme.placeholder)
+    if (blocks.isNotEmpty()) styleBlocks()
+  }
+
+  /** Applies the translated strings from JS; see `NativeEditorLabels` in NativeEditor.tsx. */
+  fun setLabels(value: Map<String, Any?>?) {
+    labels = EditorLabels.from(value)
+    tableOverlay.contentDescription = labels.editableTableCells
     if (blocks.isNotEmpty()) styleBlocks()
   }
 
   fun setPageReferenceFallbackIcon(value: String?) {
     pageReferenceFallbackIcon = value
-    if (blocks.isNotEmpty()) styleBlocks()
-  }
-
-  fun setEmptyTogglePlaceholder(value: String?) {
-    emptyTogglePlaceholder = value?.takeIf { it.isNotEmpty() } ?: DEFAULT_EMPTY_TOGGLE_PLACEHOLDER
     if (blocks.isNotEmpty()) styleBlocks()
   }
 
@@ -1780,7 +1792,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       "color" -> {
         val color = (value["color"] as? String)?.takeIf { it in editorValidColors }
         val blockId = value["blockId"] as? String
-        if (blockId.isNullOrBlank()) applySelectionColor(color) else applyBlockColor(blockId, color)
+        val target = value["colorTarget"] as? String
+        if (target == "inline") applySelectionInlineColor(color)
+        else if (blockId.isNullOrBlank()) applySelectionColor(color) else applyBlockColor(blockId, color)
       }
       "icon" -> applyBlockIcon(value["blockId"] as? String, value["icon"] as? String)
       "format" -> toggleFormat((value["mark"] as? String)?.takeIf {
@@ -1792,9 +1806,11 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         value["label"] as? String
       )
       "remove" -> removeBlocks()
-      "turnInto" -> turnIntoBlocks((value["type"] as? String)?.takeIf {
-        it in editorValidBlockTypes && it != "link_to_page"
-      })
+      "turnInto" -> turnIntoBlocks(
+        (value["type"] as? String)?.takeIf { it in editorValidBlockTypes && it != "link_to_page" },
+        (value["toggle"] as? Boolean) == true,
+        (value["columnCount"] as? Number)?.toInt()
+      )
       "indent" -> indentBlocks()
       "outdent" -> outdentBlocks()
       "moveBlockUp" -> moveBlocks(-1)
@@ -1883,8 +1899,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       if (mark.kind != kind || mark.end <= range.first || mark.start >= range.second) {
         next.add(mark)
       } else if (remove) {
-        if (mark.start < range.first) next.add(EditorMark(mark.kind, mark.start, range.first, mark.url))
-        if (mark.end > range.second) next.add(EditorMark(mark.kind, range.second, mark.end, mark.url))
+        if (mark.start < range.first) next.add(mark.copy(end = range.first))
+        if (mark.end > range.second) next.add(mark.copy(start = range.second))
       } else {
         next.add(mark)
       }
@@ -1897,6 +1913,16 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     scheduleEvent("format")
   }
 
+  private fun setCellColor(color: String?) {
+    val target = activeCellRange() ?: return
+    val editor = target.first
+    val range = target.second
+    val cell = tableCell(editor.address) ?: return
+    setColorMarkRange(cell.marks, range.first, range.second, color)
+    applyCellSpans(editor, cell)
+    scheduleEvent("color")
+  }
+
   private fun clearCellFormat() {
     val target = activeCellRange() ?: return
     val editor = target.first
@@ -1907,8 +1933,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       if (mark.end <= range.first || mark.start >= range.second) {
         next.add(mark)
       } else {
-        if (mark.start < range.first) next.add(EditorMark(mark.kind, mark.start, range.first, mark.url))
-        if (mark.end > range.second) next.add(EditorMark(mark.kind, range.second, mark.end, mark.url))
+        if (mark.start < range.first) next.add(mark.copy(end = range.first))
+        if (mark.end > range.second) next.add(mark.copy(start = range.second))
       }
     }
     cell.marks.clear()
@@ -2079,8 +2105,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       if (mark.kind != kind || mark.end <= start || mark.start >= end) {
         next.add(mark)
       } else if (remove) {
-        if (mark.start < start) next.add(EditorMark(mark.kind, mark.start, start, mark.url))
-        if (mark.end > end) next.add(EditorMark(mark.kind, end, mark.end, mark.url))
+        if (mark.start < start) next.add(mark.copy(end = start))
+        if (mark.end > end) next.add(mark.copy(start = end))
       } else {
         next.add(mark)
       }
@@ -2105,8 +2131,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       if (mark.end <= start || mark.start >= end || (kind != null && mark.kind != kind)) {
         next.add(mark)
       } else {
-        if (mark.start < start) next.add(EditorMark(mark.kind, mark.start, start, mark.url))
-        if (mark.end > end) next.add(EditorMark(mark.kind, end, mark.end, mark.url))
+        if (mark.start < start) next.add(mark.copy(end = start))
+        if (mark.end > end) next.add(mark.copy(start = end))
       }
     }
     block.marks.clear()
@@ -2114,6 +2140,27 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       next.filter { it.start < it.end }
         .sortedWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
     )
+  }
+
+  private fun setColorMarkRange(
+    marks: MutableList<EditorMark>,
+    start: Int,
+    end: Int,
+    color: String?
+  ) {
+    val next = mutableListOf<EditorMark>()
+    marks.forEach { mark ->
+      if (mark.kind != "color" || mark.end <= start || mark.start >= end) {
+        next.add(mark)
+      } else {
+        if (mark.start < start) next.add(mark.copy(end = start))
+        if (mark.end > end) next.add(mark.copy(start = end))
+      }
+    }
+    if (color != null) next.add(EditorMark("color", start, end, color = color))
+    marks.clear()
+    marks.addAll(next.filter { it.start < it.end }
+      .sortedWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind }))
   }
 
   /** Insert a divider after the current cursor/selection and leave the cursor in the following text block. */
@@ -2505,7 +2552,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     if (before.type !in editorMergeableBlockTypes || current.type !in editorMergeableBlockTypes) return false
 
     val joinOffset = before.text.length
-    before.marks.addAll(current.marks.map { EditorMark(it.kind, it.start + joinOffset, it.end + joinOffset, it.url) })
+    before.marks.addAll(current.marks.map {
+      it.copy(start = it.start + joinOffset, end = it.end + joinOffset)
+    })
     before.text += current.text
     blocks.removeAt(index)
     blocks.removeAt(atomicIndex)
@@ -2753,12 +2802,15 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
               val markStart = mark.getInt("start")
               val markEnd = mark.getInt("end")
               val markUrl = if (mark.has("url")) mark.getString("url") else null
+              val markColor = if (mark.has("color")) mark.getString("color") else null
               require(kind in listOf("bold", "italic", "strikethrough", "underline", "code")
+                || (kind == "color" && markColor in editorValidColors)
                 || (kind == "link" && !markUrl.isNullOrBlank()))
               require(markStart >= 0 && markEnd > markStart && markEnd <= text.length)
-              marks.add(EditorMark(kind, markStart, markEnd, markUrl))
+              marks.add(EditorMark(kind, markStart, markEnd, markUrl, markColor))
             }
           }
+          require(!hasOverlappingColorMarks(marks))
           EditorPasteBlock(
             type,
             text,
@@ -2840,21 +2892,41 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   }
 
   /** Converts every block touched by the cursor or selection independently to the requested type. */
-  private fun turnIntoBlocks(type: String?) {
+  private fun turnIntoBlocks(type: String?, toggleTarget: Boolean = false, columnCount: Int? = null) {
     if (type == null) return
     val range = selectedBlockRange() ?: return
     // The turn-into MAB replaces the IME while it is open. Restore it after the transform.
     requestKeyboard()
     var changed = false
     range.forEach { index ->
-      if (blocks[index].type != type) {
-        blocks[index].type = type
-        if (!type.startsWith("heading_")) blocks[index].toggle = false
-        if (type != "to_do") blocks[index].checked = false
+      val block = blocks[index]
+      val nextToggle = (type.startsWith("heading_") || type == "toggle") &&
+        (toggleTarget || type == "toggle")
+      val nextColumnCount = if (type == "column_list") columnCount?.coerceIn(2, 5) ?: 2 else null
+      val nextLanguage = if (type == "code") "plain text" else null
+      val nextExpression = if (type == "equation") block.text else null
+      if (block.type != type || block.toggle != nextToggle || block.columnCount != nextColumnCount
+        || block.language != nextLanguage || block.expression != nextExpression
+        || (type != "to_do" && block.checked) || block.url != null || block.icon != null || block.table != null
+        || block.duration != null || block.mimeType != null || block.fileName != null
+        || block.fileSize != null || block.waveform != null) {
+        block.type = type
+        block.toggle = nextToggle
+        if (!nextToggle) block.collapsed = false
+        if (type != "to_do") block.checked = false
+        if (type != "column_list") block.columnCount = null else block.columnCount = nextColumnCount
+        block.language = if (type == "code") "plain text" else null
+        block.expression = if (type == "equation") block.text else null
         if (type != "link_to_page") {
-          blocks[index].url = null
-          blocks[index].icon = null
+          block.url = null
+          block.icon = null
         }
+        block.duration = null
+        block.mimeType = null
+        block.fileName = null
+        block.fileSize = null
+        block.waveform = null
+        if (type != "table") block.table = null
         changed = true
       }
     }
@@ -2926,6 +2998,22 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       changed = true
     }
     if (!changed) return
+    styleBlocks()
+    scheduleEvent("color")
+  }
+
+  /** Applies an inline foreground/background color to the current rich-text selection. */
+  private fun applySelectionInlineColor(color: String?) {
+    if (activeTableEditor?.hasFocus() == true) {
+      setCellColor(color)
+      return
+    }
+    val ranges = selectedFormatRanges() ?: return
+    ranges.forEach { (index, range) ->
+      if (blocks[index].type in editorInlineColorBlockTypes) {
+        setColorMarkRange(blocks[index].marks, range.first, range.last, color)
+      }
+    }
     styleBlocks()
     scheduleEvent("color")
   }
@@ -3027,6 +3115,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     editable.getSpans(0, editable.length, UnderlineSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, StrikethroughSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TypefaceSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, EditorTypefaceSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, EditorInlineMarkSpan::class.java).forEach { editable.removeSpan(it) }
     var start = 0
     var collapsedDepth: Int? = null
@@ -3050,10 +3139,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       }
       val previous = blocks.getOrNull(index - 1)
       if (!collapsed && block.text.isEmpty() && block.type == "text" &&
-        previous?.toggle == true && editorHeadingLevel(previous.type) != null &&
-        block.depth == previous.depth + 1 && emptyTogglePlaceholder.isNotEmpty()) {
+        previous?.toggle == true && (editorHeadingLevel(previous.type) != null || previous.type == "toggle") &&
+        block.depth == previous.depth + 1 && labels.emptyTogglePlaceholder.isNotEmpty()) {
         editable.setSpan(
-          EmptyBlockPlaceholderSpan(emptyTogglePlaceholder),
+          EmptyBlockPlaceholderSpan(labels.emptyTogglePlaceholder),
           start,
           end,
           Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -3061,7 +3150,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       }
       if (shouldShowEmptyTodoPlaceholder(index, block)) {
         editable.setSpan(
-          EmptyBlockPlaceholderSpan(DEFAULT_EMPTY_TODO_PLACEHOLDER),
+          EmptyBlockPlaceholderSpan(labels.emptyToDoPlaceholder),
           start,
           end,
           Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -3104,9 +3193,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           )
         }
           if (block.type == "table") {
-            block.table?.let { editable.setSpan(TableSpan(input, it, dark), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            block.table?.let { editable.setSpan(TableSpan(input, it, theme), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
           } else if (block.type == "table_of_contents") {
-          editable.setSpan(TableOfContentsSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(TableOfContentsSpan(labels.tableOfContents), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (block.type == "column_list") {
           editable.setSpan(ColumnsSpan(block.columnCount ?: 2), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -3137,7 +3226,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           )
         }
         if (block.type == "quote") {
-          val barColor = block.color?.let { editorTextColors[it] } ?: editorQuoteBarColor(dark)
+          val barColor = theme.textColor(block.color) ?: theme.border
           editable.setSpan(
             QuoteBorderSpan(
               (QUOTE_TEXT_INDENT_DP * resources.displayMetrics.density).toInt().coerceAtLeast(1),
@@ -3152,7 +3241,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         if (block.type == "image") {
           block.url?.let { url ->
             editable.setSpan(
-              EditorImageSpan(input, url, imageMaxWidth),
+              EditorImageSpan(input, url, imageMaxWidth, theme),
               start,
               end,
               Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -3162,7 +3251,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         if (block.type == "video") {
           block.url?.let { url ->
             editable.setSpan(
-              EditorVideoSpan(input, url, imageMaxWidth),
+              EditorVideoSpan(input, url, imageMaxWidth, theme),
               start,
               end,
               Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -3172,7 +3261,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         if (block.type == "audio") {
           block.url?.let {
             editable.setSpan(
-              EditorAudioSpan(input, block.fileName ?: "Audio", block.duration, audioWaveform(block), dark, {
+              EditorAudioSpan(input, block.fileName ?: labels.audio, block.duration, audioWaveform(block), theme, labels.audio, {
                 if (audioPlayerBlockId == block.id) {
                   runCatching { (audioPlayer?.currentPosition ?: 0) / 1000.0 }.getOrDefault(0.0)
                 } else 0.0
@@ -3187,7 +3276,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         }
         if (block.type == "file") {
           editable.setSpan(
-            EditorFileSpan(input, block.fileName, block.fileSize, dark),
+            EditorFileSpan(input, block.fileName, block.fileSize, theme, labels),
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -3198,15 +3287,16 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             TodoCheckboxSpan(
               (input.textSize * TODO_CHECKBOX_WIDTH_SCALE).toInt().coerceAtLeast(1),
               block.checked,
-              editorAccentColor(dark),
-              editorCheckboxBorderColor(dark)
+              theme.accent,
+              theme.border,
+              theme.onAccent
             ),
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
           )
         }
-        if (block.toggle && editorHeadingLevel(block.type) != null) {
+        if (block.toggle && (editorHeadingLevel(block.type) != null || block.type == "toggle")) {
           editable.setSpan(
             ToggleButtonSpan(
               (input.textSize * TOGGLE_BUTTON_WIDTH_SCALE).toInt().coerceAtLeast(1),
@@ -3232,39 +3322,57 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           editable.setSpan(LeadingMarginSpan.Standard(margin), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         editorHeadingLevel(block.type)?.let { level ->
-          editable.setSpan(RelativeSizeSpan(headingScale.getValue(level)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-          editable.setSpan(StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            editable.setSpan(RelativeSizeSpan(headingScale.getValue(level)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            editable.setSpan(StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (level == 1) {
+                editable.setSpan(EditorTypefaceSpan(titleTypeface), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        if (block.type == "code") {
+          editable.setSpan(EditorTypefaceSpan(monospaceTypeface), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(inlineCodeSpan(context, theme), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } else if (block.type == "equation") {
+          editable.setSpan(EditorTypefaceSpan(monospaceTypeface), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(StyleSpan(Typeface.ITALIC), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         block.color?.let { color ->
           // A callout's `_bg` color instead tints the box EditorInput.onDraw paints for it.
           if (block.type != "callout") {
-            editorBackgroundColors[color]?.let { editable.setSpan(BackgroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            theme.backgroundColor(color)?.let { editable.setSpan(BackgroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
           }
-          editorTextColors[color]?.let { editable.setSpan(ForegroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+          theme.textColor(color)?.let { editable.setSpan(ForegroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
         }
         block.marks.forEach { mark ->
           val markStart = (start + mark.start).coerceIn(start, end)
           val markEnd = (start + mark.end).coerceIn(markStart, end)
           if (markStart >= markEnd) return@forEach
-          editable.setSpan(EditorInlineMarkSpan(mark.kind, mark.url), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(EditorInlineMarkSpan(mark.kind, mark.url, mark.color), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           when (mark.kind) {
             "bold" -> editable.setSpan(StyleSpan(Typeface.BOLD), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "italic" -> editable.setSpan(StyleSpan(Typeface.ITALIC), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "underline" -> editable.setSpan(UnderlineSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "strikethrough" -> editable.setSpan(StrikethroughSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "link" -> {
-              editable.setSpan(ForegroundColorSpan(editorAccentColor(dark)), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              editable.setSpan(ForegroundColorSpan(theme.accent), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
               editable.setSpan(UnderlineSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             "code" -> {
-              editable.setSpan(TypefaceSpan("monospace"), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-              editable.setSpan(ForegroundColorSpan(INLINE_CODE_FOREGROUND), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-              editable.setSpan(inlineCodeSpan(context), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              editable.setSpan(EditorTypefaceSpan(monospaceTypeface), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              editable.setSpan(ForegroundColorSpan(theme.inlineCodeForeground), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              editable.setSpan(inlineCodeSpan(context, theme), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            "color" -> {
+              theme.backgroundColor(mark.color)?.let {
+                editable.setSpan(BackgroundColorSpan(it), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              }
+              theme.textColor(mark.color)?.let {
+                editable.setSpan(ForegroundColorSpan(it), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              }
             }
           }
         }
         if (block.type == "to_do" && block.checked) {
-          editable.setSpan(ForegroundColorSpan(editorMutedColor(dark)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(ForegroundColorSpan(theme.muted), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           editable.setSpan(StrikethroughSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
       }
@@ -3289,7 +3397,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         .toString().lastIndexOf('\n') + 1
       val localStart = (globalStart - blockStart).coerceIn(0, block.text.length)
       val localEnd = (globalEnd - blockStart).coerceIn(localStart, block.text.length)
-      if (localStart < localEnd) block.marks.add(EditorMark(span.kind, localStart, localEnd, span.url))
+      if (localStart < localEnd) block.marks.add(EditorMark(span.kind, localStart, localEnd, span.url, span.color))
     }
     blocks.forEach { block ->
       block.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
@@ -3331,18 +3439,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private fun tableHeightPx(table: EditorTable): Int =
     table.rows.size * tableRowHeightPx() + resources.displayMetrics.density.roundToInt().coerceAtLeast(1)
 
-  private fun tableColorValue(value: String?): Int? = when (value) {
-    "gray" -> editorTextColors["gray"]
-    "brown" -> editorTextColors["brown"]
-    "orange" -> editorTextColors["orange"]
-    "yellow" -> editorTextColors["yellow"]
-    "green" -> editorTextColors["green"]
-    "blue" -> editorTextColors["blue"]
-    "purple" -> editorTextColors["purple"]
-    "pink" -> editorTextColors["pink"]
-    "red" -> editorTextColors["red"]
-    else -> null
-  }
+  private fun tableColorValue(value: String?): Int? = theme.textColor(value)
 
   private fun tableCellTextColor(address: TableCellAddress): Int {
     val block = blocks.getOrNull(address.blockIndex)
@@ -3351,9 +3448,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     val color = cell?.color ?: table?.rows?.getOrNull(address.row)?.color
       ?: table?.columnColors?.getOrNull(address.column) ?: table?.tableColor
     return if (color?.endsWith("_bg") == true) {
-      if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+      theme.foreground
     } else {
-      tableColorValue(color) ?: if (dark) Color.WHITE else Color.rgb(44, 44, 43)
+      tableColorValue(color) ?: theme.foreground
     }
   }
 
@@ -3399,10 +3496,18 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         "italic" -> value.setSpan(StyleSpan(Typeface.ITALIC), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         "underline" -> value.setSpan(UnderlineSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         "strikethrough" -> value.setSpan(StrikethroughSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        "code" -> value.setSpan(TypefaceSpan("monospace"), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        "code" -> value.setSpan(EditorTypefaceSpan(monospaceTypeface), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         "link" -> {
-          value.setSpan(ForegroundColorSpan(editorAccentColor(dark)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          value.setSpan(ForegroundColorSpan(theme.accent), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           value.setSpan(UnderlineSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        "color" -> {
+          theme.backgroundColor(mark.color)?.let {
+            value.setSpan(BackgroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          }
+          theme.textColor(mark.color)?.let {
+            value.setSpan(ForegroundColorSpan(it), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          }
         }
       }
     }
@@ -3428,6 +3533,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     init {
       setSingleLine(true)
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+      typeface = bodyTypeface
       gravity = Gravity.CENTER_VERTICAL or Gravity.START
       includeFontPadding = true
       val horizontal = (TABLE_CELL_HORIZONTAL_PADDING_DP * resources.displayMetrics.density).roundToInt()
@@ -3435,7 +3541,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       setPadding(horizontal, vertical, horizontal, vertical)
       inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
         InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
-      contentDescription = "Table cell row ${address.row + 1}, column ${address.column + 1}"
+      contentDescription = labels.tableCell(address.row, address.column)
       setSelectAllOnFocus(false)
       setOnLongClickListener {
         val block = blocks.getOrNull(address.blockIndex)
@@ -3486,7 +3592,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       applyCellSpans(this, cell)
       setTextColor(tableCellTextColor(address))
       val selected = tableOverlay.isCellInRange(address)
-      val stroke = if (hasFocus() || selected) editorAccentColor(dark) else Color.TRANSPARENT
+      val stroke = if (hasFocus() || selected) theme.accent else Color.TRANSPARENT
       background = GradientDrawable().apply {
         setColor(Color.TRANSPARENT)
         setStroke(
@@ -3573,10 +3679,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         val size = (12 * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
         minimumWidth = size
         minimumHeight = size
-        contentDescription = if (anchorHandle) "Table selection start" else "Table selection end"
+        contentDescription = if (anchorHandle) labels.tableSelectionStart else labels.tableSelectionEnd
         background = GradientDrawable().apply {
           shape = GradientDrawable.OVAL
-          setColor(editorAccentColor(dark))
+          setColor(theme.accent)
         }
         setOnTouchListener { view, event ->
           when (event.actionMasked) {
@@ -3615,7 +3721,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       private val thumbTravel = (20 * density).roundToInt()
 
       init {
-        contentDescription = "Fit table to page width"
+        contentDescription = labels.fitTableWidth
         isClickable = true
       }
 
@@ -3630,15 +3736,15 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         super.onDraw(canvas)
         val fit = blocks.getOrNull(blockIndex)?.table?.fitPageWidth == true
         val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = if (fit) editorAccentColor(dark) else if (dark) Color.rgb(91, 91, 89) else Color.rgb(208, 208, 204)
+          color = if (fit) theme.switchTrackOn else theme.switchTrackOff
           style = Paint.Style.FILL
         }
         val radius = trackHeight / 2f
         canvas.drawRoundRect(0f, 0f, trackWidth.toFloat(), trackHeight.toFloat(), radius, radius, track)
         val thumb = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = Color.WHITE
+          color = theme.switchThumb
           style = Paint.Style.FILL
-            setShadowLayer(1.5f * density, 0f, density, 0x4A000000)
+            setShadowLayer(1.5f * density, 0f, density, theme.shadowWithAlpha(0x4A))
         }
         setLayerType(LAYER_TYPE_SOFTWARE, thumb)
         val left = 2f * density + if (fit) thumbTravel.toFloat() else 0f
@@ -3668,7 +3774,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       private val size = (34 * density).roundToInt()
 
       init {
-        contentDescription = "Table actions"
+        contentDescription = labels.tableActions
         isClickable = true
       }
 
@@ -3681,7 +3787,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = if (dark) Color.rgb(245, 245, 245) else Color.rgb(55, 53, 47)
+          color = theme.tableControl
           style = Paint.Style.FILL
         }
         val center = size / 2f
@@ -3715,11 +3821,11 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       private val size = (18 * density).roundToInt()
 
       init {
-        contentDescription = if (row != null) "Select table row" else "Select table column"
+        contentDescription = if (row != null) labels.selectTableRow else labels.selectTableColumn
         isClickable = true
         background = GradientDrawable().apply {
           shape = GradientDrawable.OVAL
-          setColor(editorAccentColor(dark))
+          setColor(theme.accent)
         }
       }
 
@@ -3732,7 +3838,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = Color.WHITE
+          color = theme.onAccent
           strokeWidth = density
           style = Paint.Style.STROKE
         }
@@ -4111,16 +4217,14 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           val top = textLayout.getLineTop(firstLine) + topOffset + outerPadding
           val bottom = textLayout.getLineBottom(lastLine) + topOffset - outerPadding
           val rect = RectF(left, top, right, bottom)
-          val isForegroundColor = block.color?.let { it in editorTextColors } == true
-          fillPaint.color = when {
-            block.color?.let { editorBackgroundColors[it] } != null ->
-              editorBackgroundColors.getValue(block.color!!)
-            isForegroundColor -> if (dark) Color.rgb(0x19, 0x19, 0x19) else Color.WHITE
-            else -> editorCalloutDefaultBackground(dark)
+          val isForegroundColor = block.color?.let { it in editorTextColorNames } == true
+          fillPaint.color = theme.backgroundColor(block.color) ?: when {
+            isForegroundColor -> theme.background
+            else -> theme.surface
           }
           canvas.drawRoundRect(rect, radius, radius, fillPaint)
           if (isForegroundColor) {
-            borderPaint.color = if (dark) Color.rgb(0x48, 0x48, 0x46) else Color.rgb(0xE6, 0xE5, 0xE2)
+            borderPaint.color = theme.calloutBorder
             canvas.drawRoundRect(rect, radius, radius, borderPaint)
           }
         }
@@ -4147,7 +4251,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val lineStart = textLayout.getLineStart(line)
       val blockIndex = text.take(lineStart).count { it == '\n' }
       val block = blocks.getOrNull(blockIndex) ?: return null
-      if (!block.toggle || editorHeadingLevel(block.type) == null) return null
+      if (!block.toggle || (editorHeadingLevel(block.type) == null && block.type != "toggle")) return null
       val textStart = textLayout.getPrimaryHorizontal(lineStart)
       val buttonWidth = textSize * TOGGLE_BUTTON_WIDTH_SCALE
       return if (event.x in (textStart - buttonWidth)..textStart) blockIndex else null

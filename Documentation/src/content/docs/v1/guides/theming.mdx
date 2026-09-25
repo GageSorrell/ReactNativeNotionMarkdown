@@ -1,16 +1,65 @@
 ---
 title: Theming
-description: Adapt renderer and editor surfaces to your application design system.
+description: Theme the renderer and the editor together through MarkdownProvider.
 sidebar:
   order: 5
 ---
 
-Treat typography, spacing, colors, and control components as application-level decisions. The renderer's UI exports are intended to be composed rather than treated as a fixed visual theme.
+import { Aside } from '@astrojs/starlight/components'
 
-## A practical approach
+Every color, font, and size that `MarkdownRenderer` and `MarkdownEditor` draw comes from one `MarkdownTheme`. You supply theme overrides through `MarkdownProvider`, and both components pick them up, including the editor's native Android view, its toolbar and panels, and its bottom sheets.
 
-1. Define document typography tokens alongside the rest of your app theme.
-2. Replace the highest-visibility block components first.
-3. Verify long content, nested lists, links, and code blocks on both platforms.
+## Supplying a theme
 
-Prefer semantic overrides over one-off styles so light and dark themes stay consistent as the document grows.
+Wrap your screens in `MarkdownProvider` and pass per-scheme overrides. Each override is deep-merged over the built-in light or dark theme, so you only list the tokens you change.
+
+```tsx
+import { MarkdownProvider } from "react-native-notion-markdown/provider"
+
+const theme = {
+    light: {
+        document: { accent: "#B4532A", background: "#FBF4E6", fontFamily: "serif" },
+        editor: { toolbar: { background: "#F3E7CF", icon: "#8A5A3C" } }
+    },
+    dark: {
+        document: { accent: "#E0915F", background: "#221B15" }
+    }
+}
+
+export function App() {
+    return <MarkdownProvider theme={ theme }>
+        <Navigation />
+    </MarkdownProvider>
+}
+```
+
+`colorScheme` chooses which scheme applies: `"light"`, `"dark"`, or `"system"` (the default), which follows the device setting.
+
+## Theme sections
+
+| Section | What it styles |
+|---|---|
+| `document` | Document text, links, code, surfaces, borders, fonts, and base font size. The renderer and the editor's native surface both use it, so edited and rendered documents match. |
+| `palette` | The nine enhanced Markdown hues (`gray` through `red`), with a `text` and a `background` color for each. |
+| `editor` | The editor's own UI: `toolbar`, `panel`, `sheet`, `audio`, `attachment`, `media`, `table`, `callout`, `switch`, icon size and stroke width, and the UI `fontFamily`. |
+
+`editor.fontFamily` defaults to `null`, which means the platform system font. That default keeps every weight the toolbar and sheets use. Set it to use your own font in the editor UI.
+
+<Aside type="tip" title="Loading fonts">
+  `document.fontFamily` names a family registered with `expo-font`, or a platform family such as `"serif"` or `"monospace"`. The editor's native view resolves families the same way React Native `Text` does, so a font loaded with `useFonts` applies to both components.
+</Aside>
+
+## Overriding one component
+
+Both components accept the same `colorScheme` and `theme` props. A prop overrides the provider for that component only.
+
+```tsx
+<MarkdownEditor colorScheme="dark" />
+<MarkdownRenderer markdown={ markdown } theme={ { light: { document: { fontSize: 18 } } } } />
+```
+
+Providers can also nest. An inner provider's theme merges over the outer one's.
+
+## Reading the theme
+
+Custom block components receive the resolved theme as their `theme` prop. Anywhere else under a provider, call `useMarkdownTheme()`. `resolveMarkdownTheme(scheme, ...overrides)` computes the same result outside React.

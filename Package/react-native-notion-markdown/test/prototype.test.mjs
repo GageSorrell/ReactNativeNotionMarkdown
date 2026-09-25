@@ -133,7 +133,7 @@ test('to-do editor blocks preserve checked state and reject it on other block ty
 test('column editor blocks preserve supported column counts', () => {
   const initial = createEditorDocument();
   for (const columnCount of [ 2, 3, 4, 5 ]) {
-    const columns = { ...initial.blocks[0], columnCount, text: '\u200B', type: 'column_list' };
+    const columns = { ...initial.blocks[0], columnCount, text: 'Converted content', type: 'column_list' };
     const accepted = acceptEditorEvent(initial, {
       ...initial,
       blocks: [columns, ...initial.blocks.slice(1)],
@@ -155,6 +155,41 @@ test('editor snapshots accept list block types for continued Enter items', () =>
     const accepted = acceptEditorEvent(initial, { ...initial, blocks: [list, ...initial.blocks.slice(1)], revision: 1 });
     assert.equal(accepted.blocks[0].type, type);
   }
+});
+test('editor snapshots accept the expanded turn-into target types', () => {
+  const initial = createEditorDocument();
+  for (const type of [ 'toggle', 'code', 'equation', 'synced_block' ]) {
+    const block = {
+      ...initial.blocks[0],
+      text: type === 'equation' ? 'x^2' : 'Converted content',
+      type,
+      ...(type === 'toggle' ? { collapsed: true, toggle: true } : {}),
+      ...(type === 'code' ? { language: 'plain text' } : {}),
+      ...(type === 'equation' ? { expression: 'x^2' } : {}),
+      ...(type === 'synced_block' ? { synced_from: null } : {})
+    };
+    const accepted = acceptEditorEvent(initial, {
+      ...initial,
+      blocks: [ block, ...initial.blocks.slice(1) ],
+      revision: 1
+    });
+    assert.equal(accepted.blocks[0].type, type);
+    if (type === 'toggle') assert.equal(accepted.blocks[0].collapsed, true);
+    if (type === 'code') assert.equal(accepted.blocks[0].language, 'plain text');
+    if (type === 'equation') assert.equal(accepted.blocks[0].expression, 'x^2');
+    if (type === 'synced_block') assert.equal(accepted.blocks[0].synced_from, null);
+  }
+  const toggleHeading = {
+    ...initial.blocks[0],
+    collapsed: false,
+    toggle: true,
+    type: 'heading_2'
+  };
+  assert.equal(acceptEditorEvent(initial, {
+    ...initial,
+    blocks: [ toggleHeading, ...initial.blocks.slice(1) ],
+    revision: 1
+  }).blocks[0].toggle, true);
 });
 test('page-reference editor blocks preserve URL and icon metadata', () => {
   const initial = createEditorDocument();
@@ -249,6 +284,32 @@ test('editor link marks preserve URLs and reject malformed links', () => {
   });
   assert.equal(invalid, initial);
 });
+test('editor snapshots preserve inline colors and reject overlapping color marks', () => {
+  const initial = createEditorDocument();
+  const colored = {
+    ...initial.blocks[0],
+    marks: [ { color: 'red', end: 5, kind: 'color', start: 0 } ]
+  };
+  const accepted = acceptEditorEvent(initial, {
+    ...initial,
+    blocks: [colored, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  assert.equal(accepted.blocks[0].marks[0].color, 'red');
+  const invalid = acceptEditorEvent(initial, {
+    ...initial,
+    blocks: [{
+      ...colored,
+      marks: [
+        { color: 'red', end: 5, kind: 'color', start: 0 },
+        { color: 'blue_bg', end: 7, kind: 'color', start: 3 }
+      ]
+    }, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  assert.equal(invalid, initial);
+});
+
 test('soft breaks stay in a block; empty blocks have selectable endpoints', () => {
   const blocks = [{ id: 'empty', type: 'text', text: '' }, { id: 'soft', type: 'text', text: 'a\u2028b' }];
   assert.deepEqual(editorPointAt(blocks, 0), { blockId: 'empty', field: 'rich_text', offset: 0 });
@@ -265,6 +326,31 @@ test('Milestone 2 parses rich text and block attributes', () => {
   assert.equal(richText[5].annotations.strikethrough, true);
   assert.equal(richText[7].annotations.underline, true);
   assert.equal(richText[9].text.link.url, 'https://example.com');
+});
+
+test('block and inline colors compose without creating a second inline color', () => {
+  const source = [
+    'Block background with <span color="red">foreground text</span> {color="blue_bg"}',
+    'Block foreground with <span color="blue_bg">inline background</span> {color="red"}'
+  ].join('\n');
+  const parsed = parseMarkdown(source);
+  assert.deepEqual(parsed.diagnostics, []);
+  assert.equal(parsed.document.blocks[0].__markdown_markdown.color, 'blue_bg');
+  assert.equal(parsed.document.blocks[0].paragraph.rich_text[1].annotations.color, 'red');
+  assert.equal(parsed.document.blocks[1].__markdown_markdown.color, 'red');
+  assert.equal(parsed.document.blocks[1].paragraph.rich_text[1].annotations.color, 'blue_bg');
+  assert.equal(serializeMarkdown(parsed.document), source);
+});
+
+test('invalid and nested inline colors are diagnosed and omitted', () => {
+  const parsed = parseMarkdown([
+    'Unsupported {color="chartreuse"}',
+    '<span color="red"><span color="blue_bg">Conflicting</span></span>'
+  ].join('\n'));
+  assert.ok(parsed.diagnostics.some((diagnostic) => diagnostic.code === 'invalid-color'));
+  assert.ok(parsed.diagnostics.some((diagnostic) => diagnostic.code === 'nested-inline-color'));
+  assert.equal(parsed.document.blocks[0].__markdown_markdown.color, undefined);
+  assert.equal(parsed.document.blocks[1].paragraph.rich_text[0].annotations?.color, undefined);
 });
 
 test('Milestone 2 parses recursive containers, tables, mentions, and literal code', () => {

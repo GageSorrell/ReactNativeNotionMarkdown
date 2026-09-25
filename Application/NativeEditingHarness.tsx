@@ -14,7 +14,7 @@ import {
     type EditorCommand,
     type EditorEvent
 } from "react-native-notion-markdown";
-import { MarkdownEditor, type MarkdownEditorComponents } from "react-native-notion-markdown/editor/ui";
+import { MarkdownEditor, type MarkdownEditorIcons } from "react-native-notion-markdown/editor/ui";
 import { ScrollView, StyleSheet, Text, View, useColorScheme } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMarkdownDevTools } from "@react-native-notion-markdown/devtools-plugin";
@@ -33,11 +33,11 @@ function DiagnosticButton({ label, onPress }: DiagnosticButtonProps)
         style={ styles.diagnosticButton }>{ label }</Text>;
 }
 
-/** Optional button components accepted by the diagnostic harness host. */
-export type NativeEditingHarnessProps = { components?: MarkdownEditorComponents };
+/** Optional button icons accepted by the diagnostic harness host. */
+export type NativeEditingHarnessProps = { icons?: MarkdownEditorIcons };
 
 /** Acceptance harness around the package's configured editor UI. */
-export function NativeEditingHarness({ components }: NativeEditingHarnessProps = {})
+export function NativeEditingHarness({ icons }: NativeEditingHarnessProps = {})
 {
     const [ snapshot, setSnapshot ] = useState(CreateEditorDocument);
     const currentSnapshot = useRef(snapshot);
@@ -186,9 +186,9 @@ export function NativeEditingHarness({ components }: NativeEditingHarnessProps =
                     onPress={ handleSoftBreak } />
             </ScrollView>
             <MarkdownEditor
+                colorScheme={ dark ? "dark" : "light" }
                 command={ command }
-                components={ components }
-                dark={ dark }
+                icons={ icons }
                 onCommand={ send }
                 onEdit={ receiveEdit }
                 snapshot={ snapshot }

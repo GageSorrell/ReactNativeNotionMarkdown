@@ -1,5 +1,6 @@
 /**
- * A pre-configured, "batteries included" editor UI.
+ * A pre-configured, "batteries included" editor UI, themed and configured through
+ * `MarkdownProvider` (re-exported here).
  *
  * @module react-native-notion-markdown/editor/ui
  *
@@ -17,13 +18,6 @@ export {
     type MarkdownEditorFileAsset,
     type MarkdownEditorFileSelection,
     type MarkdownEditorBlockActionsSelection,
-    type MarkdownEditorButton,
-    type MarkdownEditorComponents,
-    type MarkdownEditorCustomButton,
-    type MarkdownEditorCustomButtonPlacement,
-    type MarkdownEditorCustomPanel,
-    type MarkdownEditorCustomPanelContext,
-    type MarkdownEditorIconProps,
     type MarkdownEditorLinkPromptResult,
     type MarkdownEditorLinkResult,
     type MarkdownEditorLinkSelection,
@@ -37,17 +31,33 @@ export {
 export { type MarkdownEditorBlockAction, type MarkdownEditorTableAction } from "./ActionsBottomSheet.tsx";
 export { Switch, type SwitchProps, type SwitchSize } from "./Switch.tsx";
 
-/** Editor UI configuration -- currently localization, with room to grow to theming. */
+/** Toolbar, panel, icon, and layout customization -- see `MarkdownEditorConfig`. */
 export {
-    MarkdownEditorConfigProvider,
-    useMarkdownEditorConfig,
-    useMarkdownEditorTranslate,
-    type MarkdownEditorConfigProviderProps,
-    type MarkdownEditorLocalization
-} from "./config.tsx";
-export {
-    defaultEditorMessages,
-    type EditorMessageId,
-    type MarkdownEditorMessageDescriptor,
-    type MarkdownEditorTranslate
-} from "./messages.ts";
+    defaultMarkdownEditorInsertSections,
+    defaultMarkdownEditorToolbar,
+    defaultMarkdownEditorTurnIntoItems,
+    resolveToolbarItems,
+    type MarkdownEditorButton,
+    type MarkdownEditorColorPanel,
+    type MarkdownEditorConfig,
+    type MarkdownEditorCustomButton,
+    type MarkdownEditorCustomInsertItem,
+    type MarkdownEditorCustomPanel,
+    type MarkdownEditorCustomPanelContext,
+    type MarkdownEditorFormatToolbarItem,
+    type MarkdownEditorIconProps,
+    type MarkdownEditorIcons,
+    type MarkdownEditorInsertContext,
+    type MarkdownEditorInsertItem,
+    type MarkdownEditorInsertPanel,
+    type MarkdownEditorInsertSection,
+    type MarkdownEditorLayout,
+    type MarkdownEditorMainToolbarItem,
+    type MarkdownEditorToolbar,
+    type MarkdownEditorTurnIntoItem,
+    type MarkdownEditorTurnIntoPanel,
+    type ResolvedToolbarItem
+} from "./customization.ts";
+
+/** Theme, localization, and configuration shared with the renderer. */
+export * from "../../provider/index.ts";

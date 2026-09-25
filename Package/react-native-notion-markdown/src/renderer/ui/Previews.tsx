@@ -1,4 +1,6 @@
 /**
+ * On-demand media previews for image, audio, video, file, and PDF blocks.
+ *
  * @module react-native-notion-markdown/renderer/ui/Previews
  *
  * @file      Previews.tsx
@@ -9,13 +11,17 @@
 
 import { Image, Pressable, Text, View } from "react-native";
 import type { MarkdownBlock, MarkdownRichText } from "../../document/types.ts";
-import type { MarkdownMediaRequest, MarkdownRendererTheme } from "./types.ts";
+import type { MarkdownDocumentTheme, MarkdownTheme } from "../../provider/theme.ts";
+import type { MarkdownMessageId } from "../../provider/messages.ts";
+import type { MarkdownMediaRequest } from "./types.ts";
+import type { MarkdownOpenUrl } from "../../provider/MarkdownProvider.tsx";
 import { type StatusChangeEventPayload, VideoView, useVideoPlayer } from "expo-video";
 import { asRecord, getMarkdownBlockPayload } from "../../internal.ts";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MarkdownRichTextView } from "./RichText.tsx";
 import Pdf from "react-native-pdf";
+import { useResolvedRendererConfig } from "../../provider/MarkdownProvider.tsx";
 
 /**
  * Media kinds supported by the renderer previews.
@@ -25,8 +31,19 @@ import Pdf from "react-native-pdf";
  */
 export type MediaKind = MarkdownMediaRequest["kind"];
 
+/** The message naming each media kind in preview labels. */
+const mediaKindMessageIds: Readonly<Record<MediaKind, MarkdownMessageId>> =
+    {
+        audio: "renderer.mediaKindAudio",
+        file: "renderer.mediaKindFile",
+        image: "renderer.mediaKindImage",
+        pdf: "renderer.mediaKindPdf",
+        video: "renderer.mediaKindVideo"
+    };
+
 /**
- * Props for rendering media belonging to a given block.
+ * Props for rendering media belonging to a given block. The theme, link opening, and media URL
+ * resolution default to the nearest `MarkdownProvider`'s; pass them to override.
  *
  * @category Interfaces
  * @since 1.0.0
@@ -35,9 +52,8 @@ export interface MarkdownMediaViewProps
 {
     readonly block: MarkdownBlock;
     readonly kind: MediaKind;
-    readonly theme: MarkdownRendererTheme;
-    readonly dark: boolean;
-    readonly onOpenUrl?: (url: string) => void;
+    readonly theme?: MarkdownTheme;
+    readonly onOpenUrl?: MarkdownOpenUrl;
     readonly resolveMediaUrl?: (request: MarkdownMediaRequest) => Promise<string | null>;
 }
 
@@ -65,10 +81,11 @@ function sourceOf(block: MarkdownBlock): { url?: string; caption?: MarkdownRichT
  */
 function Message({ text, theme, retry }: {
     readonly text: string;
-    readonly theme: MarkdownRendererTheme;
+    readonly theme: MarkdownDocumentTheme;
     readonly retry?: () => void
 })
 {
+    const { t } = useResolvedRendererConfig();
     const rootStyle = useMemo(
         () => ({ backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing }),
         [ theme.spacing, theme.surface ]
@@ -91,12 +108,12 @@ function Message({ text, theme, retry }: {
             {
                 retry && (
                     <Pressable
-                        accessibilityLabel="Retry preview"
+                        accessibilityLabel={ t("renderer.retryPreview") }
                         accessibilityRole="button"
                         onPress={ retry }
                         style={ retryStyle }>
                         <Text style={ retryTextStyle }>
-                            Retry
+                            { t("renderer.retry") }
                         </Text>
                     </Pressable>
                 )
@@ -113,10 +130,11 @@ function Message({ text, theme, retry }: {
  */
 function AudioPreview({ url, theme, onUnavailable }: {
     readonly url: string;
-    readonly theme: MarkdownRendererTheme;
+    readonly theme: MarkdownDocumentTheme;
     readonly onUnavailable: () => void;
 })
 {
+    const { t } = useResolvedRendererConfig();
     const player = useAudioPlayer({ uri: url });
     const status = useAudioPlayerStatus(player);
     useEffect(() =>
@@ -141,20 +159,24 @@ function AudioPreview({ url, theme, onUnavailable }: {
     {
         return (
             <Message
-                text="Audio unavailable"
+                text={ t("renderer.audioUnavailable") }
                 theme={ theme }
             />
         );
     }
     return (
         <Pressable
-            accessibilityLabel={ status.playing ? "Pause audio" : "Play audio" }
+            accessibilityLabel={ t(status.playing ? "renderer.pauseAudio" : "renderer.playAudio") }
             accessibilityRole="button"
             onPress={ () => status.playing ? player.pause() : player.play() }
             style={ rootStyle }>
             <Text style={ textStyle }>
-                { status.playing ? "Pause" : "Play" } audio · { Math.floor(status.currentTime) }s /{ " " }
-                { Math.floor(status.duration) }s
+                {
+                    t(status.playing ? "renderer.audioStatusPlaying" : "renderer.audioStatusPaused", {
+                        current: Math.floor(status.currentTime),
+                        duration: Math.floor(status.duration)
+                    })
+                }
             </Text>
         </Pressable>
     );
@@ -198,12 +220,17 @@ function VideoPreview({ url, onUnavailable }: { readonly url: string; readonly o
 export function MarkdownMediaView({
     block,
     kind,
-    theme,
-    dark,
-    onOpenUrl,
-    resolveMediaUrl
+    theme: suppliedTheme,
+    onOpenUrl: suppliedOnOpenUrl,
+    resolveMediaUrl: suppliedResolveMediaUrl
 }: MarkdownMediaViewProps)
 {
+    const resolved = useResolvedRendererConfig();
+    const { t } = resolved;
+    const fullTheme = suppliedTheme ?? resolved.theme;
+    const theme = fullTheme.document;
+    const onOpenUrl = suppliedOnOpenUrl ?? resolved.onOpenUrl;
+    const resolveMediaUrl = suppliedResolveMediaUrl ?? resolved.config.resolveMediaUrl;
     const source = sourceOf(block);
     const activeKey = `${block.id}:${kind}:${source.url ?? ""}`;
     const [ openedKey, setOpenedKey ] = useState<string>();
@@ -266,7 +293,7 @@ export function MarkdownMediaView({
                 if (!result || !/^(https?:|file:|content:|data:)/i.test(result))
                 {
                     setResult({
-                        error: "Resource unavailable or URL invalid",
+                        error: t("renderer.resourceUnavailableOrInvalid"),
                         key: requestKey
                     });
                 }
@@ -283,7 +310,7 @@ export function MarkdownMediaView({
                 if (live)
                 {
                     setResult({
-                        error: "Resource unavailable",
+                        error: t("renderer.resourceUnavailable"),
                         key: requestKey
                     });
                 }
@@ -293,13 +320,11 @@ export function MarkdownMediaView({
         {
             live = false;
         };
-    }, [ active, block, kind, resolveMediaUrl, retry, source.url, requestKey ]);
+    }, [ active, block, kind, resolveMediaUrl, retry, source.url, requestKey, t ]);
 
     const restart = useCallback(() => setRetry((value: number) => value + 1), [ ]);
     const failed = (message: string) => { setResult({ error: message, key: requestKey }); };
-    const heading = kind === "pdf"
-        ? "PDF"
-        : kind.slice(0, 1).toUpperCase() + kind.slice(1);
+    const heading = t(mediaKindMessageIds[ kind ]);
     const rootStyle = useMemo(() => ({ marginVertical: 6 }), [ ]);
     const loadStyle = useMemo(
         () => ({ backgroundColor: theme.surface, borderRadius: 6, padding: theme.spacing }),
@@ -343,12 +368,12 @@ export function MarkdownMediaView({
             style={ rootStyle }
             testID={ `media-${block.id}` }>
             {!active && (
-                <Pressable accessibilityLabel={ `Load ${heading} preview` }
+                <Pressable accessibilityLabel={ t("renderer.loadMediaPreview", { kind: heading }) }
                     accessibilityRole="button"
                     onPress={ () => setOpenedKey(activeKey) }
                     style={ loadStyle }>
                     <Text style={ loadTextStyle }>
-                        Load { heading } preview
+                        { t("renderer.loadMediaPreview", { kind: heading }) }
                     </Text>
                 </Pressable>
             )
@@ -364,7 +389,7 @@ export function MarkdownMediaView({
             {
                 active && !error && !url && (
                     <Message
-                        text={ `Loading ${heading.toLowerCase()}…` }
+                        text={ t("renderer.loadingMedia", { kind: heading }) }
                         theme={ theme }
                     />
                 )
@@ -372,8 +397,8 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "image" && (
                     <Image
-                        accessibilityLabel={ source.caption?.length ? "Image with caption" : "Image" }
-                        onError={ () => failed("Image unavailable") }
+                        accessibilityLabel={ t(source.caption?.length ? "renderer.imageWithCaption" : "renderer.image") }
+                        onError={ () => failed(t("renderer.imageUnavailable")) }
                         onLoad={ () => setResult({ key: requestKey, loaded: true, url }) }
                         resizeMode="contain"
                         source={ { uri: url } }
@@ -384,7 +409,7 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "pdf" && (
                     <Pdf
-                        onError={ () => failed("PDF unavailable") }
+                        onError={ () => failed(t("renderer.pdfUnavailable")) }
                         onLoadComplete={ () => setResult({ key: requestKey, url, loaded: true }) }
                         source={ { cache: true, uri: url } }
                         style={ pdfStyle }
@@ -394,7 +419,7 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "audio" && (
                     <AudioPreview
-                        onUnavailable={ () => failed("Audio unavailable") }
+                        onUnavailable={ () => failed(t("renderer.audioUnavailable")) }
                         theme={ theme }
                         url={ url }
                     />
@@ -403,7 +428,7 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "video" && (
                     <VideoPreview
-                        onUnavailable={ () => failed("Video unavailable") }
+                        onUnavailable={ () => failed(t("renderer.videoUnavailable")) }
                         url={ url }
                     />
                 )
@@ -411,12 +436,12 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "file" && (
                     <Pressable
-                        accessibilityLabel="Open file"
+                        accessibilityLabel={ t("renderer.openFile") }
                         accessibilityRole="link"
-                        onPress={ () => onOpenUrl?.(url) }
+                        onPress={ () => void onOpenUrl?.(url) }
                         style={ fileStyle }>
                         <Text style={ fileTextStyle }>
-                            Open file
+                            { t("renderer.openFile") }
                         </Text>
                     </Pressable>
                 )
@@ -424,12 +449,12 @@ export function MarkdownMediaView({
             {
                 active && url && !error && (kind === "pdf" || kind === "audio" || kind === "video") && (
                     <Pressable
-                        accessibilityLabel={ `Close ${ heading } preview` }
+                        accessibilityLabel={ t("renderer.closeMediaPreview", { kind: heading }) }
                         accessibilityRole="button"
                         onPress={ () => setOpenedKey(undefined) }
                         style={ closeStyle }>
                         <Text style={ closeTextStyle }>
-                            Close preview
+                            { t("renderer.closePreview") }
                         </Text>
                     </Pressable>
                 )
@@ -437,18 +462,17 @@ export function MarkdownMediaView({
             {
                 active && url && !loaded && !error && (kind === "image" || kind === "pdf") && (
                     <Text style={ loadingTextStyle }>
-                        Loading…
+                        { t("renderer.loading") }
                     </Text>
                 )
             }
             {
                 source.caption && (
                     <MarkdownRichTextView
-                        dark={ dark }
                         items={ source.caption }
                         onOpenUrl={ onOpenUrl }
                         textStyle={ captionTextStyle }
-                        theme={ theme }
+                        theme={ fullTheme }
                     />
                 )
             }

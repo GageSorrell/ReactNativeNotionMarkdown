@@ -14,8 +14,9 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { fromMarkdownBlocks, parseMarkdown } from "react-native-notion-markdown/renderer";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Asset } from "expo-asset";
-import { MarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
+import { MarkdownProvider, MarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
 import type { MarkdownMediaRequest } from "react-native-notion-markdown/renderer/ui";
+import { sepiaTheme } from "./customTheme";
 
 /* eslint-disable @stylistic/max-len */
 const catalog =
@@ -219,6 +220,14 @@ function LayoutStory()
     </ScrollView>;
 }
 
+/** The catalog under a `MarkdownProvider` custom theme -- every renderer surface should follow it. */
+function CustomThemeStory()
+{
+    return <MarkdownProvider theme={ sepiaTheme }>
+        <CatalogStory />
+    </MarkdownProvider>;
+}
+
 const meta = { parameters: { layout: "fullscreen" }, title: "Renderer" } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -228,3 +237,4 @@ export const Resolvers: Story = { render: () => <ResolverStory /> };
 export const MediaPreviews: Story = { render: () => <MediaStory /> };
 export const MathAndMermaid: Story = { render: () => <MathDiagramStory /> };
 export const LayoutAndImported: Story = { render: () => <LayoutStory /> };
+export const CustomTheme: Story = { render: () => <CustomThemeStory /> };

@@ -7,7 +7,7 @@
  * @license   MIT
  */
 
-import type { MarkdownColor } from "./document/types.ts";
+import { type MarkdownColor, isMarkdownColor, markdownColors } from "./document/types.ts";
 
 /**
  * A block in the milestone-one transport model. This is not the public Markdown AST.
@@ -32,8 +32,12 @@ export interface EditorBlock
         | "bulleted_list_item"
         | "numbered_list_item"
         | "to_do"
+        | "toggle"
+        | "code"
         | "callout"
         | "quote"
+        | "equation"
+        | "synced_block"
         | "table"
         | "divider"
         | "table_of_contents"
@@ -52,6 +56,8 @@ export interface EditorBlock
     readonly mimeType?: string;
     readonly fileName?: string;
     readonly fileSize?: number;
+    /** Language metadata retained for code blocks. */
+    readonly language?: string;
     /** Optional icon: a page icon for `link_to_page`, or a callout's emoji. */
     readonly icon?: string;
     readonly color?: MarkdownColor;
@@ -59,6 +65,10 @@ export interface EditorBlock
     readonly checked?: boolean;
     /** Number of columns in a `column_list` block. */
     readonly columnCount?: EditorColumnCount;
+    /** Equation source mirrored from the block's expression payload. */
+    readonly expression?: string;
+    /** A newly created synced block has no source block yet. */
+    readonly synced_from?: null;
     /** Inline formatting ranges contained by this block's text. */
     readonly marks?: ReadonlyArray<EditorTextMark>;
     /** Present only for a `table` block. */
@@ -80,10 +90,14 @@ export type EditorColumnCount = 2 | 3 | 4 | 5;
 export interface EditorTextMark
 {
     readonly end: number;
-    readonly kind: EditorTextMarkKind | "link";
+    readonly kind: EditorTextMarkKind | "color" | "link";
     readonly start: number;
+    readonly color?: MarkdownColor;
     readonly url?: string;
 }
+
+/** Target selected by the public color command. */
+export type EditorColorTarget = "inline" | "block";
 
 /** One directly editable cell in an editor table. */
 export interface EditorTableCell
@@ -256,8 +270,11 @@ export interface EditorCommand
     /** Heading level for a `"heading"` action. Defaults to 1 when omitted. */
     readonly level?: 1 | 2 | 3 | 4;
 
-    /** Block color for a `"color"` action. Omit (or clear) for the default color. */
+    /** Color for a `"color"` action. Omit (or clear) for the default color. */
     readonly color?: MarkdownColor;
+
+    /** Whether a `"color"` action changes inline text or the containing block. */
+    readonly colorTarget?: EditorColorTarget;
 
     /** Emoji icon for a callout `"icon"` action. */
     readonly icon?: string;
@@ -347,18 +364,31 @@ const validEditorBlockTypes: ReadonlyArray<EditorBlock[ "type" ]> =
     [
         "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
         "numbered_list_item", "divider",
-        "to_do", "callout", "quote", "table", "table_of_contents", "column_list", "image", "audio", "video", "file",
+        "to_do", "toggle", "code", "callout", "quote", "equation", "synced_block", "table",
+        "table_of_contents", "column_list", "image", "audio", "video", "file",
         "link_to_page"
     ];
 
-/* Valid EditorBlock colors, matching `MarkdownColor` exactly. */
-const validEditorColors: ReadonlyArray<MarkdownColor> =
-    [
-        "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red",
-        "gray_bg", "brown_bg", "orange_bg", "yellow_bg", "green_bg",
-        "blue_bg", "purple_bg", "pink_bg", "red_bg"
-    ];
+/** Validate editor mark ranges, including the single-color-per-range invariant. */
+function validEditorMarks(marks: ReadonlyArray<EditorTextMark> | undefined, text: string): boolean
+{
+    if (marks === undefined) {return true;}
+    const valid = marks.every((mark: EditorTextMark) =>
+        mark.start >= 0 && mark.end > mark.start && mark.end <= text.length
+        && ([ "bold", "italic", "strikethrough", "underline", "code" ].includes(mark.kind)
+            || (mark.kind === "color" && isMarkdownColor(mark.color))
+            || (mark.kind === "link" && typeof mark.url === "string" && mark.url.length > 0))
+    );
+    if (!valid) {return false;}
 
+    const colors = marks
+        .filter((mark: EditorTextMark) => mark.kind === "color")
+        .sort((first: EditorTextMark, second: EditorTextMark) => first.start - second.start);
+    return colors.every((mark: EditorTextMark, index: number) =>
+        colors.slice(index + 1).every((next: EditorTextMark) => next.start >= mark.end));
+}
+
+/** Validate the structural and rich-text state of an editor table. */
 function validEditorTable(table: EditorTable | undefined): boolean
 {
     if (table === undefined || !Array.isArray(table.rows) || table.rows.length < 1
@@ -371,27 +401,21 @@ function validEditorTable(table: EditorTable | undefined): boolean
     const width = table.rows[ 0 ]?.cells.length ?? 0;
     if (width < 1) {return false;}
 
-    const validMark = (mark: EditorTextMark, text: string): boolean =>
-        mark.start >= 0 && mark.end > mark.start && mark.end <= text.length
-        && ([ "bold", "italic", "strikethrough", "underline", "code" ].includes(mark.kind)
-            || (mark.kind === "link" && typeof mark.url === "string" && mark.url.length > 0));
-
     return table.rows.every((row: EditorTableRow) =>
         Array.isArray(row.cells) && row.cells.length === width
-        && (row.color === undefined || validEditorColors.includes(row.color))
+        && (row.color === undefined || markdownColors.includes(row.color))
         && row.cells.every((cell: EditorTableCell) =>
             typeof cell.text === "string" && !cell.text.includes("\n")
-            && (cell.color === undefined || validEditorColors.includes(cell.color))
-            && (cell.marks === undefined && cell.text.length === 0
-                || cell.marks === undefined
-                || cell.marks.every((mark: EditorTextMark) => validMark(mark, cell.text)))
+            && (cell.color === undefined || markdownColors.includes(cell.color))
+            && validEditorMarks(cell.marks, cell.text)
         ))
         && (table.columnColors === undefined || table.columnColors.length <= width
             && table.columnColors.every((color: MarkdownColor | undefined) =>
-                color === undefined || validEditorColors.includes(color)))
-        && (table.tableColor === undefined || validEditorColors.includes(table.tableColor));
+                color === undefined || markdownColors.includes(color)))
+        && (table.tableColor === undefined || markdownColors.includes(table.tableColor));
 }
 
+/** Compare optional editor tables without treating an omitted table as a distinct empty value. */
 function editorTablesEqual(first: EditorTable | undefined, second: EditorTable | undefined): boolean
 {
     return JSON.stringify(first ?? null) === JSON.stringify(second ?? null);
@@ -426,7 +450,7 @@ export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): 
         Block.text.includes("\n") ||
         !validEditorBlockTypes.includes(Block.type) ||
         (Block.depth !== undefined && (!Number.isInteger(Block.depth) || Block.depth < 0)) ||
-        (Block.toggle === true && !Block.type.startsWith("heading_")) ||
+        (Block.toggle === true && !Block.type.startsWith("heading_") && Block.type !== "toggle") ||
         (Block.collapsed === true && Block.toggle !== true) ||
         (Block.checked !== undefined && Block.type !== "to_do") ||
         (Block.columnCount !== undefined && (Block.type !== "column_list"
@@ -450,13 +474,15 @@ export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): 
             || typeof Block.fileName !== "string")) ||
         (Block.fileSize !== undefined && ((Block.type !== "audio" && Block.type !== "file")
             || !Number.isFinite(Block.fileSize) || Block.fileSize < 0)) ||
-        (Block.color !== undefined && !validEditorColors.includes(Block.color)) ||
+        (Block.language !== undefined && (Block.type !== "code" || typeof Block.language !== "string"
+            || Block.language.trim().length === 0)) ||
+        (Block.expression !== undefined && (Block.type !== "equation"
+            || typeof Block.expression !== "string")) ||
+        (Block.synced_from !== undefined && (Block.type !== "synced_block" || Block.synced_from !== null)) ||
+        (Block.color !== undefined && !markdownColors.includes(Block.color)) ||
         (Block.type === "table" ? !validEditorTable(Block.table) : Block.table !== undefined) ||
-        (Block.marks !== undefined && Block.marks.some((mark: EditorTextMark) =>
-            mark.start < 0 || mark.end <= mark.start || mark.end > Block.text.length ||
-            (![ "bold", "italic", "strikethrough", "underline", "code" ].includes(mark.kind)
-                && (mark.kind !== "link" || typeof mark.url !== "string" || mark.url.length === 0))
-        ))
+        ((Block.type !== "column_list" && Block.columnCount !== undefined)) ||
+        !validEditorMarks(Block.marks, Block.text)
     );
 
     /**
@@ -483,6 +509,7 @@ export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): 
                         return next?.end === mark.end
                             && next.kind === mark.kind
                             && next.start === mark.start
+                            && next.color === mark.color
                             && next.url === mark.url;
                     }
                 );
@@ -499,6 +526,9 @@ export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): 
                 && previous.mimeType === block.mimeType
                 && previous.fileName === block.fileName
                 && previous.fileSize === block.fileSize
+                && previous.language === block.language
+                && previous.expression === block.expression
+                && previous.synced_from === block.synced_from
                 && previous.icon === block.icon
                 && editorTablesEqual(previous.table, block.table)
                 && marksEqual

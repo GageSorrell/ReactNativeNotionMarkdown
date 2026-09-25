@@ -43,6 +43,7 @@ export const REFERENCE_CONFIG: ReferencePackageConfig = {
   channels: [REFERENCE_VERSION],
   modules: [
     { exportPath: ".", slug: "index", label: "Package exports" },
+    { exportPath: "./provider", slug: "provider", label: "provider" },
     { exportPath: "./renderer", slug: "renderer", label: "renderer" },
     { exportPath: "./renderer/ui", slug: "renderer-ui", label: "renderer/ui" },
     { exportPath: "./editor", slug: "editor", label: "editor" },

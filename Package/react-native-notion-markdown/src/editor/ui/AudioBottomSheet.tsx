@@ -38,26 +38,29 @@ import {
     formatAudioTime,
     normalizeAudioMetering
 } from "./audioWaveform.ts";
-import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View, useColorScheme } from "react-native";
+import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
     MarkdownEditorAudioAction,
     MarkdownEditorAudioAsset,
-    MarkdownEditorAudioSelection,
-    MarkdownEditorComponents,
-    MarkdownEditorIconProps
+    MarkdownEditorAudioSelection
 } from "./MarkdownEditor.tsx";
-import type { ComponentType } from "react";
+import type { MarkdownEditorIconProps, MarkdownEditorIcons } from "./customization.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentType } from "react";
+import { editorFontStyle } from "./customization.ts";
+import { useResolvedEditorConfig } from "../../provider/MarkdownProvider.tsx";
+import { withAlpha } from "../../provider/theme.ts";
 
 export interface AudioBottomSheetProps
 {
-    readonly components?: MarkdownEditorComponents;
     readonly initialAction?: MarkdownEditorAudioAction;
     readonly replacement?: boolean;
     readonly labels: {
         readonly cancel: string;
         readonly chooseFile: string;
         readonly confirm: string;
+        readonly dismiss: string;
+        readonly untitled: string;
         readonly error: string;
         readonly noAudio: string;
         readonly permissionDenied: string;
@@ -112,6 +115,7 @@ interface AudioOptionProps
 {
     readonly action: "choose" | "record";
     readonly color: string;
+    readonly fontFamily?: string;
     readonly icon: ComponentType<MarkdownEditorIconProps>;
     readonly label: string;
     readonly onPress: (action: "choose" | "record") => void;
@@ -162,12 +166,12 @@ function getLucideIcons(): LucideModule | undefined
 /** Resolve a host override, optional Lucide icon, or dependency-free SVG fallback. */
 function getAudioIcon(
     action: "choose" | "record",
-    components: MarkdownEditorComponents | undefined
+    icons: MarkdownEditorIcons | undefined
 ): ComponentType<MarkdownEditorIconProps>
 {
     const override = action === "choose"
-        ? components?.filePicker
-        : components?.record ?? components?.speech;
+        ? icons?.filePicker
+        : icons?.record ?? icons?.speech;
 
     if (override !== undefined)
     {
@@ -187,16 +191,16 @@ function getAudioIcon(
 /** Resolve a recorder-control override, optional Lucide icon, or dependency-free SVG fallback. */
 function getRecordingIcon(
     action: "record" | "stop" | "cancel" | "check" | "play" | "pause",
-    components: MarkdownEditorComponents | undefined
+    icons: MarkdownEditorIcons | undefined
 ): ComponentType<MarkdownEditorIconProps>
 {
     const override = action === "record"
-        ? components?.record ?? components?.speech
+        ? icons?.record ?? icons?.speech
         : action === "stop"
-            ? components?.stop
+            ? icons?.stop
             : action === "cancel"
-                ? components?.cancel ?? components?.close
-                : action === "check" ? components?.check : action === "play" ? components?.play : components?.pause;
+                ? icons?.cancel ?? icons?.close
+                : action === "check" ? icons?.check : action === "play" ? icons?.play : icons?.pause;
 
     if (override !== undefined)
     {
@@ -218,19 +222,20 @@ function getRecordingIcon(
 }
 
 /** Render one labeled audio action. */
-function AudioOption({ action, color, icon: Icon, label, onPress }: AudioOptionProps)
+function AudioOption({ action, color, fontFamily, icon: Icon, label, onPress }: AudioOptionProps)
 {
     const optionStyle = useCallback(({ pressed }: { pressed: boolean }) => [
         styles.option,
         pressed
-            ? { backgroundColor: `${ color }12` }
+            ? { backgroundColor: withAlpha(color, 0.07) }
             : undefined
     ], [ color ]);
-    const labelStyle = useMemo(() => [ styles.optionLabel, { color } ], [ color ]);
+    const labelStyle = useMemo(() => [ styles.optionLabel, { color, fontFamily } ], [ color, fontFamily ]);
+    const ripple = useMemo(() => ({ color: withAlpha(color, 0.13) }), [ color ]);
 
     return <Pressable accessibilityLabel={ label }
         accessibilityRole="button"
-        android_ripple={ { color: `${ color }22` } }
+        android_ripple={ ripple }
         onPress={ () => onPress(action) }
         style={ optionStyle }>
         <Icon
@@ -242,7 +247,12 @@ function AudioOption({ action, color, icon: Icon, label, onPress }: AudioOptionP
     </Pressable>;
 }
 
-function Waveform({ amplitude, isRecording, label }: { readonly amplitude: number; readonly isRecording: boolean; readonly label: string })
+function Waveform({ amplitude, color, isRecording, label }: {
+    readonly amplitude: number;
+    readonly color: string;
+    readonly isRecording: boolean;
+    readonly label: string;
+})
 {
     const bars = useMemo(
         () => Array.from({ length: nineBars }, (_unused: unknown, index: number) => index), [ ]
@@ -251,6 +261,7 @@ function Waveform({ amplitude, isRecording, label }: { readonly amplitude: numbe
         accessibilityRole="image"
         style={ styles.waveform }>
         { bars.map((index: number) => <WaveformBar amplitude={ amplitude }
+            color={ color }
             isRecording={ isRecording }
             index={ index }
             key={ index } />) }
@@ -259,7 +270,12 @@ function Waveform({ amplitude, isRecording, label }: { readonly amplitude: numbe
 
 const nineBars = 9;
 
-function WaveformBar({ amplitude, isRecording, index }: { readonly amplitude: number; readonly isRecording: boolean; readonly index: number })
+function WaveformBar({ amplitude, color, isRecording, index }: {
+    readonly amplitude: number;
+    readonly color: string;
+    readonly isRecording: boolean;
+    readonly index: number;
+})
 {
     const soundPulse = useMemo(() => new Animated.Value(0), [ ]);
     const quietPulse = useMemo(() => new Animated.Value(0), [ ]);
@@ -335,7 +351,10 @@ function WaveformBar({ amplitude, isRecording, index }: { readonly amplitude: nu
         outputRange: [ 0.25, 0.37 ]
     });
     const scale = isRecording && isQuiet ? quietScale : soundScale;
-    const barStyle = useMemo(() => [ styles.waveBar, { transform: [ { scaleY: scale } ] } ], [ scale ]);
+    const barStyle = useMemo(
+        () => [ styles.waveBar, { backgroundColor: color, transform: [ { scaleY: scale } ] } ],
+        [ color, scale ]
+    );
     return <Animated.View style={ barStyle } />;
 }
 
@@ -393,15 +412,18 @@ interface AudioPlayerCardProps
     readonly asset: MarkdownEditorAudioAsset;
     readonly currentTime: number;
     readonly darkColor: string;
+    readonly fontFamily?: string;
     readonly foreground: string;
     readonly lightColor: string;
     readonly muted: string;
+    readonly onAccent: string;
     readonly onPress: () => void;
     readonly pauseIcon: ComponentType<MarkdownEditorIconProps>;
     readonly playIcon: ComponentType<MarkdownEditorIconProps>;
     readonly playing: boolean;
     readonly surface: string;
     readonly label: string;
+    readonly untitled: string;
 }
 
 function AudioPlayerCard({
@@ -409,15 +431,18 @@ function AudioPlayerCard({
     asset,
     currentTime,
     darkColor,
+    fontFamily,
     foreground,
     lightColor,
     muted,
+    onAccent,
     onPress,
     pauseIcon: Pause,
     playIcon: Play,
     playing,
     surface,
-    label
+    label,
+    untitled
 }: AudioPlayerCardProps)
 {
     const bars = useMemo(() =>
@@ -443,21 +468,24 @@ function AudioPlayerCard({
     }, [ cursor, playing, progress ]);
     const cardStyle = useMemo(() => [ styles.audioPlayerCard, { backgroundColor: surface } ], [ surface ]);
     const playButtonStyle = useMemo(() => [ styles.audioPlayerButton, { backgroundColor: accent } ], [ accent ]);
-    const timeStyle = useMemo(() => [ styles.audioPlayerTime, { color: muted } ], [ muted ]);
-    const fileNameStyle = useMemo(() => [ styles.audioPlayerFileName, { color: foreground } ], [ foreground ]);
+    const timeStyle = useMemo(() => [ styles.audioPlayerTime, { color: muted, fontFamily } ], [ fontFamily, muted ]);
+    const fileNameStyle = useMemo(
+        () => [ styles.audioPlayerFileName, { color: foreground, fontFamily } ],
+        [ fontFamily, foreground ]
+    );
     const Icon = playing ? Pause : Play;
     return <View style={ cardStyle }>
         <Pressable accessibilityLabel={ label }
             accessibilityRole="button"
             onPress={ onPress }
             style={ playButtonStyle }>
-            <Icon color="#FFFFFF"
+            <Icon color={ onAccent }
                 size={ 20 }
                 strokeWidth={ 2.25 } />
         </Pressable>
         <View style={ styles.audioPlayerDetails }>
             <Text numberOfLines={ 1 }
-                style={ fileNameStyle }>{ asset.fileName ?? "Audio" }</Text>
+                style={ fileNameStyle }>{ asset.fileName ?? untitled }</Text>
             <FinalWaveform bars={ bars }
                 cursor={ cursor }
                 darkColor={ darkColor }
@@ -468,9 +496,12 @@ function AudioPlayerCard({
 }
 
 /** Render the audio workflow. */
-export function AudioBottomSheet({ components, initialAction, labels, onDismiss, onSelected, replacement = false }: AudioBottomSheetProps)
+export function AudioBottomSheet({ initialAction, labels, onDismiss, onSelected, replacement = false }: AudioBottomSheetProps)
 {
-    const dark = useColorScheme() === "dark";
+    const { config, theme } = useResolvedEditorConfig();
+    const { icons } = config;
+    const { audio, sheet } = theme.editor;
+    const { fontFamily } = editorFontStyle(theme.editor);
     const [ phase, setPhase ] = useState<Phase>(initialAction === undefined ? "choice" : "recorder");
     const [ error, setError ] = useState<string>();
     const [ prepared, setPrepared ] = useState(false);
@@ -665,37 +696,48 @@ export function AudioBottomSheet({ components, initialAction, labels, onDismiss,
     const amplitude = recorderState.metering === undefined
         ? 0
         : normalizeAudioMetering(recorderState.metering);
-    const foreground = dark ? "#F5F5F5" : "#2C2C2B";
-    const muted = dark ? "#D0CDC7" : "#45433F";
-    const surface = dark ? "#202020" : "#F9F8F6";
-    const optionSurface = dark ? "#30302F" : "#FFFFFF";
-    const divider = dark ? "rgba(255, 255, 255, 0.10)" : "#EEECE9";
-    const scrim = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.25)";
-    const accent = "#337EA9";
+    const foreground = sheet.foreground;
+    const muted = sheet.muted;
+    const surface = sheet.background;
+    const optionSurface = sheet.card;
+    const divider = sheet.divider;
+    const scrim = sheet.scrim;
+    const accent = audio.accent;
 
     const scrimStyle = useMemo(() => [ styles.scrim, { backgroundColor: scrim } ], [ scrim ]);
     const sheetStyle = useMemo(() => [ styles.sheet, { backgroundColor: surface } ], [ surface ]);
     const contentStyle = useMemo(() => [ styles.content ], [ ]);
-    const titleStyle = useMemo(() => [ styles.title, { color: foreground } ], [ foreground ]);
+    const titleStyle = useMemo(
+        () => [ styles.title, { color: foreground, fontFamily } ],
+        [ fontFamily, foreground ]
+    );
+    const durationStyle = useMemo(
+        () => [ styles.recordingDuration, { color: muted, fontFamily } ],
+        [ fontFamily, muted ]
+    );
+    const errorStyle = useMemo(
+        () => [ styles.error, { color: sheet.error, fontFamily } ],
+        [ fontFamily, sheet.error ]
+    );
     const optionsStyle = useMemo(() => [
         styles.options,
         { backgroundColor: optionSurface, borderColor: divider }
     ], [ divider, optionSurface ]);
     const dividerStyle = useMemo(() => [ styles.divider, { backgroundColor: divider } ], [ divider ]);
-    const chooseIcon = useMemo(() => getAudioIcon("choose", components), [ components ]);
-    const recordIcon = useMemo(() => getAudioIcon("record", components), [ components ]);
-    const startRecordingIcon = useMemo(() => getRecordingIcon("record", components), [ components ]);
-    const stopRecordingIcon = useMemo(() => getRecordingIcon("stop", components), [ components ]);
-    const CancelRecordingIcon = useMemo(() => getRecordingIcon("cancel", components), [ components ]);
-    const CheckRecordingIcon = useMemo(() => getRecordingIcon("check", components), [ components ]);
-    const PlayRecordingIcon = useMemo(() => getRecordingIcon("play", components), [ components ]);
-    const PauseRecordingIcon = useMemo(() => getRecordingIcon("pause", components), [ components ]);
+    const chooseIcon = useMemo(() => getAudioIcon("choose", icons), [ icons ]);
+    const recordIcon = useMemo(() => getAudioIcon("record", icons), [ icons ]);
+    const startRecordingIcon = useMemo(() => getRecordingIcon("record", icons), [ icons ]);
+    const stopRecordingIcon = useMemo(() => getRecordingIcon("stop", icons), [ icons ]);
+    const CancelRecordingIcon = useMemo(() => getRecordingIcon("cancel", icons), [ icons ]);
+    const CheckRecordingIcon = useMemo(() => getRecordingIcon("check", icons), [ icons ]);
+    const PlayRecordingIcon = useMemo(() => getRecordingIcon("play", icons), [ icons ]);
+    const PauseRecordingIcon = useMemo(() => getRecordingIcon("pause", icons), [ icons ]);
     const RecordingIcon = recorderState.isRecording ? stopRecordingIcon : startRecordingIcon;
     const recordButtonStyle = useMemo(() => [
         styles.recordButton,
-        { backgroundColor: recorderState.isRecording ? "#D44C47" : accent },
+        { backgroundColor: recorderState.isRecording ? sheet.recording : accent },
         !prepared ? styles.recordButtonDisabled : undefined
-    ], [ accent, prepared, recorderState.isRecording ]);
+    ], [ accent, prepared, recorderState.isRecording, sheet.recording ]);
     const cancelButtonStyle = useMemo(() => [
         styles.cancelButton,
         { backgroundColor: optionSurface, borderColor: divider }
@@ -716,7 +758,7 @@ export function AudioBottomSheet({ components, initialAction, labels, onDismiss,
         transparent
         visible>
         <View style={ styles.modalRoot }>
-            <Pressable accessibilityLabel="Dismiss insert audio"
+            <Pressable accessibilityLabel={ labels.dismiss }
                 accessibilityRole="button"
                 onPress={ cancel }
                 style={ scrimStyle } />
@@ -730,21 +772,24 @@ export function AudioBottomSheet({ components, initialAction, labels, onDismiss,
                 { phase === "choice" && <View style={ optionsStyle }>
                     <AudioOption action="choose"
                         color={ muted }
+                        fontFamily={ fontFamily }
                         icon={ chooseIcon }
                         label={ labels.chooseFile }
                         onPress={ handleChoice } />
                     <View style={ dividerStyle } />
                     <AudioOption action="record"
                         color={ muted }
+                        fontFamily={ fontFamily }
                         icon={ recordIcon }
                         label={ labels.record }
                         onPress={ handleChoice } />
                 </View> }
                 { phase === "recorder" && <View style={ styles.recorder }>
                     <Waveform amplitude={ recorderState.isRecording ? amplitude : 0.18 }
+                        color={ accent }
                         isRecording={ recorderState.isRecording }
                         label={ labels.recording } />
-                    <Text style={ [ styles.recordingDuration, { color: muted } ] }>{ formatDuration(recorderState.durationMillis / 1000) }</Text>
+                    <Text style={ durationStyle }>{ formatDuration(recorderState.durationMillis / 1000) }</Text>
                     <Pressable
                         accessibilityLabel={ recorderState.isRecording ? labels.stop : labels.start }
                         accessibilityRole="button"
@@ -752,7 +797,7 @@ export function AudioBottomSheet({ components, initialAction, labels, onDismiss,
                         disabled={ !prepared }
                         onPress={ recordButtonPress }
                         style={ recordButtonStyle }>
-                        <RecordingIcon color="#FFFFFF"
+                        <RecordingIcon color={ audio.onAccent }
                             size={ 28 }
                             strokeWidth={ 2 } />
                     </Pressable>
@@ -770,16 +815,19 @@ export function AudioBottomSheet({ components, initialAction, labels, onDismiss,
                         asset={ recordingAsset }
                         currentTime={ previewStatus.currentTime }
                         darkColor={ accent }
+                        fontFamily={ fontFamily }
                         foreground={ foreground }
                         label={ `${ labels.preview } · ${ previewStatus.playing ? labels.pause : labels.play }` }
-                        lightColor={ dark ? "#5B7F94" : "#A9C9D8" }
+                        lightColor={ audio.waveformInactive }
                         muted={ muted }
+                        onAccent={ audio.onAccent }
                         onPress={ togglePreview }
                         pauseIcon={ PauseRecordingIcon }
                         playIcon={ PlayRecordingIcon }
                         playing={ previewStatus.playing }
-                        surface={ dark ? "#2D363B" : "#F0F6F8" } />
-                    { error !== undefined && <Text style={ styles.error }>{ error }</Text> }
+                        surface={ audio.surface }
+                        untitled={ labels.untitled } />
+                    { error !== undefined && <Text style={ errorStyle }>{ error }</Text> }
                     <View style={ styles.confirmationActions }>
                         <Pressable accessibilityLabel={ labels.cancel }
                             accessibilityRole="button"
@@ -793,14 +841,14 @@ export function AudioBottomSheet({ components, initialAction, labels, onDismiss,
                             accessibilityRole="button"
                             onPress={ confirmPress }
                             style={ confirmationConfirmStyle }>
-                            <CheckRecordingIcon color="#FFFFFF"
+                            <CheckRecordingIcon color={ audio.onAccent }
                                 size={ 26 }
                                 strokeWidth={ 2.25 } />
                         </Pressable>
                     </View>
                 </View> }
                 { error !== undefined && phase !== "confirmation" && <Text accessibilityRole="alert"
-                    style={ styles.error }>{ error }</Text> }
+                    style={ errorStyle }>{ error }</Text> }
                 </View>
             </View>
         </View>
@@ -821,12 +869,12 @@ const styles = StyleSheet.create({
     confirmationCancel: { alignItems: "center", borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, height: 56, justifyContent: "center", width: 56 },
     confirmationConfirm: { alignItems: "center", borderRadius: 28, height: 56, justifyContent: "center", width: 56 },
     content: { paddingBottom: 64, paddingHorizontal: 16, paddingTop: 14 },
-    divider: { backgroundColor: "#EEECE9", height: StyleSheet.hairlineWidth },
-    error: { color: "#C23B32", fontSize: 13, marginTop: 12, textAlign: "center" },
+    divider: { height: StyleSheet.hairlineWidth },
+    error: { fontSize: 13, marginTop: 12, textAlign: "center" },
     modalRoot: { flex: 1, justifyContent: "flex-end" },
     option: { alignItems: "center", flexDirection: "row", gap: 16, minHeight: 48, paddingHorizontal: 24 },
     optionLabel: { fontSize: 16, fontWeight: "500" },
-    options: { borderColor: "#EEECE9", borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
+    options: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
     recorder: { alignItems: "center" },
     recordButton: { alignItems: "center", borderRadius: 32, height: 64, justifyContent: "center", width: 64 },
     recordButtonDisabled: { opacity: 0.45 },
@@ -835,5 +883,5 @@ const styles = StyleSheet.create({
     sheet: { borderTopLeftRadius: 32, borderTopRightRadius: 32, overflow: "hidden" },
     title: { fontSize: 16, fontWeight: "600", paddingBottom: 16, textAlign: "center" },
     waveform: { alignItems: "center", flexDirection: "row", gap: 7, height: 90, justifyContent: "center", marginBottom: 8 },
-    waveBar: { backgroundColor: "#337EA9", borderRadius: 5, height: 70, width: 8 }
+    waveBar: { borderRadius: 5, height: 70, width: 8 }
 });

@@ -1,0 +1,19 @@
+appId: com.gagesorrell.markdown.storybook
+---
+# The "Custom Theme" story (Editor.stories.tsx) wraps the editor in a MarkdownProvider with the sepia
+# theme from Stories/customTheme.ts; this walks every themed surface so the recording shows it.
+- runFlow:
+    file: ../_shared/open-story.yaml
+    env:
+      STORY_ID: "editor--custom-theme"
+      ASSERT_TEXT: "Editor"
+# The editor's text is one multi-line EditText, which Maestro can't match a phrase inside of.
+- tapOn: "Insert"
+- assertVisible: "Insert a block"
+- tapOn: "Close panel"
+- tapOn: "Turn into"
+- assertVisible: "Convert"
+- tapOn: "Close panel"
+- tapOn: "Insert media"
+- assertVisible: "Insert Media"
+- tapOn: "Dismiss insert media"

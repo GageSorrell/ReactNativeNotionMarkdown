@@ -54,6 +54,41 @@ export type MarkdownColor =
     | "pink_bg"
     | "red_bg";
 
+/** Every foreground and background color name accepted by enhanced Markdown. */
+/* eslint-disable-next-line jsdoc/require-jsdoc */
+export const markdownColors: ReadonlyArray<MarkdownColor> = Object.freeze([
+    "gray",
+    "brown",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "purple",
+    "pink",
+    "red",
+    "gray_bg",
+    "brown_bg",
+    "orange_bg",
+    "yellow_bg",
+    "green_bg",
+    "blue_bg",
+    "purple_bg",
+    "pink_bg",
+    "red_bg"
+]);
+
+/** Return whether a runtime value is an enhanced Markdown color. */
+export function isMarkdownColor(value: unknown): value is MarkdownColor
+{
+    return typeof value === "string" && markdownColors.includes(value as MarkdownColor);
+}
+
+/** Return whether a color name denotes a background color. */
+export function isMarkdownBackgroundColor(value: unknown): boolean
+{
+    return typeof value === "string" && value.endsWith("_bg") && isMarkdownColor(value);
+}
+
 /** A source location in the original Markdown string. Lines and columns are one-based. */
 export interface MarkdownSourceLocation
 {

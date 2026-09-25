@@ -1,5 +1,5 @@
 /**
- * A ready-made {@link MarkdownEditorComponents} set backed by `lucide-react-native`.
+ * A ready-made {@link MarkdownEditorIcons} set backed by `lucide-react-native`.
  *
  * This lives in its own module, deliberately never imported by `editor/ui`'s main entry point
  * (`index.ts`), so that Metro only needs to resolve the optional `lucide-react-native` peer for
@@ -77,7 +77,7 @@ import { Line, Rect, Svg } from "react-native-svg";
 import { StyleSheet, View } from "react-native";
 // The type-only relative import is intentionally kept after the runtime dependencies.
 // eslint-disable-next-line sort-imports
-import { type MarkdownEditorComponents, type MarkdownEditorIconProps } from "./MarkdownEditor.tsx";
+import type { MarkdownEditorIconProps, MarkdownEditorIcons } from "./customization.ts";
 
 const toggleHeadingIconStyles = StyleSheet.create({
     root:
@@ -183,7 +183,7 @@ export/**
        *
        * @since 1.0.0
        */
-const markdownEditorLucideIcons: MarkdownEditorComponents =
+const markdownEditorLucideIcons: MarkdownEditorIcons =
     {
         back: ArrowLeft,
         bold: Bold,

@@ -7,6 +7,24 @@ sidebar:
 
 The published package is split into entry points so applications can install only the layers they use.
 
+## Install with the setup command
+
+Run the installer from your React Native app directory and choose which optional dependencies to add:
+
+```sh
+npx create-react-native-notion-markdown
+```
+
+For noninteractive setup, pass `all`, `no-icons`, or `icons` explicitly:
+
+```sh
+npx create-react-native-notion-markdown all
+npx create-react-native-notion-markdown no-icons
+npx create-react-native-notion-markdown icons
+```
+
+`all` installs every optional peer, `no-icons` installs the optional Expo integrations without `lucide-react-native`, and `icons` installs only `lucide-react-native`. The command also installs `react-native-notion-markdown`. It uses `expo install` for the Expo integration sets and when the app already depends on `expo`; otherwise it uses the app's package manager.
+
 ## Install the core package
 
 ```sh

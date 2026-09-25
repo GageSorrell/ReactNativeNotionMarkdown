@@ -32,6 +32,16 @@ test('richTextToFieldMarks captures annotations, color, and link ranges', () => 
   assert.deepEqual(marks.find((m) => m.kind === 'link'), { kind: 'link', start: 15, end: 18, url: 'https://example.com' });
 });
 
+test('field marks preserve inline background colors and reject unsupported assignments', () => {
+  const { text, marks } = richTextToFieldMarks([
+    { type: 'text', text: { content: 'Background' }, annotations: { color: 'blue_bg' } }
+  ]);
+  assert.equal(text, 'Background');
+  assert.deepEqual(marks, [ { kind: 'color', start: 0, end: 10, color: 'blue_bg' } ]);
+  assert.deepEqual(fieldMarksToRichText(text, marks)[0].annotations.color, 'blue_bg');
+  assert.deepEqual(setFieldValueMark(marks, 'color', 0, 4, 'chartreuse'), marks);
+});
+
 test('richTextToFieldMarks represents mentions, equations, citations, and custom emoji as one-unit atoms', () => {
   const mention = { type: 'mention', mention: { type: 'user', user: { id: 'abc' } }, __markdown_markdown: { mention: { kind: 'user', label: 'Ada' } } };
   const equation = { type: 'equation', equation: { expression: 'x^2' } };

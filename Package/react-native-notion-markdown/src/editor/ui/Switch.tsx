@@ -12,18 +12,18 @@
  *
  * This follows NoteFerry's Switch primitive closely: the track and thumb dimensions, animated
  * thumb travel, pressed semantics, and accessibility state are intentionally kept compatible.
- * The package version is dependency-free so it can be used without NoteFerry's theme system.
+ * Colors come from the editor theme's `switch` tokens via the nearest `MarkdownProvider`.
  */
 
 import { Animated, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useResolvedEditorConfig } from "../../provider/MarkdownProvider.tsx";
 
 export type SwitchSize = "medium" | "small";
 
 export interface SwitchProps
 {
     readonly accessibilityLabel?: string;
-    readonly dark?: boolean;
     readonly disabled?: boolean;
     readonly onValueChange?: (value: boolean) => void;
     readonly size?: SwitchSize;
@@ -48,7 +48,6 @@ const dimensionsBySize: Readonly<Record<SwitchSize, SwitchDimensions>> =
 /** A compact, animated binary switch. */
 export function Switch({
     accessibilityLabel,
-    dark = false,
     disabled = false,
     onValueChange,
     size = "medium",
@@ -58,7 +57,9 @@ export function Switch({
 {
     const dimensions = dimensionsBySize[ size ];
     const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
-    const trackColor = value ? (dark ? "#81B8E7" : "#337EA9") : (dark ? "#5B5B59" : "#D0D0CC");
+    const { theme } = useResolvedEditorConfig();
+    const colors = theme.editor.switch;
+    const trackColor = value ? colors.trackOn : colors.trackOff;
     const pressStyle = useCallback(({ pressed }: { pressed: boolean }) => [
         styles.track,
         {
@@ -73,11 +74,14 @@ export function Switch({
     const thumbStyle = useMemo(() => [
         styles.thumb,
         {
+            backgroundColor: colors.thumb,
+            borderColor: colors.thumbBorder,
             borderRadius: dimensions.thumb / 2,
             height: dimensions.thumb,
+            shadowColor: theme.editor.shadow,
             width: dimensions.thumb
         }
-    ], [ dimensions.thumb ]);
+    ], [ colors.thumb, colors.thumbBorder, dimensions.thumb, theme.editor.shadow ]);
     const onPress = useCallback(() => onValueChange?.(!value), [ onValueChange, value ]);
 
     useEffect(() =>
@@ -116,11 +120,8 @@ export function Switch({
 const styles = StyleSheet.create({
     thumb:
     {
-        backgroundColor: "#FFFFFF",
-        borderColor: "rgba(15, 15, 15, 0.10)",
         borderWidth: StyleSheet.hairlineWidth,
         elevation: 2,
-        shadowColor: "#000000",
         shadowOffset: { height: 1, width: 0 },
         shadowOpacity: 0.18,
         shadowRadius: 1.5
