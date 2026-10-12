@@ -1,5 +1,5 @@
 /**
- *
+ * Compact audio waveform helpers shared by the recording confirmation player and audio metadata.
  *
  * @module react-native-notion-markdown/editor/ui/audioWaveform
  *
@@ -9,11 +9,12 @@
  * @license   MIT
  */
 
-/**
- * Compact audio waveform helpers shared by the recording confirmation player and audio metadata.
- */
-
-export const audioWaveformBarCount = 32;
+export/**
+       * The number of bars to render.
+       *
+       * @since 1.0.0
+       */
+const audioWaveformBarCount = 32;
 
 const minimumAudioBarHeight = 0.18;
 

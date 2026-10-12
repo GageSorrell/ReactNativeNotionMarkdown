@@ -24,7 +24,8 @@ export default [
                     paths: [
                         {
                             importNames: [ "useColorScheme" ],
-                            message: "Resolve the color scheme through MarkdownProvider (useMarkdownColorScheme).",
+                            message:
+                                "Resolve the color scheme through MarkdownProvider (useMarkdownColorScheme).",
                             name: "react-native"
                         }
                     ]

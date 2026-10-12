@@ -85,6 +85,7 @@ export interface NativeEditorLabels
     readonly emptyToDoPlaceholder: string;
     readonly emptyTogglePlaceholder: string;
     readonly file: string;
+    readonly pdf: string;
     readonly selectTableColumn: string;
     readonly selectTableRow: string;
 

@@ -82,9 +82,21 @@ private val headingScale = mapOf(1 to 1.875f, 2 to 1.5f, 3 to 1.25f, 4 to 1.125f
 
 private val editorValidBlockTypes = listOf(
   "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
-  "numbered_list_item", "to_do", "toggle", "code", "callout", "quote", "equation", "synced_block", "table", "divider", "table_of_contents", "column_list", "image", "audio", "video", "file",
+  "numbered_list_item", "to_do", "toggle", "code", "callout", "quote", "equation", "synced_block", "table", "divider", "table_of_contents", "column_list", "image", "audio", "video", "file", "pdf",
   "link_to_page"
 )
+
+private val editorTurnIntoTargetTypes = setOf(
+  "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
+  "numbered_list_item", "to_do", "toggle", "code", "callout", "quote", "equation",
+  "column_list", "image", "video", "audio", "file", "pdf"
+)
+
+private val editorTurnIntoMediaTypes = setOf("image", "video", "audio", "file", "pdf")
+
+private fun canConvertEditorBlock(sourceType: String, targetType: String): Boolean =
+  if (sourceType in editorTurnIntoMediaTypes) targetType in editorTurnIntoMediaTypes
+  else sourceType != "synced_block" && targetType in editorTurnIntoTargetTypes - editorTurnIntoMediaTypes
 
 /** Block types with mergeable text content -- eligible on either side of an atomic-block-skipping
  *  backspace merge (see [MarkdownEditorView.handleAtomicBlockBackspace]). */
@@ -99,7 +111,7 @@ private val editorInlineColorBlockTypes = setOf(
 )
 
 /** Block types with no navigable text of their own -- see [MarkdownEditorView.handleAtomicBlockBackspace]. */
-private val editorAtomicBlockTypes = setOf("divider", "table", "image", "audio", "video", "file")
+private val editorAtomicBlockTypes = setOf("divider", "table", "image", "audio", "video", "file", "pdf")
 
 private const val DIVIDER_TEXT = "\u200B"
 private const val TABLE_OF_CONTENTS_TEXT = "\u200B"
@@ -120,6 +132,7 @@ private const val CALLOUT_ICON_GAP_DP = 8
 private const val CALLOUT_BLOCK_PADDING_DP =
   CALLOUT_OUTER_PADDING_DP + CALLOUT_SURFACE_PADDING_DP + 6
 private const val QUOTE_BAR_WIDTH_DP = 3
+private const val QUOTE_BAR_HEIGHT_RATIO = 0.6f
 private const val QUOTE_TEXT_INDENT_DP = 12
 private const val TABLE_CELL_HEIGHT_DP = 44
 private const val TABLE_CELL_HORIZONTAL_PADDING_DP = 7
@@ -184,16 +197,16 @@ private data class EditorBlock(
     if (type == "equation") base["expression"] = text
     if (type == "synced_block") base["synced_from"] = null
     if (type == "column_list") base["columnCount"] = (columnCount ?: 2).coerceIn(2, 5)
-    if (type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file") {
+    if (type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file" || type == "pdf") {
       url?.let { base["url"] = it }
     }
-    if (type == "audio" || type == "file") {
-      duration?.let { base["duration"] = it }
+    if (type == "image" || type == "audio" || type == "video" || type == "file" || type == "pdf") {
       mimeType?.let { base["mimeType"] = it }
       fileName?.let { base["fileName"] = it }
       fileSize?.let { base["fileSize"] = it }
     }
     if (type == "audio") {
+      duration?.let { base["duration"] = it }
       waveform?.takeIf { it.isNotEmpty() }?.let { base["waveform"] = it }
     }
     table?.let { base["table"] = it.payload() }
@@ -471,7 +484,7 @@ private class BlockPaddingSpan(
 /** Keeps non-rendering blocks measurable while Android applies spans to their caret lines. */
 private fun EditorBlock.nativeText(): String = when {
   type == "table" -> TABLE_TEXT
-  type == "image" || type == "audio" || type == "video" || type == "file" -> MEDIA_TEXT
+  type == "image" || type == "audio" || type == "video" || type == "file" || type == "pdf" -> MEDIA_TEXT
   text.isEmpty() -> EMPTY_BLOCK_TEXT
   else -> text
 }
@@ -853,13 +866,14 @@ private fun formatFileSize(bytes: Double?, unknownLabel: String): String {
   return "$formatted ${units[unit]}"
 }
 
-/** Draws a compact, atomic file card with a generic document icon and file metadata. */
+/** Draws a compact, atomic file or PDF card with a document icon and file metadata. */
 private class EditorFileSpan(
   private val input: EditText,
   private val fileName: String?,
   private val fileSize: Double?,
   private val theme: EditorTheme,
-  private val labels: EditorLabels
+  private val labels: EditorLabels,
+  private val pdf: Boolean = false
 ) : ReplacementSpan() {
   private val density = input.resources.displayMetrics.density
   private val cardHeight = (72 * density).roundToInt().coerceAtLeast(1)
@@ -917,18 +931,30 @@ private class EditorFileSpan(
       close()
     }
     canvas.drawPath(fold, paint)
-    paint.style = Paint.Style.STROKE
-    paint.strokeWidth = 1.5f * density
     paint.color = theme.attachmentIconSurface
-    canvas.drawLine(iconLeft + 7 * density, iconTop + 19 * density,
-      iconRight - 7 * density, iconTop + 19 * density, paint)
-    canvas.drawLine(iconLeft + 7 * density, iconTop + 25 * density,
-      iconRight - 7 * density, iconTop + 25 * density, paint)
+    if (pdf) {
+      val previousAlign = paint.textAlign
+      val previousBold = paint.isFakeBoldText
+      paint.textSize = 9 * density
+      paint.textAlign = Paint.Align.CENTER
+      paint.isFakeBoldText = true
+      canvas.drawText("PDF", (iconLeft + iconRight) / 2, iconTop + 27 * density, paint)
+      paint.textAlign = previousAlign
+      paint.isFakeBoldText = previousBold
+    } else {
+      paint.style = Paint.Style.STROKE
+      paint.strokeWidth = 1.5f * density
+      canvas.drawLine(iconLeft + 7 * density, iconTop + 19 * density,
+        iconRight - 7 * density, iconTop + 19 * density, paint)
+      canvas.drawLine(iconLeft + 7 * density, iconTop + 25 * density,
+        iconRight - 7 * density, iconTop + 25 * density, paint)
+    }
 
     paint.style = Paint.Style.FILL
     paint.color = theme.attachmentForeground
     paint.textSize = 16 * density
-    canvas.drawText((fileName ?: labels.file).ifBlank { labels.file }.take(48),
+    val fallbackName = if (pdf) labels.pdf else labels.file
+    canvas.drawText((fileName ?: fallbackName).ifBlank { fallbackName }.take(48),
       rect.left + 58 * density, rect.centerY() - 3 * density, paint)
     paint.color = theme.attachmentMuted
     paint.textSize = 12 * density
@@ -1324,7 +1350,9 @@ private class CalloutIconSpan(
     iconPaint.textSize = paint.textSize * 1.3f
     val fm = iconPaint.fontMetrics
     val centerY = (top + bottom) / 2f
-    val iconBaseline = centerY - (fm.ascent + fm.descent) / 2f
+    // Emoji glyphs carry a little extra space below their visible pixels. Raise the baseline
+    // slightly so the visible icon is centered with the first line of callout text.
+    val iconBaseline = centerY - (fm.ascent + fm.descent) / 2f - 2f
     canvas.drawText(icon, (x + iconInset).toFloat(), iconBaseline, iconPaint)
   }
 }
@@ -1355,8 +1383,11 @@ private class QuoteBorderSpan(
   ) {
     val previousColor = paint.color
     paint.color = barColor
+    val lineHeight = (bottom - top).coerceAtLeast(1)
+    val barHeight = (lineHeight * QUOTE_BAR_HEIGHT_RATIO).roundToInt().coerceIn(1, lineHeight)
+    val barTop = top + (lineHeight - barHeight) / 2f
     val barLeft = (if (dir >= 0) x else x - barWidth).toFloat()
-    canvas.drawRect(barLeft, top.toFloat(), barLeft + barWidth, bottom.toFloat(), paint)
+    canvas.drawRect(barLeft, barTop, barLeft + barWidth, barTop + barHeight, paint)
     paint.color = previousColor
   }
 }
@@ -1425,6 +1456,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   /** The `equations` prop as delivered, and its parsed form; a null layout is a rejected expression. */
   private var equationSources: Map<String, String?> = emptyMap()
   private var equationLayouts: Map<String, MathLayout?> = emptyMap()
+  /** The link URLs whose favicon this view is waiting on; see [linkIconSpan]. */
+  private val pendingLinkIcons = mutableSetOf<String>()
   private val inlineMathHost = object : InlineMathHost {
     override fun lineWidth(): Int = input.width - input.compoundPaddingLeft - input.compoundPaddingRight
 
@@ -1605,7 +1638,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       if (text.contains('\n') || type !in editorValidBlockTypes
         || (type == "table" && table == null) || (type != "table" && block["table"] != null)
         || hasOverlappingColorMarks(marks)
-        || ((type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file") && url.isNullOrBlank())) null
+        || ((type == "link_to_page" || type == "image" || type == "audio" || type == "video" || type == "file" || type == "pdf") && url.isNullOrBlank())) null
       else EditorBlock(
         id = id,
         type = type,
@@ -1830,6 +1863,30 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     return stale.isNotEmpty()
   }
 
+  /** The span that prepends the icon of a link to [url], redrawn once its favicon has loaded. */
+  private fun linkIconSpan(url: String): LinkIconSpan {
+    if (url !in pendingLinkIcons && LinkFavicons.load(url) { favicon ->
+        pendingLinkIcons.remove(url)
+        if (favicon != null) refreshLinkIconSpans(url)
+      }) {
+      pendingLinkIcons.add(url)
+    }
+    return LinkIconSpan(url, theme.accent)
+  }
+
+  /** Set the icon spans of the links to [url] again; the text view redraws nothing less. */
+  private fun refreshLinkIconSpans(url: String) {
+    (tableOverlay.cellEditors().map { it.text } + input.text).forEach { editable ->
+      editable.getSpans(0, editable.length, LinkIconSpan::class.java).filter { it.url == url }.forEach { span ->
+        val start = editable.getSpanStart(span)
+        val end = editable.getSpanEnd(span)
+        val flags = editable.getSpanFlags(span)
+        editable.removeSpan(span)
+        if (start in 0 until end) editable.setSpan(span, start, end, flags)
+      }
+    }
+  }
+
   private fun equationLayoutState(expression: String): MathLayoutState = when {
     !equationLayouts.containsKey(expression) -> MathLayoutState.Pending
     else -> equationLayouts[expression]?.let { MathLayoutState.Ready(it) } ?: MathLayoutState.Invalid
@@ -1931,6 +1988,13 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         (value["fileSize"] as? Number)?.toDouble(),
         value["mimeType"] as? String
       )
+      "insertPdf" -> insertFile(
+        value["url"] as? String,
+        value["fileName"] as? String,
+        (value["fileSize"] as? Number)?.toDouble(),
+        value["mimeType"] as? String,
+        type = "pdf"
+      )
       "toDo" -> insertToDo()
       "callout" -> insertCallout()
       "quote" -> insertQuote()
@@ -1981,7 +2045,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       "equation" -> applyEquation(value["expression"] as? String)
       "remove" -> removeBlocks()
       "turnInto" -> turnIntoBlocks(
-        (value["type"] as? String)?.takeIf { it in editorValidBlockTypes && it != "link_to_page" },
+        (value["type"] as? String)?.takeIf { it in editorTurnIntoTargetTypes },
         (value["toggle"] as? Boolean) == true,
         (value["columnCount"] as? Number)?.toInt()
       )
@@ -2687,18 +2751,24 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     scheduleEvent("insert-$type")
   }
 
-  /** Insert an atomic file block after the current selection, retaining display metadata. */
-  private fun insertFile(rawUrl: String?, fileName: String?, fileSize: Double?, mimeType: String?) {
+  /** Insert an atomic file or PDF block after the current selection, retaining display metadata. */
+  private fun insertFile(
+    rawUrl: String?,
+    fileName: String?,
+    fileSize: Double?,
+    mimeType: String?,
+    type: String = "file"
+  ) {
     val url = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
     replaceSelection("\n")
     val index = input.text.take(input.selectionStart).count { it == '\n' }
     if (index !in 0..blocks.size) return
-    blocks.add(index, EditorBlock(newId(), "file", "", url = url,
+    blocks.add(index, EditorBlock(newId(), type, "", url = url,
       mimeType = mimeType?.takeIf { it.isNotBlank() },
       fileName = fileName?.takeIf { it.isNotBlank() },
       fileSize = fileSize?.takeIf { it.isFinite() && it >= 0 }))
     replaceNativeTextAndSelect(index + 1)
-    scheduleEvent("insert-file")
+    scheduleEvent("insert-$type")
   }
 
   /** Insert an audio block after the current selection, retaining optional asset metadata. */
@@ -3270,10 +3340,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         if (marks.length() > 0) item.put("marks", marks)
         if (block.type == "to_do") item.put("checked", block.checked)
         if (block.type == "column_list") item.put("columnCount", (block.columnCount ?: 2).coerceIn(2, 5))
-        if (block.type == "link_to_page" || block.type == "image" || block.type == "audio" || block.type == "video" || block.type == "file") {
+        if (block.type == "link_to_page" || block.type == "image" || block.type == "audio" || block.type == "video" || block.type == "file" || block.type == "pdf") {
           block.url?.let { item.put("url", it) }
         }
-        if (block.type == "audio" || block.type == "file") {
+        if (block.type == "audio" || block.type == "file" || block.type == "pdf") {
           block.duration?.let { item.put("duration", it) }
           block.mimeType?.let { item.put("mimeType", it) }
           block.fileName?.let { item.put("fileName", it) }
@@ -3417,59 +3487,151 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     scheduleEvent("remove-block")
   }
 
-  /** Converts every block touched by the cursor or selection independently to the requested type. */
+  /** Apply the fields shared by every non-media turn-into target. */
+  private fun configureTurnedBlock(block: EditorBlock, type: String, toggleTarget: Boolean, columnCount: Int?): Boolean {
+    val nextToggle = (type.startsWith("heading_") || type == "toggle") &&
+      (toggleTarget || type == "toggle")
+    val nextColumnCount = if (type == "column_list") columnCount?.coerceIn(2, 5) ?: 2 else null
+    val nextLanguage = if (type == "code") "plain text" else null
+    val nextExpression = if (type == "equation") block.text else null
+    val changed = block.type != type || block.toggle != nextToggle || block.columnCount != nextColumnCount
+      || block.language != nextLanguage || block.expression != nextExpression
+      || (type != "to_do" && block.checked) || block.url != null || block.icon != null || block.table != null
+      || block.duration != null || block.mimeType != null || block.fileName != null
+      || block.fileSize != null || block.waveform != null
+
+    block.type = type
+    block.toggle = nextToggle
+    if (!nextToggle) block.collapsed = false
+    if (type != "to_do") block.checked = false
+    if (type != "column_list") block.columnCount = null else block.columnCount = nextColumnCount
+    block.language = nextLanguage
+    block.expression = nextExpression
+    block.url = null
+    block.icon = null
+    block.duration = null
+    block.mimeType = null
+    block.fileName = null
+    block.fileSize = null
+    block.waveform = null
+    block.table = null
+    return changed
+  }
+
+  /** Flatten one table row into a block, retaining each cell mark at its new tabbed offset. */
+  private fun tableRowBlocks(source: EditorBlock, type: String, toggleTarget: Boolean, columnCount: Int?): List<EditorBlock> {
+    val table = source.table ?: return emptyList()
+    return table.rows.mapIndexed { rowIndex, row ->
+      val text = StringBuilder()
+      val marks = mutableListOf<EditorMark>()
+      row.cells.forEachIndexed { cellIndex, cell ->
+        if (cellIndex > 0) text.append('\t')
+        val start = text.length
+        text.append(cell.text)
+        marks.addAll(cell.marks.map { mark ->
+          mark.copy(start = mark.start + start, end = mark.end + start)
+        })
+      }
+      val block = EditorBlock(
+        id = if (rowIndex == 0) source.id else newId(),
+        type = type,
+        text = text.toString(),
+        color = source.color,
+        depth = source.depth,
+        marks = marks
+      )
+      if (type == "code" || type == "equation") expandInlineEquations(block)
+      configureTurnedBlock(block, type, toggleTarget, columnCount)
+      block
+    }
+  }
+
+  /** Convert the selected blocks using the same source/target matrix as the JavaScript panel. */
   private fun turnIntoBlocks(type: String?, toggleTarget: Boolean = false, columnCount: Int? = null) {
     if (type == null) return
     val range = selectedBlockRange() ?: return
     // The turn-into MAB replaces the IME while it is open. Restore it after the transform.
     requestKeyboard()
     var changed = false
+    var needsNativeTextReset = false
+    var hasNonExpansionChange = false
+    var firstConvertedIndex: Int? = null
     val selectionStart = logicalSelectionPoint(minOf(input.selectionStart, input.selectionEnd))
     val selectionEnd = logicalSelectionPoint(maxOf(input.selectionStart, input.selectionEnd))
     val expansions = HashMap<Int, List<Pair<Int, Int>>>()
-    range.forEach { index ->
+
+    // Replacing a table with several rows must run backwards so earlier indices remain stable.
+    for (index in range.reversed()) {
       val block = blocks[index]
-      // Code and block-equation blocks show their text literally, so an inline equation in one
-      // goes back to its source rather than staying a rendered token.
+      if (!canConvertEditorBlock(block.type, type)) continue
+
+      if (block.type == "table") {
+        val rows = tableRowBlocks(block, type, toggleTarget, columnCount)
+        if (rows.isEmpty()) continue
+        blocks.removeAt(index)
+        blocks.addAll(index, rows)
+        changed = true
+        hasNonExpansionChange = true
+        needsNativeTextReset = true
+        firstConvertedIndex = minOf(firstConvertedIndex ?: index, index)
+        continue
+      }
+
+      val sourceType = block.type
+      var blockChanged = false
       if (type == "code" || type == "equation") {
         val shifts = expandInlineEquations(block)
         if (shifts.isNotEmpty()) {
           expansions[index] = shifts
-          changed = true
+          blockChanged = true
         }
       }
-      val nextToggle = (type.startsWith("heading_") || type == "toggle") &&
-        (toggleTarget || type == "toggle")
-      val nextColumnCount = if (type == "column_list") columnCount?.coerceIn(2, 5) ?: 2 else null
-      val nextLanguage = if (type == "code") "plain text" else null
-      val nextExpression = if (type == "equation") block.text else null
-      if (block.type != type || block.toggle != nextToggle || block.columnCount != nextColumnCount
-        || block.language != nextLanguage || block.expression != nextExpression
-        || (type != "to_do" && block.checked) || block.url != null || block.icon != null || block.table != null
-        || block.duration != null || block.mimeType != null || block.fileName != null
-        || block.fileSize != null || block.waveform != null) {
-        block.type = type
-        block.toggle = nextToggle
-        if (!nextToggle) block.collapsed = false
-        if (type != "to_do") block.checked = false
-        if (type != "column_list") block.columnCount = null else block.columnCount = nextColumnCount
-        block.language = if (type == "code") "plain text" else null
-        block.expression = if (type == "equation") block.text else null
-        if (type != "link_to_page") {
-          block.url = null
-          block.icon = null
+      if (sourceType == "column_list" || sourceType == "divider" || sourceType == "table_of_contents") {
+        val normalized = block.text.replace(DIVIDER_TEXT, "")
+        if (normalized != block.text) {
+          block.text = normalized
+          blockChanged = true
+          needsNativeTextReset = true
         }
-        block.duration = null
-        block.mimeType = null
-        block.fileName = null
-        block.fileSize = null
-        block.waveform = null
-        if (type != "table") block.table = null
+      }
+      if (sourceType == "link_to_page") {
+        val url = block.url?.takeIf { it.isNotBlank() }
+        block.marks.clear()
+        if (type != "code" && type != "equation" && url != null && block.text.isNotEmpty()) {
+          block.marks.add(EditorMark("link", 0, block.text.length, url))
+        }
+        blockChanged = true
+        needsNativeTextReset = true
+      }
+
+      if (sourceType in editorTurnIntoMediaTypes) {
+        val mediaChanged = block.type != type || (type != "audio" &&
+          (block.duration != null || block.waveform != null))
+        block.type = type
+        if (type != "audio") {
+          block.duration = null
+          block.waveform = null
+        }
+        if (mediaChanged) {
+          blockChanged = true
+          needsNativeTextReset = true
+        }
+      } else if (configureTurnedBlock(block, type, toggleTarget, columnCount)) {
+        blockChanged = true
+      }
+
+      if (blockChanged) {
         changed = true
+        if (sourceType != "link_to_page" && sourceType !in setOf("column_list", "divider", "table_of_contents")) {
+          hasNonExpansionChange = true
+        }
+        firstConvertedIndex = minOf(firstConvertedIndex ?: index, index)
       }
     }
     if (!changed) return
-    if (expansions.isNotEmpty()) {
+
+    val expansionOnly = expansions.isNotEmpty() && !hasNonExpansionChange && !needsNativeTextReset
+    if (expansionOnly) {
       applying = true
       BaseInputConnection.removeComposingSpans(input.text)
       input.setText(blocks.nativeText())
@@ -3479,8 +3641,11 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         return (offsetOf(point.first) + point.second + added).coerceIn(0, input.text.length)
       }
       input.setSelection(remap(selectionStart), remap(selectionEnd))
+    } else if (needsNativeTextReset || input.text.toString() != blocks.nativeText()) {
+      replaceNativeTextAndSelect(firstConvertedIndex ?: range.first)
+    } else {
+      styleBlocks()
     }
-    styleBlocks()
     scheduleEvent("turn-into")
   }
 
@@ -3662,6 +3827,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     editable.getSpans(0, editable.length, BackgroundColorSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, InlineCodeSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, InlineMathSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, LinkIconSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, UnderlineSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, StrikethroughSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TypefaceSpan::class.java).forEach { editable.removeSpan(it) }
@@ -3824,9 +3990,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             )
           }
         }
-        if (block.type == "file") {
+        if (block.type == "file" || block.type == "pdf") {
           editable.setSpan(
-            EditorFileSpan(input, block.fileName, block.fileSize, theme, labels),
+            EditorFileSpan(input, block.fileName, block.fileSize, theme, labels, block.type == "pdf"),
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -3910,6 +4076,20 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             "link" -> {
               editable.setSpan(ForegroundColorSpan(theme.accent), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
               editable.setSpan(UnderlineSpan(), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              // A character draws with one replacement only, so a link that opens with hidden
+              // text, inline code, or an equation goes without its icon.
+              val url = mark.url
+              if (url != null && !collapsed && block.type != "code" && block.type != "equation" &&
+                block.marks.none {
+                  (it.kind == "code" || it.kind == "equation") && it.start <= mark.start && it.end > mark.start
+                }) {
+                editable.setSpan(
+                  linkIconSpan(url),
+                  markStart,
+                  linkIconEnd(editable, markStart, markEnd),
+                  Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+              }
             }
             "code" -> {
               editable.setSpan(EditorTypefaceSpan(monospaceTypeface), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -4165,6 +4345,11 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         "link" -> {
           value.setSpan(ForegroundColorSpan(theme.accent), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           value.setSpan(UnderlineSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          val url = mark.url
+          if (url != null &&
+            cell.marks.none { it.kind == "equation" && it.start <= mark.start && it.end > mark.start }) {
+            value.setSpan(linkIconSpan(url), start, linkIconEnd(value, start, end), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          }
         }
         "color" -> {
           theme.backgroundColor(mark.color)?.let {
@@ -4937,7 +5122,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
       super.onSizeChanged(w, h, oldw, oldh)
-      if (w != oldw && blocks.any { it.type == "image" || it.type == "audio" || it.type == "video" || it.type == "file" || it.type == "table" }) {
+      if (w != oldw && blocks.any { it.type == "image" || it.type == "audio" || it.type == "video" || it.type == "file" || it.type == "pdf" || it.type == "table" }) {
         post {
           styleBlocks()
           tableOverlay.requestLayout()
@@ -5030,7 +5215,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       return if (block.type == "audio") blockIndex else null
     }
 
-    /** A file card is selectable across its whole line and opens the block-actions sheet. */
+    /** A file or PDF card is selectable across its whole line and opens the block-actions sheet. */
     private fun fileBlockAt(event: MotionEvent): Int? {
       val textLayout = layout ?: return null
       if (textLayout.height == 0) return null
@@ -5039,7 +5224,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val lineStart = textLayout.getLineStart(line)
       val blockIndex = text.take(lineStart).count { it == '\n' }
       val block = blocks.getOrNull(blockIndex) ?: return null
-      return if (block.type == "file") blockIndex else null
+      return if (block.type == "file" || block.type == "pdf") blockIndex else null
     }
 
     private fun tableBlockAt(event: MotionEvent): Int? {
@@ -5240,7 +5425,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val safeOffset = offset.coerceIn(0, text.length)
       val index = text.take(safeOffset).count { it == '\n' }.coerceIn(0, blocks.lastIndex)
       val block = blocks[index]
-      if (block.type != "image" && block.type != "audio" && block.type != "video" && block.type != "file") return null
+      if (block.type != "image" && block.type != "audio" && block.type != "video" && block.type != "file" && block.type != "pdf") return null
       val blockStart = offsetOf(index)
       val forward = safeOffset <= blockStart
       return when {

@@ -36,6 +36,12 @@ The pure document engine is available from `react-native-notion-markdown/rendere
 
 `MarkdownEditorProvider`, `useMarkdownEditor`, and `useMarkdownEditorState` expose the same store to composable React editor surfaces.
 
+`toEditorBlocks` and `fromEditorBlocks` convert between a `MarkdownDocument` and the flat block list the native editor exchanges; `MarkdownEditor` uses them for its `initial` and `onChange` props, and `toEditorBlocks` returns a warning diagnostic for everything the editor cannot represent and so leaves out.
+
+Synced blocks and database reference blocks are not currently supported by the editor: they are stripped from the content `MarkdownEditor` is given, and each one is reported as an `editor-discarded-block` warning. `MarkdownRenderer` still displays them.
+
+`MarkdownEditor` keeps its own snapshot and undo history and is not connected to the `createMarkdownEditor` store.
+
 SDK conversion diagnostics are returned by default and become `MarkdownConversionError` exceptions when `toMarkdownBlocks` is called with `{ strict: true }`.
 
 ## Installation

@@ -13,7 +13,10 @@ Use the root export or `./renderer` when an application needs to display markdow
 
 ## Editor
 
-Use `./editor` for authoring flows and `./editor/ui` for editor controls. These layers can share the same document representation as the renderer.
+Use `./editor/ui` for `MarkdownEditor`, the ready-to-use editing surface, and `./editor` for the native editor primitives underneath it.
+`MarkdownEditor` loads Markdown or a `MarkdownDocument` through `initial` and reports edits as a `MarkdownDocument` through `onChange`, so the same document can be passed to the renderer.
+The native view itself exchanges a flat block list; `toEditorBlocks` and `fromEditorBlocks` in `./document` convert between that and the document model.
+See [Editor](/docs/v1/guides/editor) for what the editor can represent.
 
 ## Provider
 

@@ -30,10 +30,10 @@ import {
 } from "./fields.ts";
 import type {
     MarkdownBlock,
-    MarkdownDocument,
-    MarkdownEditableField,
     MarkdownBlockType,
     MarkdownColor,
+    MarkdownDocument,
+    MarkdownEditableField,
     MarkdownRichText,
     MarkdownRichTextItem,
     MarkdownSelection,
@@ -61,9 +61,9 @@ import {
     turnMarkdownBlockInto,
     updateMarkdownBlock
 } from "./tree.ts";
+import { getMarkdownBlockPayload, getMarkdownMetadata } from "../internal.ts";
 import { getMarkdownEditableFields, markdownSelectionPositionOf } from "./selection.ts";
 import type { MarkdownEditorStore } from "./store.ts";
-import { getMarkdownBlockPayload, getMarkdownMetadata } from "../internal.ts";
 
 let nextBlockSequence = 0;
 
@@ -198,10 +198,10 @@ function defaultBlockPayload(type: MarkdownBlockType): Record<string, unknown>
     {
         case "table":
             return {
+                cells: Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => [ ])),
                 has_column_header: false,
                 has_row_header: false,
-                table_width: 3,
-                cells: Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => [ ]))
+                table_width: 3
             };
         case "divider":
         case "table_of_contents":
@@ -415,7 +415,12 @@ function handleEnter(store: MarkdownEditorStore, event: MarkdownFieldBoundaryEve
             store.transact((doc: MarkdownDocument) =>
             {
                 const withSecond = insertMarkdownBlockRelative(doc, event.blockId, secondBlock, "after");
-                const withFirst = insertMarkdownBlockRelative(withSecond, event.blockId, firstBlock, "before");
+                const withFirst = insertMarkdownBlockRelative(
+                    withSecond,
+                    event.blockId,
+                    firstBlock,
+                    "before"
+                );
                 return removeMarkdownBlock(withFirst, event.blockId);
             }, "user");
 
@@ -656,7 +661,7 @@ interface TableRowValue
     source?: MarkdownBlock;
 }
 
-function tableRowsOf(block: MarkdownBlock): Array<TableRowValue>
+const tableRowsOf = (block: MarkdownBlock): Array<TableRowValue> =>
 {
     return (block.children ?? [ ]).filter((child: MarkdownBlock) => child.type === "table_row").map(
         (row: MarkdownBlock) => ({
@@ -667,9 +672,9 @@ function tableRowsOf(block: MarkdownBlock): Array<TableRowValue>
             source: row
         })
     );
-}
+};
 
-function replaceTableRows(block: MarkdownBlock, rows: Array<TableRowValue>): MarkdownBlock
+const replaceTableRows = (block: MarkdownBlock, rows: Array<TableRowValue>): MarkdownBlock =>
 {
     const children = rows.map((row: TableRowValue, rowIndex: number) => ({
         __markdown_markdown: row.source?.__markdown_markdown ?? {
@@ -683,16 +688,16 @@ function replaceTableRows(block: MarkdownBlock, rows: Array<TableRowValue>): Mar
     return {
         ...block,
         children,
-        table: { ...payload, table_width: Math.max(0, ...rows.map((row) => row.cells.length)) }
+        table: { ...payload, table_width: Math.max(0, ...rows.map((row: TableRowValue) => row.cells.length)) }
     } as unknown as MarkdownBlock;
-}
+};
 
-function tableSelectionBounds(selection: MarkdownTableSelection): {
+const tableSelectionBounds = (selection: MarkdownTableSelection): {
     readonly top: number;
     readonly bottom: number;
     readonly left: number;
     readonly right: number;
-}
+} =>
 {
     return {
         bottom: Math.max(selection.anchor.row, selection.focus.row),
@@ -700,7 +705,7 @@ function tableSelectionBounds(selection: MarkdownTableSelection): {
         right: Math.max(selection.anchor.column, selection.focus.column),
         top: Math.min(selection.anchor.row, selection.focus.row)
     };
-}
+};
 
 /** Insert a blank 3×3 table after a block and select its first cell. */
 export function insertTableAfter(store: MarkdownEditorStore, blockId: string): string
@@ -717,10 +722,14 @@ export function insertTableAfter(store: MarkdownEditorStore, blockId: string): s
     return table.id;
 }
 
-function updateTable(store: MarkdownEditorStore, blockId: string, updater: (block: MarkdownBlock) => MarkdownBlock): void
+const updateTable = (
+    store: MarkdownEditorStore,
+    blockId: string,
+    updater: (block: MarkdownBlock) => MarkdownBlock
+): void =>
 {
     store.transact((document: MarkdownDocument) => updateMarkdownBlock(document, blockId, updater), "user");
-}
+};
 
 /** Toggle one of the three table-level boolean options. */
 export function toggleTableOption(
@@ -729,10 +738,12 @@ export function toggleTableOption(
     option: "fitPageWidth" | "headerRow" | "headerColumn"
 ): void
 {
-    updateTable(store, blockId, (block: MarkdownBlock) => {
+    updateTable(store, blockId, (block: MarkdownBlock) =>
+    {
         const metadata = getMarkdownMetadata(block);
         const table = metadata.table ?? { };
-        const next = !Boolean(table[ option ]);
+        const next = !table[option];
+        // const next = !Boolean(table[ option ]);
         return {
             ...block,
             __markdown_markdown: { ...metadata, table: { ...table, [ option ]: next } }
@@ -748,9 +759,10 @@ export function insertTableRow(
     position: "above" | "below" = "below"
 ): void
 {
-    updateTable(store, blockId, (block: MarkdownBlock) => {
+    updateTable(store, blockId, (block: MarkdownBlock) =>
+    {
         const rows = tableRowsOf(block);
-        const width = Math.max(1, ...rows.map((row) => row.cells.length));
+        const width = Math.max(1, ...rows.map((row: TableRowValue) => row.cells.length));
         const insertAt = Math.max(0, Math.min(rows.length, index + (position === "below" ? 1 : 0)));
         rows.splice(insertAt, 0, { cells: Array.from({ length: width }, () => [ ]) });
         return replaceTableRows(block, rows);
@@ -765,11 +777,14 @@ export function insertTableColumn(
     position: "left" | "right" = "right"
 ): void
 {
-    updateTable(store, blockId, (block: MarkdownBlock) => {
+    updateTable(store, blockId, (block: MarkdownBlock) =>
+    {
         const rows = tableRowsOf(block);
-        const insertAt = Math.max(0, Math.min(Math.max(1, ...rows.map((row) => row.cells.length)),
-            index + (position === "right" ? 1 : 0)));
-        rows.forEach((row) => row.cells.splice(insertAt, 0, [ ]));
+        const insertAt = Math.max(
+            0,
+            Math.min(Math.max(1, ...rows.map((row: TableRowValue) => row.cells.length)),
+                index + (position === "right" ? 1 : 0)));
+        rows.forEach((row: TableRowValue) => row.cells.splice(insertAt, 0, [ ]));
         return replaceTableRows(block, rows);
     });
 }
@@ -780,12 +795,18 @@ export function duplicateTableRow(
     selection: MarkdownTableSelection
 ): void
 {
-    updateTable(store, selection.blockId, (block: MarkdownBlock) => {
+    updateTable(store, selection.blockId, (block: MarkdownBlock) =>
+    {
         const rows = tableRowsOf(block);
         const index = Math.max(0, Math.min(rows.length - 1, selection.anchor.row));
         const source = rows[ index ];
-        if (source === undefined) { return block; }
-        rows.splice(index + 1, 0, { cells: source.cells.map((cell) => [ ...cell ]) });
+
+        if (source === undefined)
+        {
+            return block;
+        }
+
+        rows.splice(index + 1, 0, { cells: source.cells.map((cell: MarkdownRichText) => [ ...cell ]) });
         const metadata = getMarkdownMetadata(block);
         const table = metadata.table ?? { };
         const rowColors = [ ...(table.rowColors ?? [ ]) ];
@@ -803,11 +824,13 @@ export function duplicateTableColumn(
     selection: MarkdownTableSelection
 ): void
 {
-    updateTable(store, selection.blockId, (block: MarkdownBlock) => {
+    updateTable(store, selection.blockId, (block: MarkdownBlock) =>
+    {
         const rows = tableRowsOf(block);
-        const width = Math.max(1, ...rows.map((row) => row.cells.length));
+        const width = Math.max(1, ...rows.map((row: TableRowValue) => row.cells.length));
         const index = Math.max(0, Math.min(width - 1, selection.anchor.column));
-        rows.forEach((row) => {
+        rows.forEach((row: TableRowValue) =>
+        {
             const source = row.cells[ index ] ?? [ ];
             row.cells.splice(index + 1, 0, [ ...source ]);
         });
@@ -829,10 +852,12 @@ export function clearTableContents(
 ): void
 {
     const bounds = tableSelectionBounds(selection);
-    updateTable(store, selection.blockId, (block: MarkdownBlock) => {
+    updateTable(store, selection.blockId, (block: MarkdownBlock) =>
+    {
         const rows = tableRowsOf(block);
-        rows.forEach((row, rowIndex) => row.cells = row.cells.map((cell, columnIndex) =>
-            rowIndex >= bounds.top && rowIndex <= bounds.bottom
+        rows.forEach((row: TableRowValue, rowIndex: number) =>
+            row.cells = row.cells.map((cell: MarkdownRichText, columnIndex: number) =>
+                rowIndex >= bounds.top && rowIndex <= bounds.bottom
                 && columnIndex >= bounds.left && columnIndex <= bounds.right ? [ ] : cell));
         return replaceTableRows(block, rows);
     });
@@ -847,25 +872,44 @@ export function setTableColor(
 ): void
 {
     const bounds = tableSelectionBounds(selection);
-    updateTable(store, selection.blockId, (block: MarkdownBlock) => {
+    updateTable(store, selection.blockId, (block: MarkdownBlock) =>
+    {
         const metadata = getMarkdownMetadata(block);
         const current = metadata.table ?? { };
         if (scope === "table")
         {
-            return { ...block, __markdown_markdown: { ...metadata, table: { ...current, tableColor: color } } } as MarkdownBlock;
+            return {
+                ...block,
+                __markdown_markdown:
+                {
+                    ...metadata,
+                    table:
+                    {
+                        ...current,
+                        tableColor: color
+                    }
+                }
+            } as MarkdownBlock;
         }
         const rowColors = [ ...(current.rowColors ?? [ ]) ];
         const columnColors = [ ...(current.columnColors ?? [ ]) ];
         const cellColors: Array<Array<MarkdownColor | undefined>> = Array.isArray(current.cellColors?.[ 0 ])
-            ? (current.cellColors as Array<Array<MarkdownColor | undefined>>).map((row) => [ ...row ])
+            ? (current.cellColors as Array<Array<MarkdownColor | undefined>>)
+                .map((row: Array<MarkdownColor | undefined>) => [ ...row ])
             : [ ];
         if (scope === "row")
         {
-            for (let row = bounds.top; row <= bounds.bottom; row += 1) rowColors[ row ] = color;
+            for (let row = bounds.top; row <= bounds.bottom; row += 1)
+            {
+                rowColors[ row ] = color;
+            }
         }
         if (scope === "column")
         {
-            for (let column = bounds.left; column <= bounds.right; column += 1) columnColors[ column ] = color;
+            for (let column = bounds.left; column <= bounds.right; column += 1)
+            {
+                columnColors[ column ] = color;
+            }
         }
         if (scope === "cell")
         {
@@ -973,7 +1017,9 @@ export function duplicateBlock(store: MarkdownEditorStore, blockId: string): str
 
     const clone = regenerateBlockIds(block);
     const cloneId = clone.id;
-    store.transact((doc: MarkdownDocument) => insertMarkdownBlockRelative(doc, blockId, clone, "after"), "user");
+    store.transact((doc: MarkdownDocument) =>
+        insertMarkdownBlockRelative(doc, blockId, clone, "after"), "user");
+
     return cloneId;
 }
 
@@ -1296,34 +1342,25 @@ export function createMarkdownCommands(store: MarkdownEditorStore): MarkdownComm
         applyFieldEdit: (event: MarkdownFieldEditEvent) => applyFieldEdit(store, event),
         applyMarkdownShortcut: (blockId: string, match: MarkdownShortcutMatch) =>
             applyMarkdownShortcut(store, blockId, match),
+        clearTableContents: (selection: MarkdownTableSelection) => clearTableContents(store, selection),
         deleteBlock: (blockId: string) => deleteBlock(store, blockId),
         duplicateBlock: (blockId: string) => duplicateBlock(store, blockId),
+        duplicateTableColumn: (selection: MarkdownTableSelection) => duplicateTableColumn(store, selection),
+        duplicateTableRow: (selection: MarkdownTableSelection) => duplicateTableRow(store, selection),
         handleFieldBoundary: (event: MarkdownFieldBoundaryEvent) => handleFieldBoundary(store, event),
         indent: (blockId: string) => indent(store, blockId),
         insertBlockOfType: (afterBlockId: string, type: MarkdownBlockType) =>
             insertBlockOfType(store, afterBlockId, type),
-        insertTableAfter: (blockId: string) => insertTableAfter(store, blockId),
-        toggleTableOption: (
-            blockId: string,
-            option: "fitPageWidth" | "headerRow" | "headerColumn"
-        ) => toggleTableOption(store, blockId, option),
-        insertTableRow: (blockId: string, index: number, position?: "above" | "below") =>
-            insertTableRow(store, blockId, index, position),
-        insertTableColumn: (blockId: string, index: number, position?: "left" | "right") =>
-            insertTableColumn(store, blockId, index, position),
-        duplicateTableRow: (selection: MarkdownTableSelection) => duplicateTableRow(store, selection),
-        duplicateTableColumn: (selection: MarkdownTableSelection) => duplicateTableColumn(store, selection),
-        clearTableContents: (selection: MarkdownTableSelection) => clearTableContents(store, selection),
-        setTableColor: (
-            selection: MarkdownTableSelection,
-            scope: "table" | "row" | "column" | "cell",
-            color: MarkdownColor | undefined
-        ) => setTableColor(store, selection, scope, color),
         insertMention: (
             point: MarkdownSelectionPoint,
             candidate: MarkdownMentionCandidate,
             selectionEnd?: number
         ) => insertMention(store, point, candidate, selectionEnd),
+        insertTableAfter: (blockId: string) => insertTableAfter(store, blockId),
+        insertTableColumn: (blockId: string, index: number, position?: "left" | "right") =>
+            insertTableColumn(store, blockId, index, position),
+        insertTableRow: (blockId: string, index: number, position?: "above" | "below") =>
+            insertTableRow(store, blockId, index, position),
         insertTextBlockAfter: (blockId: string) => insertTextBlockAfter(store, blockId),
         moveBlock: (blockId: string, direction: "up" | "down") => moveBlock(store, blockId, direction),
         outdent: (blockId: string) => outdent(store, blockId),
@@ -1331,7 +1368,16 @@ export function createMarkdownCommands(store: MarkdownEditorStore): MarkdownComm
         setColor: (color: MarkdownColor | undefined) => setColor(store, color),
         setLink: (url: string | undefined) => setLink(store, url),
         setSelection: (selection: MarkdownSelection | undefined) => store.setSelection(selection),
+        setTableColor: (
+            selection: MarkdownTableSelection,
+            scope: "table" | "row" | "column" | "cell",
+            color: MarkdownColor | undefined
+        ) => setTableColor(store, selection, scope, color),
         toggleMark: (kind: MarkdownFieldRangeMarkKind) => toggleMark(store, kind),
+        toggleTableOption: (
+            blockId: string,
+            option: "fitPageWidth" | "headerRow" | "headerColumn"
+        ) => toggleTableOption(store, blockId, option),
         turnInto: (blockId: string, type: MarkdownBlockType) => turnInto(store, blockId, type),
         undo: () => store.undo()
     };

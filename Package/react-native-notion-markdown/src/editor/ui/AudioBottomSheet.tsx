@@ -1,17 +1,15 @@
 /**
+ * Audio insertion and replacement workflow.
+ *
+ * The document picker and recorder stay in this lazily loaded module so applications that
+ * provide `onInsertAudio` do not need the optional picker peer at runtime.
+ *
  * @module react-native-notion-markdown/editor/ui/AudioBottomSheet
  *
  * @file      AudioBottomSheet.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
- */
-
-/**
- * Audio insertion and replacement workflow.
- *
- * The document picker and recorder stay in this lazily loaded module so applications that
- * provide `onInsertAudio` do not need the optional picker peer at runtime.
  */
 
 import * as DocumentPicker from "expo-document-picker";

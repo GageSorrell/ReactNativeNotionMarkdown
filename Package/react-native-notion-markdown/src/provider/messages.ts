@@ -122,6 +122,7 @@ export type MarkdownMessageId =
     | "blockName.divider"
     | "blockName.equation"
     | "blockName.file"
+    | "blockName.pdf"
     | "blockName.tableOfContents"
     | "blockName.syncedBlock"
     | "blockName.toggle"
@@ -137,12 +138,12 @@ export type MarkdownMessageId =
     | "insertPanel.audio"
     | "insertPanel.video"
     | "insertPanel.file"
+    | "insertPanel.pdf"
     | "insertPanel.code"
     | "insertPanel.link"
     | "insertPanel.mediaTitle"
     | "insertPanel.advancedTitle"
     | "insertPanel.blockEquation"
-    | "insertPanel.syncedBlock"
     | "insertPanel.mermaidDiagram"
     | "insertPanel.callout"
     | "insertPanel.quote"
@@ -191,6 +192,7 @@ export type MarkdownMessageId =
     | "native.emptyToDoPlaceholder"
     | "native.emptyTogglePlaceholder"
     | "native.file"
+    | "native.pdf"
     | "native.selectTableColumn"
     | "native.selectTableRow"
     | "native.tableActions"
@@ -630,6 +632,12 @@ const defaultMarkdownMessages: Readonly<Record<MarkdownMessageId, MarkdownMessag
             description: "Block-actions sheet section label naming a numbered-list-item block",
             id: "blockName.numberedListItem"
         },
+        "blockName.pdf":
+        {
+            defaultMessage: "PDF",
+            description: "Block-actions sheet section label naming a PDF block",
+            id: "blockName.pdf"
+        },
         "blockName.quote":
         {
             defaultMessage: "Quote",
@@ -1008,6 +1016,12 @@ const defaultMarkdownMessages: Readonly<Record<MarkdownMessageId, MarkdownMessag
             description: "Insert-panel button that requests creation of a link to a page",
             id: "insertPanel.pageReference"
         },
+        "insertPanel.pdf":
+        {
+            defaultMessage: "PDF",
+            description: "Insert-panel button that opens the native file picker for PDF documents",
+            id: "insertPanel.pdf"
+        },
         "insertPanel.quote":
         {
             defaultMessage: "Quote",
@@ -1019,12 +1033,6 @@ const defaultMarkdownMessages: Readonly<Record<MarkdownMessageId, MarkdownMessag
             defaultMessage: "Return to keyboard",
             description: "Full-width insert-panel button that closes the panel and refocuses the keyboard",
             id: "insertPanel.returnToKeyboard"
-        },
-        "insertPanel.syncedBlock":
-        {
-            defaultMessage: "Synced block",
-            description: "Insert-panel button reserved for the editor's future synced block",
-            id: "insertPanel.syncedBlock"
         },
         "insertPanel.table":
         {
@@ -1187,6 +1195,12 @@ const defaultMarkdownMessages: Readonly<Record<MarkdownMessageId, MarkdownMessag
             defaultMessage: "File",
             description: "Fallback title of a file block whose file has no name",
             id: "native.file"
+        },
+        "native.pdf":
+        {
+            defaultMessage: "PDF",
+            description: "Fallback title of a PDF block whose file has no name",
+            id: "native.pdf"
         },
         "native.selectTableColumn":
         {

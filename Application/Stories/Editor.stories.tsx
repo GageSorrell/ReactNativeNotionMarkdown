@@ -25,17 +25,23 @@ import {
     defaultMarkdownEditorToolbar
 } from "react-native-notion-markdown/editor/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
 import { CalendarDays, Sparkles, Star } from "lucide-react-native";
+import {
+    type EditorSnapshot,
+    type MarkdownDiagnostic,
+    type MarkdownDocument,
+    serializeMarkdown
+} from "react-native-notion-markdown";
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
     KeyboardToggleButton,
     ThemeOverrideProvider,
     ThemeToggleButton,
     useThemeOverride
 } from "./themeToggle";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Asset } from "expo-asset";
-import type { EditorSnapshot } from "react-native-notion-markdown";
+import { MarkdownRenderer } from "react-native-notion-markdown/renderer/ui";
 import { markdownEditorLucideIcons } from "react-native-notion-markdown/editor/ui/lucide-icons";
 import { sepiaTheme } from "./customTheme";
 
@@ -246,6 +252,174 @@ function RichDocumentEditorStory(args: ComponentProps<typeof MarkdownEditor>)
     </View>;
 }
 
+/* Seed for the "From Markdown" story: one of each block the editor can load, with nesting. */
+/* eslint-disable @stylistic/max-len */
+const fromMarkdownSource =
+    [
+        "# Trip plan {color=\"blue\"}",
+        "Loaded from **Markdown**, with *italic*, `code`, a [link](https://example.com), and inline math $E = mc^2$.",
+        "\tA text block nested under the one above.",
+        "- Pack the tent",
+        "\t- Check the poles",
+        "\t- Count the pegs",
+        "- [x] Book the campsite",
+        "- [ ] Download offline maps",
+        "<details>",
+        "<summary>Packing notes</summary>",
+        "\tOnly visible while the toggle is open.",
+        "\t1. Stove",
+        "\t1. Fuel",
+        "</details>",
+        "<callout icon=\"⛺\" color=\"yellow_bg\">",
+        "\tThe gate closes at **9 pm**.",
+        "</callout>",
+        "<table header-row=\"true\">",
+        "\t<colgroup>",
+        "\t\t<col>",
+        "\t\t<col color=\"blue_bg\">",
+        "\t</colgroup>",
+        "\t<tr><td>**Day**</td><td>**Distance**</td></tr>",
+        "\t<tr><td>Saturday</td><td>12 km</td></tr>",
+        "\t<tr><td>Sunday</td><td>$\\frac{12}{2}$ km</td></tr>",
+        "</table>",
+        "> Leave no trace.",
+        "---",
+        "Mentions such as <mention-user url=\"{{user://abc123}}\">Ada</mention-user> are dropped on load; see the diagnostics count."
+    ].join("\n");
+/* eslint-enable @stylistic/max-len */
+
+type FromMarkdownView = "editor" | "markdown" | "preview";
+
+const fromMarkdownViews: ReadonlyArray<FromMarkdownView> = [ "editor", "markdown", "preview" ];
+const fromMarkdownViewLabels: Readonly<Record<FromMarkdownView, string>> =
+    {
+        editor: "Editor",
+        markdown: "Markdown",
+        preview: "Preview"
+    };
+
+interface FromMarkdownViewButtonProps
+{
+    readonly active: boolean;
+    readonly dark: boolean;
+    readonly onSelect: (view: FromMarkdownView) => void;
+    readonly view: FromMarkdownView;
+}
+
+/** One segment of the "From Markdown" story's editor / Markdown / preview control. */
+function FromMarkdownViewButton({ active, dark, onSelect, view }: FromMarkdownViewButtonProps)
+{
+    const handlePress = useCallback(() => onSelect(view), [ onSelect, view ]);
+    const accessibilityState = useMemo(() => ({ selected: active }), [ active ]);
+    const buttonStyle = useMemo(
+        () => [
+            styles.viewButton,
+            dark && styles.darkViewButton,
+            active && (dark ? styles.darkViewButtonActive : styles.viewButtonActive)
+        ],
+        [ active, dark ]
+    );
+    const labelStyle = useMemo(
+        () => [ styles.viewButtonLabel, (dark !== active) && styles.viewButtonLabelLight ],
+        [ active, dark ]
+    );
+
+    return <Pressable
+        accessibilityLabel={ `Show ${ fromMarkdownViewLabels[ view ] }` }
+        accessibilityRole="button"
+        accessibilityState={ accessibilityState }
+        onPress={ handlePress }
+        style={ buttonStyle }>
+        <Text style={ labelStyle }>{ fromMarkdownViewLabels[ view ] }</Text>
+    </Pressable>;
+}
+
+/**
+ * Renders the "From Markdown" story: the editor seeded from a Markdown string through `initial`,
+ * with a control that swaps it for the Markdown serialized from `onChange` or for a
+ * `MarkdownRenderer` preview of the same document. The editor stays mounted while hidden, since
+ * `initial` is read once.
+ */
+function FromMarkdownEditorStory(args: ComponentProps<typeof MarkdownEditor>)
+{
+    const { override } = useThemeOverride();
+    const dark = override === "system" ? args.colorScheme === "dark" : override === "dark";
+    const [ view, setView ] = useState<FromMarkdownView>("editor");
+    const [ document, setDocument ] = useState<MarkdownDocument>();
+    const [ changes, setChanges ] = useState(0);
+    const [ diagnostics, setDiagnostics ] = useState<ReadonlyArray<MarkdownDiagnostic>>([ ]);
+    const markdown = useMemo(
+        () => document === undefined ? fromMarkdownSource : serializeMarkdown(document),
+        [ document ]
+    );
+    const handleChange = useCallback((next: MarkdownDocument) =>
+    {
+        setDocument(next);
+        setChanges((count: number) => count + 1);
+    }, [ ]);
+    const handleSelectView = useCallback((next: FromMarkdownView) =>
+    {
+        Keyboard.dismiss();
+        setView(next);
+    }, [ ]);
+    const pageStyle = useMemo(() => [ styles.page, dark && styles.darkPage ], [ dark ]);
+    const titleStyle = useMemo(() => [ styles.pageTitle, dark && styles.darkPageTitle ], [ dark ]);
+    const statusStyle = useMemo(() => [ styles.status, dark && styles.darkStatus ], [ dark ]);
+    const sourceStyle = useMemo(() => [ styles.source, dark && styles.darkPageTitle ], [ dark ]);
+    const editorStyle = useMemo(
+        () => [ styles.editor, args.style, view !== "editor" && styles.hidden ],
+        [ args.style, view ]
+    );
+
+    return <View style={ pageStyle }>
+        <View style={ styles.titleContainer }>
+            <Text style={ titleStyle }>Editor</Text>
+            <View style={ styles.titleActions }>
+                <KeyboardToggleButton dark={ dark } />
+                <ThemeToggleButton dark={ dark } />
+            </View>
+        </View>
+        <View style={ styles.viewBar }>
+            {
+                fromMarkdownViews.map((item: FromMarkdownView) =>
+                    <FromMarkdownViewButton active={ item === view }
+                        dark={ dark }
+                        key={ item }
+                        onSelect={ handleSelectView }
+                        view={ item } />)
+            }
+            <Text accessibilityLabel="Change and diagnostic counts"
+                style={ statusStyle }>
+                { `${ changes } changes · ${ diagnostics.length } diagnostics` }
+            </Text>
+        </View>
+        <MarkdownEditor
+            { ...args }
+            colorScheme={ dark ? "dark" : "light" }
+            initial={ fromMarkdownSource }
+            onChange={ handleChange }
+            onDiagnostics={ setDiagnostics }
+            style={ editorStyle }
+        />
+        {
+            view === "markdown" && <ScrollView contentContainerStyle={ styles.sourceContent }
+                style={ styles.editor }>
+                <Text accessibilityLabel="Serialized Markdown"
+                    selectable
+                    style={ sourceStyle }>
+                    { markdown }
+                </Text>
+            </ScrollView>
+        }
+        {
+            view === "preview" && <View style={ styles.editor }>
+                <MarkdownRenderer colorScheme={ dark ? "dark" : "light" }
+                    markdown={ markdown } />
+            </View>
+        }
+    </View>;
+}
+
 /**
  * Renders the editor story page. The story's own `colorScheme` arg is the default appearance; the
  * upper-right `ThemeToggleButton`, opposite the "Editor" title, overrides it unless left on
@@ -288,9 +462,25 @@ const styles = StyleSheet.create({
     {
         color: "#EEEEEE"
     },
+    darkStatus:
+    {
+        color: "#A0A0A0"
+    },
+    darkViewButton:
+    {
+        backgroundColor: "#2F2F2F"
+    },
+    darkViewButtonActive:
+    {
+        backgroundColor: "#EEEEEE"
+    },
     editor:
     {
         flex: 1
+    },
+    hidden:
+    {
+        display: "none"
     },
     page:
     {
@@ -304,6 +494,25 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         marginBottom: 16
     },
+    source:
+    {
+        color: "#2C2C2B",
+        fontFamily: "monospace",
+        fontSize: 13,
+        lineHeight: 19
+    },
+    sourceContent:
+    {
+        paddingBottom: 48,
+        paddingHorizontal: 28
+    },
+    status:
+    {
+        color: "#73726E",
+        flex: 1,
+        fontSize: 12,
+        textAlign: "right"
+    },
     titleActions:
     {
         flexDirection: "row",
@@ -316,6 +525,35 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         paddingHorizontal: 28,
         paddingTop: 24
+    },
+    viewBar:
+    {
+        alignItems: "center",
+        flexDirection: "row",
+        gap: 8,
+        paddingBottom: 12,
+        paddingHorizontal: 28
+    },
+    viewButton:
+    {
+        backgroundColor: "#F1F1EF",
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6
+    },
+    viewButtonActive:
+    {
+        backgroundColor: "#2C2C2B"
+    },
+    viewButtonLabel:
+    {
+        color: "#2C2C2B",
+        fontSize: 13,
+        fontWeight: "600"
+    },
+    viewButtonLabelLight:
+    {
+        color: "#FFFFFF"
     }
 });
 
@@ -689,7 +927,7 @@ export const Quote: Story =
                     { color: "purple", id: "quote:foreground", text: "A quote in purple.", type: "quote" },
                     {
                         id: "quote:long",
-                        text: "A longer quote that wraps, to verify the border bar keeps its full height.",
+                        text: "A longer quote that wraps, to verify the shorter border bar stays centered.",
                         type: "quote"
                     },
                     { id: "quote:after", text: "Heading 1 block", type: "heading_1" }
@@ -699,4 +937,13 @@ export const Quote: Story =
             },
             style: { flex: 1 }
         }
+    };
+
+export const FromMarkdown: Story =
+    {
+        args:
+        {
+            style: { flex: 1 }
+        },
+        render: (args: ComponentProps<typeof MarkdownEditor>) => <FromMarkdownEditorStory { ...args } />
     };

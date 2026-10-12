@@ -1,5 +1,8 @@
 /**
- * Lazily loaded native insert-media bottom sheet.
+ * Optional native insert-media sheet.
+ *
+ * This module is loaded lazily by `MarkdownEditor`. Keeping the Expo ImagePicker import here means
+ * applications that provide their own `onInsertMedia` handler do not need to install that peer.
  *
  * @module react-native-notion-markdown/editor/ui/MediaBottomSheet
  *
@@ -7,13 +10,6 @@
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
- */
-
-/**
- * Optional native insert-media sheet.
- *
- * This module is loaded lazily by `MarkdownEditor`. Keeping the Expo ImagePicker import here means
- * applications that provide their own `onInsertMedia` handler do not need to install that peer.
  */
 
 import * as ImagePicker from "expo-image-picker";
@@ -125,10 +121,15 @@ function MediaOption({ action, color, fontFamily, icon: Icon, label, onPress }: 
     const ripple = useMemo(() => ({ color: withAlpha(color, 0.13) }), [ color ]);
     const labelStyle = useMemo(() => [ styles.optionLabel, { color, fontFamily } ], [ color, fontFamily ]);
 
+    const handleOnPress = useCallback((action: MarkdownEditorMediaAction) =>
+    {
+        return () => onPress(action);
+    }, [ onPress ]);
+
     return <Pressable accessibilityLabel={ label }
         accessibilityRole="button"
         android_ripple={ ripple }
-        onPress={ () => onPress(action) }
+        onPress={ handleOnPress(action) }
         style={ optionStyle }>
         <Icon
             color={ color }

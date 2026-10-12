@@ -1,5 +1,5 @@
 /**
- *
+ * Favicon loading and fallback icon presentation for arbitrary web links.
  *
  * @module react-native-notion-markdown/renderer/ui/FaviconIcon
  *
@@ -8,8 +8,6 @@
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
  */
-
-/** Favicon loading and fallback icon presentation for arbitrary web links. */
 
 import { Image, Text, View } from "react-native";
 import { createElement, useCallback, useEffect, useMemo, useState } from "react";

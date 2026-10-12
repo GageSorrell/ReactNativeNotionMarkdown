@@ -27,7 +27,9 @@ import type {
     MarkdownRendererConfig,
     MarkdownRendererProps
 } from "./types.ts";
+import { Path, Rect, Svg } from "react-native-svg";
 import {
+    PixelRatio,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -831,6 +833,73 @@ function TableOfContentsEntry({ entry, entryRowStyle, entryTextStyle, context }:
     );
 }
 
+/**
+ * Draw the default to-do checkbox with the same geometry as the native editor's checkbox: an
+ * outlined rounded square when unchecked, or a filled accent square with a checkmark when checked.
+ */
+function TodoCheckbox({ checked, context }: {
+    readonly checked: boolean;
+    readonly context: RenderContext;
+})
+{
+    const { fontScale } = useWindowDimensions();
+    const textSize = context.theme.fontSize * fontScale;
+    const gutter = textSize * 1.5;
+    const size = gutter * 0.68;
+    const radius = size * 0.22;
+    const minimumStroke = 1.5 / PixelRatio.get();
+    const borderStroke = Math.max(minimumStroke, textSize / 12);
+    const checkStroke = Math.max(minimumStroke, textSize / 11);
+    const inset = borderStroke / 2;
+    const canvas = size + borderStroke;
+
+    const gutterStyle = useMemo(() => ({
+        alignItems: "flex-start" as const,
+        height: gutter,
+        justifyContent: "center" as const,
+        width: gutter
+    }), [ gutter ]);
+
+    const svgStyle = useMemo(() => ({ marginLeft: -inset }), [ inset ]);
+
+    const checkPath = useMemo(() => [
+        `M${ inset + size * 0.24 } ${ inset + size * 0.52 }`,
+        `L${ inset + size * 0.43 } ${ inset + size * 0.74 }`,
+        `L${ inset + size * 0.78 } ${ inset + size * 0.28 }`
+    ].join(" "), [ inset, size ]);
+
+    return (
+        <View style={ gutterStyle }>
+            <Svg
+                height={ canvas }
+                style={ svgStyle }
+                width={ canvas }>
+                <Rect
+                    fill={ checked ? context.theme.accent : "none" }
+                    height={ size }
+                    rx={ radius }
+                    ry={ radius }
+                    stroke={ checked ? "none" : context.theme.border }
+                    strokeWidth={ borderStroke }
+                    width={ size }
+                    x={ inset }
+                    y={ inset }
+                />
+                {
+                    checked && <Path
+                        d={ checkPath }
+                        fill="none"
+                        stroke={ context.theme.onAccent }
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={ checkStroke }
+                    />
+                }
+            </Svg>
+        </View>
+    );
+}
+
 /** Reusable recursive block presentation. */
 export function MarkdownBlockView({
     block,
@@ -928,24 +997,6 @@ export function MarkdownBlockView({
     ]);
 
     const todoStyles = useMemo(() => ({
-        checkboxCheckmark:
-        {
-            color: context.theme.onAccent,
-            fontSize: 12,
-            fontWeight: "700" as const,
-            lineHeight: 14
-        },
-        checkboxDefault:
-        {
-            alignItems: "center" as const,
-            backgroundColor: checked ? context.theme.accent : "transparent",
-            borderColor: checked ? context.theme.accent : context.theme.border,
-            borderRadius: 4,
-            borderWidth: 1.5,
-            height: 18,
-            justifyContent: "center" as const,
-            width: 18
-        },
         checkboxWrap: {
             alignItems: "center" as const,
             height: context.theme.fontSize * 1.5,
@@ -956,25 +1007,21 @@ export function MarkdownBlockView({
         root: { ...base, paddingBottom: 8, paddingLeft: 8 + depth * 24, paddingRight: 8, paddingTop: 8 },
         row: { alignItems: "flex-start" as const, flexDirection: "row" as const, paddingLeft: 2 },
         textWrap: { flex: 1 }
-    }), [
-        base,
-        checked,
-        context.theme.accent,
-        context.theme.border,
-        context.theme.fontSize,
-        context.theme.onAccent,
-        depth
-    ]);
+    }), [ base, context.theme.fontSize, depth ]);
 
-    const quoteStyle = useMemo(() => ({
-        ...base,
-        borderLeftColor: context.theme.border,
-        borderLeftWidth: 3,
-        paddingBottom: 8,
-        paddingLeft: 8,
-        paddingRight: 8,
-        paddingTop: 8
-    }), [ base, context.theme.border ]);
+    const quoteStyles = useMemo(() => ({
+        bar: {
+            alignSelf: "center" as const,
+            backgroundColor: context.theme.border,
+            borderRadius: 1.5,
+            height: context.theme.fontSize,
+            marginRight: 8,
+            width: 3
+        },
+        body: { flex: 1 },
+        root: { ...base, paddingBottom: 8, paddingLeft: 8, paddingRight: 8, paddingTop: 8 },
+        row: { alignItems: "center" as const, flexDirection: "row" as const }
+    }), [ base, context.theme.border, context.theme.fontSize ]);
 
     const calloutStyles = useMemo(() => ({
         body: { flex: 1, minHeight: context.theme.fontSize * 2 },
@@ -988,9 +1035,9 @@ export function MarkdownBlockView({
             padding: 12
         },
         icon: { fontSize: context.theme.fontSize * 1.3 },
-        iconWrap: { marginRight: 8, marginTop: context.theme.fontSize * 0.47, width: 24 },
-        root: { ...base, paddingBottom: 8, paddingLeft: 8, paddingRight: 8, paddingTop: 8 }
-    }), [ backgroundColor, base, context.theme.border, context.theme.fontSize, context.theme.surface ]);
+        iconWrap: { marginRight: 8, width: 24 },
+        root: { paddingBottom: 8, paddingLeft: 8, paddingRight: 8, paddingTop: 8 }
+    }), [ backgroundColor, context.theme.border, context.theme.fontSize, context.theme.surface ]);
 
     const codeStyles = useMemo(() => ({
         language: {
@@ -1068,6 +1115,8 @@ export function MarkdownBlockView({
         context.theme.spacing,
         context.theme.surface
     ]);
+
+    const checkedAccessibilityState = useMemo(() => ({ checked }), [ checked ]);
 
     const ref = useMemo(() =>
     {
@@ -1199,15 +1248,14 @@ export function MarkdownBlockView({
                         <View
                             accessibilityLabel={ checked ? "Checked" : "Unchecked" }
                             accessibilityRole="checkbox"
-                            accessibilityState={ { checked } }
-                            style={ todoStyles.checkboxWrap }>
+                            accessibilityState={ checkedAccessibilityState }
+                            style={ Checkbox === undefined ? undefined : todoStyles.checkboxWrap }>
                             {
                                 Checkbox === undefined
-                                    ? <View style={ todoStyles.checkboxDefault }>
-                                        {
-                                            checked && <Text style={ todoStyles.checkboxCheckmark }>✓</Text>
-                                        }
-                                    </View>
+                                    ? <TodoCheckbox
+                                        checked={ checked }
+                                        context={ context }
+                                    />
                                     : createElement(Checkbox, { checked })
                             }
                         </View>
@@ -1227,9 +1275,14 @@ export function MarkdownBlockView({
         }
         case "quote":
             return (
-                <View style={ quoteStyle }>
-                    { text(payload.rich_text) }
-                    { childView }
+                <View style={ quoteStyles.root }>
+                    <View style={ quoteStyles.row }>
+                        <View style={ quoteStyles.bar } />
+                        <View style={ quoteStyles.body }>
+                            { text(payload.rich_text) }
+                            { childView }
+                        </View>
+                    </View>
                 </View>
             );
         case "toggle":

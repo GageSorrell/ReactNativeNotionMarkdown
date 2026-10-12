@@ -270,10 +270,10 @@ export type MarkdownEditorInsertItem =
     | "audio"
     | "code"
     | "file"
+    | "pdf"
     | "link"
     | "tableOfContents"
     | "blockEquation"
-    | "syncedBlock"
     | "toggleHeading1"
     | "toggleHeading2"
     | "toggleHeading3"
@@ -339,7 +339,7 @@ export interface MarkdownEditorInsertPanel
 export type MarkdownEditorTurnIntoItem = Extract<EditorBlock["type"],
     "text" | "heading_1" | "heading_2" | "heading_3" | "heading_4"
     | "bulleted_list_item" | "numbered_list_item" | "to_do" | "toggle" | "code" | "quote"
-    | "callout" | "equation" | "synced_block">
+    | "callout" | "equation" | "image" | "video" | "audio" | "file" | "pdf">
     | "toggle_heading_1" | "toggle_heading_2" | "toggle_heading_3" | "toggle_heading_4"
     | "columns2" | "columns3" | "columns4" | "columns5";
 
@@ -443,14 +443,14 @@ const defaultMarkdownEditorInsertSections: ReadonlyArray<MarkdownEditorInsertSec
         },
         {
             id: "media",
-            items: [ "image", "video", "audio", "code", "file", "link" ],
+            items: [ "image", "video", "audio", "code", "file", "pdf", "link" ],
             title: "insertPanel.mediaTitle"
         },
         {
             id: "advanced",
             items: [
-                "tableOfContents", "blockEquation", "syncedBlock", "toggleHeading1", "toggleHeading2",
-                "toggleHeading3", "toggleHeading4", "mermaidDiagram"
+                "tableOfContents", "blockEquation", "toggleHeading1", "toggleHeading2", "toggleHeading3",
+                "toggleHeading4", "mermaidDiagram"
             ],
             title: "insertPanel.advancedTitle"
         }
@@ -465,9 +465,32 @@ const defaultMarkdownEditorTurnIntoItems: ReadonlyArray<MarkdownEditorTurnIntoIt
     [
         "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
         "numbered_list_item", "to_do", "toggle", "code", "quote", "callout", "equation",
-        "synced_block", "toggle_heading_1", "toggle_heading_2", "toggle_heading_3", "toggle_heading_4",
-        "columns2", "columns3", "columns4", "columns5"
+        "toggle_heading_1", "toggle_heading_2", "toggle_heading_3", "toggle_heading_4",
+        "columns2", "columns3", "columns4", "columns5", "image", "video", "audio", "file", "pdf"
     ];
+
+const editorTurnIntoTextTypes: ReadonlyArray<EditorBlock["type"]> =
+    [
+        "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
+        "numbered_list_item", "to_do", "toggle", "code", "quote", "callout", "equation",
+        "column_list"
+    ];
+
+const editorTurnIntoMediaTypes: ReadonlyArray<EditorBlock["type"]> =
+    [ "image", "video", "audio", "file", "pdf" ];
+
+/** Return whether an editor block can be converted to the requested native block type. */
+export function canConvertEditorBlock(
+    sourceType: EditorBlock["type"], targetType: EditorBlock["type"]
+): boolean
+{
+    if (editorTurnIntoMediaTypes.includes(sourceType))
+    {
+        return editorTurnIntoMediaTypes.includes(targetType);
+    }
+
+    return sourceType !== "synced_block" && editorTurnIntoTextTypes.includes(targetType);
+}
 
 /**
  * One option in an editor color picker. `hue` is `undefined` for the "Default" option, which

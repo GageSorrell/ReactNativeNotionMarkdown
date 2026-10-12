@@ -1,5 +1,5 @@
 /**
- *
+ * Inline vector icons used by the built-in insert-audio sheet.
  *
  * @module react-native-notion-markdown/editor/ui/audioIcons
  *
@@ -7,12 +7,6 @@
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
- */
-
-/**
- * Inline vector icons used by the built-in insert-audio sheet.
- *
- * @module react-native-notion-markdown/editor/ui/audioIcons
  */
 
 import { Circle, Path, Rect, Svg } from "react-native-svg";

@@ -1,18 +1,16 @@
 /**
+ * Small animated binary switch used by the editor action surfaces.
+ *
+ * This follows NoteFerry's Switch primitive closely: the track and thumb dimensions, animated
+ * thumb travel, pressed semantics, and accessibility state are intentionally kept compatible.
+ * Colors come from the editor theme's `switch` tokens via the nearest `MarkdownProvider`.
+ *
  * @module react-native-notion-markdown/editor/ui/Switch
  *
  * @file      Switch.tsx
  * @author    Gage Sorrell <gage@sorrell.sh>
  * @copyright (c) 2026 Gage Sorrell
  * @license   MIT
- */
-
-/**
- * Small animated binary switch used by the editor action surfaces.
- *
- * This follows NoteFerry's Switch primitive closely: the track and thumb dimensions, animated
- * thumb travel, pressed semantics, and accessibility state are intentionally kept compatible.
- * Colors come from the editor theme's `switch` tokens via the nearest `MarkdownProvider`.
  */
 
 import { Animated, Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";

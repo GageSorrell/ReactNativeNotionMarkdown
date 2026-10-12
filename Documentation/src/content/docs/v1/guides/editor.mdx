@@ -1,17 +1,157 @@
 ---
 title: Editor
-description: Build editing workflows with the document model and editor exports.
+description: Load Markdown into the editor, read the edited document back, and know what the editor can and cannot represent.
 sidebar:
   order: 3
 ---
 
-The editor builds on the same document representation as the renderer. This allows a document to move between viewing and editing without a second data format.
+import { Aside } from '@astrojs/starlight/components'
 
-## Editing loop
+`MarkdownEditor` from `react-native-notion-markdown/editor/ui` is the ready-to-use editing surface.
+It takes its starting content as enhanced Markdown or a parsed `MarkdownDocument`, and reports every change as a `MarkdownDocument`, the same model `MarkdownRenderer` displays.
 
-- Load or create a document.
-- Apply focused edits through editor commands.
-- Render the current state for feedback.
-- Serialize the final document for persistence.
+## Loading and saving
 
-The editor UI exports are intentionally separate so teams can replace controls while keeping the underlying model and commands.
+Pass the starting content as `initial`, and keep the document `onChange` hands back.
+Serialize it with `serializeMarkdown` when you want to store Markdown.
+
+```tsx
+import { useCallback, useRef } from "react";
+import { type MarkdownDocument, serializeMarkdown } from "react-native-notion-markdown";
+import { MarkdownEditor } from "react-native-notion-markdown/editor/ui";
+
+function NoteEditor({ note, onSave }: NoteEditorProps)
+{
+    const latest = useRef<MarkdownDocument>(undefined);
+    const handleChange = useCallback((document: MarkdownDocument) =>
+    {
+        latest.current = document;
+    }, [ ]);
+    const handleSave = useCallback(() =>
+    {
+        if (latest.current !== undefined)
+        {
+            onSave(serializeMarkdown(latest.current));
+        }
+    }, [ onSave ]);
+
+    return <MarkdownEditor initial={ note.markdown }
+        key={ note.id }
+        onChange={ handleChange }
+        style={ styles.editor } />;
+}
+```
+
+- `initial` is read once, when the editor mounts. To load a different document, remount the editor with a new `key`.
+- `onChange` fires after each user edit, undo, and redo. It does not fire for the initial load, or when only the selection moves.
+- Blocks the user did not touch keep the same object identity from one `onChange` to the next, so memoized consumers do not re-render for them.
+- Serializing on every keystroke is rarely needed. Keep the latest document and serialize when you save.
+
+The document from `onChange` can be handed straight to the renderer, for example to show a read-only preview next to the editor.
+
+```tsx
+<MarkdownRenderer document={ document } />
+```
+
+## What the editor can edit
+
+The editor edits a subset of the document model.
+These blocks load, edit, and come back as the same block type.
+
+| Block | Notes |
+| --- | --- |
+| Text, headings 1 to 4, bulleted and numbered list items, quotes, to-dos | Rich text, block color, and nested children. Only toggle headings hold children. |
+| Toggles and toggle headings | Loaded expanded. Whether a toggle is collapsed is view state, and is not part of the document. |
+| Callouts | Emoji icon, color, and children. |
+| Code | Language and literal text. |
+| Block equations | LaTeX source. |
+| Dividers and tables of contents | |
+| Tables | Cell text and formatting, header row and column, fit-to-page-width, and column, row, and cell colors. |
+| Images and videos | URL only. |
+| Audio, files, and PDFs | URL. The caption is shown as the file name. |
+| Page references | Label, URL, and icon. |
+| Columns | The number of columns. See below for their content. |
+
+Inside rich text, the editor keeps bold, italic, underline, strikethrough, inline code, color, links, line breaks, and inline equations.
+
+### Turn into conversions
+
+The Turn into panel hides options that do not apply to every selected block.
+Text-like blocks, columns, dividers, tables of contents, page references, and tables can convert to text, headings, lists, to-dos, toggles, code, quotes, callouts, equations, and columns.
+Page references carry their label into the new block as a link, except when the target is code or an equation.
+Columns carry their visible lead text into the converted block.
+Tables become one converted block per row, with cells joined by tabs and their inline marks shifted to the new offsets.
+Images, videos, audio, files, and PDFs can convert only within the media family.
+Media conversions preserve the URL, file name, file size, and MIME type, and preserve duration and waveform only for audio targets.
+Tables, dividers, tables of contents, page references, and synced blocks are not Turn into targets.
+
+## What is discarded
+
+Some content has no editable form yet.
+It is left out when a document is loaded, so it is also missing from the document `onChange` returns.
+
+| Content | Outcome | Diagnostic code |
+| --- | --- | --- |
+| Mentions, date mentions, citations, and custom emoji | Removed from the text around them. | `editor-discarded-inline` |
+| Image and video captions, and formatting inside audio, file, and PDF captions | Removed. | `editor-discarded-caption` |
+| Synced blocks and synced block references | The block is removed, along with everything inside it. | `editor-discarded-block` |
+| Database references | The block is removed. | `editor-discarded-block` |
+| Embeds, bookmarks, media or page references with no URL, and empty tables | The block is removed. | `editor-discarded-block` |
+| Content in columns after the first | Kept, but returned in the first column. | `editor-flattened-columns` |
+
+### Synced blocks and database references
+
+Synced blocks and database reference blocks are not currently supported by the editor.
+`<synced_block>`, `<synced_block_reference>`, and `<database>` blocks are stripped from `initial`, whether it is Markdown text or a parsed `MarkdownDocument`, and `toEditorBlocks` strips them the same way.
+A synced block is removed together with its content, rather than unwrapped, so that an edit cannot save a synced block back as ordinary blocks that are no longer synced.
+Each removed block is reported through `onDiagnostics` as an `editor-discarded-block` warning.
+The `snapshot` prop is filtered as well: `synced_block` entries, and the blocks nested under them, are removed before the snapshot reaches the native view, with no diagnostic.
+`stripSyncedEditorBlocks` is the function that does it, exported next to `toEditorBlocks`.
+Neither the Insert panel nor the Turn into panel offers a synced block.
+`MarkdownRenderer` is not affected, and still displays both.
+
+<Aside type="caution" title="Editing can lose content">
+  Saving the document from `onChange` over the original removes everything in this table from it.
+  Check `onDiagnostics` before you let a user edit a document you did not create in the editor.
+</Aside>
+
+`onDiagnostics` reports what happened to `initial`: the parser's diagnostics first, then one `warning` for each thing the editor left out.
+Each warning has one of the codes above, the block's `source` line and column when it came from Markdown, and the block's id and type in `details`.
+
+```tsx
+const handleDiagnostics = useCallback((diagnostics: ReadonlyArray<MarkdownDiagnostic>) =>
+{
+    const lossy = diagnostics.filter((diagnostic: MarkdownDiagnostic) => diagnostic.code.startsWith("editor-"));
+    setReadOnly(lossy.length > 0);
+}, [ ]);
+```
+
+Remote block ids and source locations are not carried through an edit.
+
+## The snapshot transport
+
+Under these props, the native view exchanges a flat list of `EditorBlock` values with JavaScript, wrapped in a revisioned `EditorSnapshot`.
+`MarkdownEditor` also accepts that shape directly, for hosts that want to own the native state.
+
+- `snapshot` supplies the document in the transport shape. When it is set, `initial` is ignored and the editor keeps no document state or undo history of its own.
+- `onEdit` receives every native event, including selection changes. On its own it also turns off the editor's document state. Together with `initial` or `onChange` it only observes.
+
+`toEditorBlocks` and `fromEditorBlocks` convert between the two shapes.
+They are pure functions exported from the package root and from `react-native-notion-markdown/document`, and they are what `initial` and `onChange` use.
+
+```ts
+import { fromEditorBlocks, parseMarkdown, toEditorBlocks } from "react-native-notion-markdown";
+
+const { blocks, diagnostics } = toEditorBlocks(parseMarkdown(markdown).document);
+const snapshot = { blocks, epoch: 1, revision: 0 };
+
+const document = fromEditorBlocks(snapshot.blocks);
+```
+
+Use them when you mount `NativeEditor` from `react-native-notion-markdown/editor` yourself, or drive `MarkdownEditor` with `snapshot`.
+`toEditorBlocks` always returns a list the native view accepts: ids are unique, and an empty document becomes one empty text block.
+
+<Aside type="note" title="MarkdownEditor does not use the editor store">
+  `createMarkdownEditor`, `MarkdownEditorProvider`, and the `useMarkdownEditor` hooks are a separate, pure document store with its own commands and history.
+  `MarkdownEditor` is not connected to it: the editor keeps its own snapshot and undo history, and talks to your code only through the props on this page.
+</Aside>

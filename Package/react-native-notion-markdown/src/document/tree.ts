@@ -15,8 +15,8 @@
 
 import type {
     MarkdownBlock,
-    MarkdownDocument,
     MarkdownBlockType,
+    MarkdownDocument,
     MarkdownRichText
 } from "./types.ts";
 import { getMarkdownBlockPayload } from "../internal.ts";
@@ -30,7 +30,9 @@ export type MarkdownBlockPath = ReadonlyArray<number>;
  *
  * @since 1.0.0
  */
-export function findMarkdownBlockPath(document: MarkdownDocument, blockId: string): MarkdownBlockPath | undefined
+export function findMarkdownBlockPath(
+    document: MarkdownDocument,
+    blockId: string): MarkdownBlockPath | undefined
 {
     /**
      * Search the given block tree for a block identifier.
@@ -66,7 +68,10 @@ export function findMarkdownBlockPath(document: MarkdownDocument, blockId: strin
  *
  * @since 1.0.0
  */
-export function getMarkdownBlockAtPath(document: MarkdownDocument, path: MarkdownBlockPath): MarkdownBlock | undefined
+export function getMarkdownBlockAtPath(
+    document: MarkdownDocument,
+    path: MarkdownBlockPath
+): MarkdownBlock | undefined
 {
     let blocks: ReadonlyArray<MarkdownBlock> = document.blocks;
     let block: MarkdownBlock | undefined;
@@ -144,7 +149,9 @@ export function updateMarkdownBlock(
         const next = updater(target);
         return next === undefined
             ? container.filter((_: MarkdownBlock, itemIndex: number) => itemIndex !== index)
-            : container.map((block: MarkdownBlock, itemIndex: number) => (itemIndex === index ? next : block));
+            : container.map(
+                (block: MarkdownBlock, itemIndex: number) =>
+                    (itemIndex === index ? next : block));
     };
 
     const blocks = updateMarkdownContainer(document.blocks, containerPath, transform);
@@ -376,7 +383,11 @@ export function getMarkdownBlockCell(block: MarkdownBlock, index: number): Markd
  *
  * @since 1.0.0
  */
-export function setMarkdownBlockCell(block: MarkdownBlock, index: number, richText: MarkdownRichText): MarkdownBlock
+export function setMarkdownBlockCell(
+    block: MarkdownBlock,
+    index: number,
+    richText: MarkdownRichText
+): MarkdownBlock
 {
     const key = block.type;
     const payload = getMarkdownBlockPayload(block);

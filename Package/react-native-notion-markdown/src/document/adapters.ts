@@ -19,10 +19,10 @@ import {
     type FromMarkdownBlocksResult,
     MARKDOWN_MARKDOWN_METADATA,
     type MarkdownBlock,
+    type MarkdownBlockType,
     MarkdownConversionError,
     type MarkdownDiagnostic,
     type MarkdownDocument,
-    type MarkdownBlockType,
     type MarkdownMetadata,
     type ToMarkdownBlocksOptions,
     type ToMarkdownBlocksResult

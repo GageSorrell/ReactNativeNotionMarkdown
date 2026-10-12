@@ -28,6 +28,7 @@ import { asRecord, getMarkdownBlockPayload, getMarkdownMetadata } from "../inter
  */
 function escapeText(value: string): string
 {
+    /* eslint-disable-next-line no-useless-escape */
     return value.replace(/[\\*~`$\[\]<>\{\}\|\^]/g, "\\$&").replace(/\n/g, "<br>");
 }
 
@@ -42,13 +43,52 @@ function quoteAttribute(value: string): string
     return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
 }
 
+/** One inline format that wraps the content of every run it covers. */
+interface InlineMark
+{
+    /** Identifies the mark; two marks with the same key are one format. */
+    readonly key: string;
+    readonly open: string;
+    readonly close: string;
+
+    /** Whether the mark is a delimiter run, which Markdown does not recognize next to whitespace. */
+    readonly delimiter: boolean;
+
+    /** Nesting order among marks that cover the same runs; the lowest is outermost. */
+    readonly rank: number;
+}
+
+/** One rich-text item, reduced to its content and the marks that wrap it. */
+interface InlineRun
+{
+    /** Unescaped text for a `"text"` run; finished Markdown for the other kinds. */
+    readonly content: string;
+    readonly kind: "atom" | "code" | "text";
+    readonly marks: ReadonlyArray<InlineMark>;
+}
+
+const strikethroughMark: InlineMark = { close: "~~", delimiter: true, key: "~~", open: "~~", rank: 1 };
+const italicMark: InlineMark = { close: "*", delimiter: true, key: "*", open: "*", rank: 2 };
+const boldMark: InlineMark = { close: "**", delimiter: true, key: "**", open: "**", rank: 3 };
+
 /**
- * Serialize the given rich-text item to Markdown.
+ * Return whether the given run is wrapped by the given mark.
  *
  * @category Functions
  * @since 1.0.0
  */
-function richTextItem(item: MarkdownRichText[number]): string
+function hasMark(run: InlineRun, mark: InlineMark): boolean
+{
+    return run.marks.some((other: InlineMark) => other.key === mark.key);
+}
+
+/**
+ * Serialize the given rich-text item if it is a mention, citation, custom emoji, or equation.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function atomMarkdown(item: MarkdownRichText[number]): string | undefined
 {
     const value = asRecord(item);
     const itemMetadata = getMarkdownMetadata(item);
@@ -71,7 +111,7 @@ function richTextItem(item: MarkdownRichText[number]): string
             const date = asRecord(rawMention.date);
             const start = String(date.start ?? "");
             const separator = start.indexOf("T");
-            const attrs = [`start=${quoteAttribute(separator < 0 ? start : start.slice(0, separator))}`];
+            const attrs = [ `start=${quoteAttribute(separator < 0 ? start : start.slice(0, separator))}` ];
             if (date.end !== undefined)
             {
                 attrs.push(`end=${ quoteAttribute(String(date.end)) }`);
@@ -106,41 +146,37 @@ function richTextItem(item: MarkdownRichText[number]): string
         return `$${ String(asRecord(value.equation).expression ?? "") }$`;
     }
 
-    const textValue = asRecord(value.text);
+    return undefined;
+}
 
-    let content = typeof textValue.content === "string"
+/**
+ * Reduce the given rich-text item to a run, or `undefined` if it has no content.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function inlineRun(item: MarkdownRichText[number]): InlineRun | undefined
+{
+    const atom = atomMarkdown(item);
+
+    if (atom !== undefined)
+    {
+        return { content: atom, kind: "atom", marks: [ ] };
+    }
+
+    const value = asRecord(item);
+    const textValue = asRecord(value.text);
+    const content = typeof textValue.content === "string"
         ? textValue.content
         : (typeof value.plain_text === "string" ? value.plain_text : "");
 
-    content = escapeText(content);
-    const link = asRecord(textValue.link).url;
-    if (typeof link === "string")
+    if (content === "")
     {
-        content = `[${ content }](${ link })`;
+        return undefined;
     }
 
     const annotations = asRecord(value.annotations);
-
-    if (annotations.code === true)
-    {
-        return `\`${ content.replace(/`/g, "\\`") }\``;
-    }
-
-    if (annotations.bold === true)
-    {
-        content = `**${ content }**`;
-    }
-
-    if (annotations.italic === true)
-    {
-        content = `*${ content }*`;
-    }
-
-    if (annotations.strikethrough === true)
-    {
-        content = `~~${ content }~~`;
-    }
-
+    const marks: Array<InlineMark> = [ ];
     const spanAttributes: Array<string> = [ ];
 
     if (annotations.underline === true)
@@ -153,24 +189,190 @@ function richTextItem(item: MarkdownRichText[number]): string
         spanAttributes.push(`color=${quoteAttribute(annotations.color)}`);
     }
 
-    return spanAttributes.length === 0
-        ? content
-        : `<span ${ spanAttributes.join(" ") }>${ content }</span>`;
+    if (spanAttributes.length > 0)
+    {
+        const open = `<span ${ spanAttributes.join(" ") }>`;
+        marks.push({ close: "</span>", delimiter: false, key: open, open, rank: 0 });
+    }
+
+    if (annotations.strikethrough === true)
+    {
+        marks.push(strikethroughMark);
+    }
+
+    if (annotations.italic === true)
+    {
+        marks.push(italicMark);
+    }
+
+    if (annotations.bold === true)
+    {
+        marks.push(boldMark);
+    }
+
+    const link = asRecord(textValue.link).url;
+    if (typeof link === "string")
+    {
+        const close = `](${ link })`;
+        marks.push({ close, delimiter: false, key: close, open: "[", rank: 4 });
+    }
+
+    return annotations.code === true
+        ? { content: `\`${ escapeText(content).replace(/`/g, "\\`") }\``, kind: "code", marks }
+        : { content, kind: "text", marks };
+}
+
+/**
+ * Give each mention, citation, custom emoji, and equation the marks shared by the text on both
+ * sides of it, so that formatting around one is written once rather than closed and reopened.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function bridgeAtoms(runs: ReadonlyArray<InlineRun>): Array<InlineRun>
+{
+    return runs.map((run: InlineRun, index: number) =>
+    {
+        if (run.kind !== "atom")
+        {
+            return run;
+        }
+
+        const before = runs.slice(0, index).findLast((other: InlineRun) => other.kind !== "atom");
+        const after = runs.slice(index + 1).find((other: InlineRun) => other.kind !== "atom");
+
+        return before === undefined || after === undefined
+            ? run
+            : { ...run, marks: before.marks.filter((mark: InlineMark) => hasMark(after, mark)) };
+    });
+}
+
+/**
+ * Split the whitespace off both ends of each text run, so that a text run is either all
+ * whitespace or neither starts nor ends with any.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function splitEdgeSpace(runs: ReadonlyArray<InlineRun>): Array<InlineRun>
+{
+    return runs.flatMap((run: InlineRun) =>
+    {
+        if (run.kind !== "text")
+        {
+            return [ run ];
+        }
+
+        const { content } = run;
+        const start = content.length - content.trimStart().length;
+        const end = Math.max(start, content.trimEnd().length);
+
+        return [ content.slice(0, start), content.slice(start, end), content.slice(end) ]
+            .filter((piece: string) => piece !== "")
+            .map((piece: string) => ({ ...run, content: piece }));
+    });
+}
+
+/**
+ * Return whether the given run is text made only of whitespace.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function isSpace(run: InlineRun): boolean
+{
+    return run.kind === "text" && run.content.trim() === "";
 }
 
 /**
  * Serialize the given rich-text collection to Markdown.
+ *
+ * Adjacent items that share a format are wrapped in it once: bold text holding a link is
+ * `**a [b](url) c**`, not three separately delimited pieces.
  *
  * @category Functions
  * @since 1.0.0
  */
 function richText(items: unknown): string
 {
-    return Array.isArray(items)
-        ? items
-            .map((item: unknown) => richTextItem(item as MarkdownRichText[number]))
-            .join("")
-        : "";
+    if (!Array.isArray(items))
+    {
+        return "";
+    }
+
+    const runs = splitEdgeSpace(bridgeAtoms((items as MarkdownRichText)
+        .map(inlineRun)
+        .filter((run: InlineRun | undefined): run is InlineRun => run !== undefined)));
+
+    const open: Array<InlineMark> = [ ];
+    let result = "";
+
+    // The depth of the outermost open mark that does not cover the given run, or the end of it all.
+    const endedAt = (run: InlineRun | undefined): number =>
+    {
+        const ended = open.findIndex((mark: InlineMark) => run === undefined || !hasMark(run, mark));
+        return ended < 0 ? open.length : ended;
+    };
+
+    runs.forEach((run: InlineRun, index: number) =>
+    {
+        const space = isSpace(run);
+        let ended = endedAt(run);
+
+        if (space)
+        {
+            /* `**bold **` is not bold in Markdown: a delimiter must touch the text it wraps. So one
+               that closes before the next text closes before this whitespace instead. */
+            let next = index + 1;
+            let closing = Math.min(ended, endedAt(runs[ next ]));
+
+            while (next < runs.length && isSpace(runs[ next ]!))
+            {
+                next += 1;
+                closing = Math.min(closing, endedAt(runs[ next ]));
+            }
+
+            const delimiter = open.findIndex((mark: InlineMark, depth: number) =>
+                depth >= closing && mark.delimiter);
+            ended = delimiter < 0 ? ended : Math.min(ended, delimiter);
+        }
+
+        // Marks nest, so closing one closes every mark opened inside of it.
+        while (open.length > ended)
+        {
+            result += open.pop()!.close;
+        }
+
+        const reach = (mark: InlineMark): number =>
+        {
+            let end = index + 1;
+            while (end < runs.length && hasMark(runs[ end ]!, mark)) {end += 1;}
+            return end;
+        };
+
+        // The mark that runs the furthest is opened first, so the others can close inside of it.
+        const opening = run.marks
+            .filter((mark: InlineMark) =>
+                // For the same reason, a delimiter waits for text rather than open on whitespace.
+                !(space && mark.delimiter) && !open.some((other: InlineMark) => other.key === mark.key))
+            .sort((first: InlineMark, second: InlineMark) =>
+                reach(second) - reach(first) || first.rank - second.rank);
+
+        for (const mark of opening)
+        {
+            open.push(mark);
+            result += mark.open;
+        }
+
+        result += run.kind === "text" ? escapeText(run.content) : run.content;
+    });
+
+    while (open.length > 0)
+    {
+        result += open.pop()!.close;
+    }
+
+    return result;
 }
 
 /** Serialize fenced-code content literally; code blocks do not escape Markdown characters. */
@@ -194,7 +396,7 @@ function codeText(items: unknown): string
  * @category Functions
  * @since 1.0.0
  */
-function blockAttributes(meta: MarkdownMetadata, includeToggle = false): string
+function blockAttributes(meta: MarkdownMetadata, includeToggle: boolean = false): string
 {
     const attrs: Array<string> = [ ];
     if (isMarkdownColor(meta.color))
@@ -221,7 +423,8 @@ function blockAttributes(meta: MarkdownMetadata, includeToggle = false): string
 function tagAttributes(meta: MarkdownMetadata): string
 {
     const attrs: Array<string> = [ ];
-    if (isMarkdownColor(meta.color)) {
+    if (isMarkdownColor(meta.color))
+    {
         attrs.push(`color=${quoteAttribute(meta.color)}`);
     }
 
@@ -260,9 +463,9 @@ function serializeBlock(
     switch (block.type)
     {
         case "paragraph":
-            return meta.empty === true
-                ? line("<empty-block/>")
-                : withChildren(`${richText(data.rich_text)}${blockAttributes(meta)}`);
+            return withChildren(meta.empty === true
+                ? "<empty-block/>"
+                : `${richText(data.rich_text)}${blockAttributes(meta)}`);
         case "heading_1":
         case "heading_2":
         case "heading_3":
@@ -432,15 +635,10 @@ function serializeTableRow(block: MarkdownBlock, indent: number): Array<string>
             const cellColor = Array.isArray(cellColors?.[ 0 ])
                 ? undefined
                 : cellColors?.[ cellIndex ] as MarkdownColor | undefined;
-            const cellValue = Array.isArray(cell)
-                ? (cell as Array<unknown>)
-                    .map((item: unknown) => richTextItem(item as MarkdownRichText[number]))
-                    .join("")
-                : "";
 
             return (
                 `<td${ isMarkdownColor(cellColor) ? ` color=${ quoteAttribute(cellColor) }` : "" }>` +
-                `${cellValue}</td>`
+                `${ richText(cell) }</td>`
             );
         }).join("") }</tr>`
     ];

@@ -42,6 +42,7 @@ export {
     defaultMarkdownEditorInsertSections,
     defaultMarkdownEditorToolbar,
     defaultMarkdownEditorTurnIntoItems,
+    canConvertEditorBlock,
     resolveToolbarItems,
     type MarkdownEditorButton,
     type MarkdownEditorColorPanel,

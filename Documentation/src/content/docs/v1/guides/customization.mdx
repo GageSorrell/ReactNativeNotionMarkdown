@@ -47,7 +47,7 @@ const translate: MarkdownTranslate = (message, values) =>
 | `toolbar` | `{ main, format }`: the ordered ids shown in each toolbar row. Leaving an id out hides that button. |
 | `customButtons` | Your own buttons, each with an `onPress` or a `panel` that replaces the keyboard. List a button's `id` in `toolbar` to place it; unlisted buttons go at the end of the main row. |
 | `insertPanel` | `{ sections }`: titled sections of built-in insert items and your own `{ id, label, icon, onPress }` items. |
-| `turnIntoPanel` | `{ items }`: which block types the turn-into panel offers. |
+| `turnIntoPanel` | `{ items }`: which block types the turn-into panel offers. Inapplicable options are hidden for the current selection. |
 | `colorPanel` | `{ text, background, showDefault }`: which hues the color pickers offer. |
 | `layout` | `{ pagePaddingHorizontal, pageMaxWidth, imageMaxWidth }` for the editing surface. |
 | `pageReferenceFallbackGlyph` | The glyph drawn beside a page reference that has no icon. |

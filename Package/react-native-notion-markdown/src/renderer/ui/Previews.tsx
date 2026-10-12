@@ -336,7 +336,10 @@ export function MarkdownMediaView({
     }, [ active, block, kind, resolveMediaUrl, retry, source.url, requestKey, t ]);
 
     const restart = useCallback(() => setRetry((value: number) => value + 1), [ ]);
-    const failed = (message: string) => { setResult({ error: message, key: requestKey }); };
+    const failed = useCallback((message: string) =>
+    {
+        setResult({ error: message, key: requestKey });
+    }, [ requestKey ]);
     const heading = t(mediaKindMessageIds[ kind ]);
     const rootStyle = useMemo(() => ({ marginVertical: 6 }), [ ]);
     const loadStyle = useMemo(
@@ -378,6 +381,38 @@ export function MarkdownMediaView({
 
     const handleOpenedKey = useCallback(() => setOpenedKey(activeKey), [ activeKey ]);
 
+    const onImageError = useCallback(() =>
+    {
+        failed(t("renderer.imageUnavailable"));
+    }, [ failed, t ]);
+
+    const onImageLoad = useCallback(() =>
+    {
+        setResult({ key: requestKey, loaded: true, url });
+    }, [ requestKey, url ]);
+
+    const imageSource = useMemo(() => ({ uri: url }), [ url ]);
+
+    const onAudioUnavailable = useCallback(() => failed(t("renderer.audioUnavailable")), [ failed, t ]);
+    const onVideoUnavailable = useCallback(() => failed(t("renderer.videoUnavailable")), [ failed, t ]);
+
+    const onPdfError = useCallback(() => failed(t("renderer.pdfUnavailable")), [ failed, t ]);
+    const onPdfLoadComplete = useCallback(() => setResult({
+        key: requestKey,
+        loaded: true,
+        url
+    }), [ requestKey, url ]);
+    const pdfSource = useMemo(() => ({ cache: true, uri: url }), [ url ]);
+
+    const onPressClosePreview = useCallback(() => setOpenedKey(undefined), [ ]);
+    const onPressOpenFile = useCallback(() =>
+    {
+        if (url !== undefined && onOpenUrl !== undefined)
+        {
+            onOpenUrl(url);
+        }
+    }, [ onOpenUrl, url ]);
+
     return (
         <View
             style={ rootStyle }
@@ -415,10 +450,10 @@ export function MarkdownMediaView({
                         accessibilityLabel={ t(source.caption?.length
                             ? "renderer.imageWithCaption"
                             : "renderer.image") }
-                        onError={ () => failed(t("renderer.imageUnavailable")) }
-                        onLoad={ () => setResult({ key: requestKey, loaded: true, url }) }
+                        onError={ onImageError }
+                        onLoad={ onImageLoad }
                         resizeMode="contain"
-                        source={ { uri: url } }
+                        source={ imageSource }
                         style={ imageStyle }
                     />
                 )
@@ -426,9 +461,9 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "pdf" && (
                     <Pdf
-                        onError={ () => failed(t("renderer.pdfUnavailable")) }
-                        onLoadComplete={ () => setResult({ key: requestKey, loaded: true, url }) }
-                        source={ { cache: true, uri: url } }
+                        onError={ onPdfError }
+                        onLoadComplete={ onPdfLoadComplete }
+                        source={ pdfSource }
                         style={ pdfStyle }
                     />
                 )
@@ -436,7 +471,7 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "audio" && (
                     <AudioPreview
-                        onUnavailable={ () => failed(t("renderer.audioUnavailable")) }
+                        onUnavailable={ onAudioUnavailable }
                         theme={ theme }
                         url={ url }
                     />
@@ -445,7 +480,7 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "video" && (
                     <VideoPreview
-                        onUnavailable={ () => failed(t("renderer.videoUnavailable")) }
+                        onUnavailable={ onVideoUnavailable }
                         url={ url }
                     />
                 )
@@ -455,7 +490,7 @@ export function MarkdownMediaView({
                     <Pressable
                         accessibilityLabel={ t("renderer.openFile") }
                         accessibilityRole="link"
-                        onPress={ () => void onOpenUrl?.(url) }
+                        onPress={ onPressOpenFile }
                         style={ fileStyle }>
                         <Text style={ fileTextStyle }>
                             { t("renderer.openFile") }
@@ -468,7 +503,7 @@ export function MarkdownMediaView({
                     <Pressable
                         accessibilityLabel={ t("renderer.closeMediaPreview", { kind: heading }) }
                         accessibilityRole="button"
-                        onPress={ () => setOpenedKey(undefined) }
+                        onPress={ onPressClosePreview }
                         style={ closeStyle }>
                         <Text style={ closeTextStyle }>
                             { t("renderer.closePreview") }

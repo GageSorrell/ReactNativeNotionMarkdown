@@ -11,7 +11,8 @@ import { type MarkdownColor, isMarkdownColor, markdownColors } from "./document/
 import { MARKDOWN_ATOM_PLACEHOLDER } from "./document/fields.ts";
 
 /**
- * A block in the milestone-one transport model. This is not the public Markdown AST.
+ * A block in the milestone-one transport model. This is not the public Markdown AST; convert to
+ * and from a `MarkdownDocument` with `toEditorBlocks` and `fromEditorBlocks`.
  *
  * @since 1.0.0
  */
@@ -47,11 +48,12 @@ export interface EditorBlock
         | "audio"
         | "video"
         | "file"
+        | "pdf"
         | "link_to_page";
     readonly text: string;
     /** URL opened when the page reference is tapped. */
     readonly url?: string;
-    /** Optional media metadata retained for audio and file blocks. */
+    /** Optional media metadata retained while converting between media block types. */
     readonly duration?: number;
     readonly waveform?: ReadonlyArray<number>;
     readonly mimeType?: string;
@@ -230,6 +232,7 @@ export type Action =
     | "insertAudio"
     | "insertVideo"
     | "insertFile"
+    | "insertPdf"
     | "callout"
     | "quote"
     | "insertTable"
@@ -379,9 +382,12 @@ const validEditorBlockTypes: ReadonlyArray<EditorBlock[ "type" ]> =
         "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
         "numbered_list_item", "divider",
         "to_do", "toggle", "code", "callout", "quote", "equation", "synced_block", "table",
-        "table_of_contents", "column_list", "image", "audio", "video", "file",
+        "table_of_contents", "column_list", "image", "audio", "video", "file", "pdf",
         "link_to_page"
     ];
+
+const editorMediaBlockTypes: ReadonlyArray<EditorBlock["type"]> =
+    [ "image", "video", "audio", "file", "pdf" ];
 
 /**
  * Validate editor mark ranges, including the single-color-per-range invariant and the
@@ -413,6 +419,15 @@ function validEditorMarks(marks: ReadonlyArray<EditorTextMark> | undefined, text
         colors.slice(index + 1).every((next: EditorTextMark) => next.start >= mark.end));
 }
 
+/**
+ * Return whether an optional editor color is unset or valid. The native view reports an unset
+ * table or column color as `null` rather than omitting it.
+ */
+function validOptionalColor(color: MarkdownColor | null | undefined): boolean
+{
+    return color === undefined || color === null || markdownColors.includes(color);
+}
+
 /** Validate the structural and rich-text state of an editor table. */
 function validEditorTable(table: EditorTable | undefined): boolean
 {
@@ -434,10 +449,9 @@ function validEditorTable(table: EditorTable | undefined): boolean
             && (cell.color === undefined || markdownColors.includes(cell.color))
             && validEditorMarks(cell.marks, cell.text)
         ))
-        && (table.columnColors === undefined || table.columnColors.length <= width
-            && table.columnColors.every((color: MarkdownColor | undefined) =>
-                color === undefined || markdownColors.includes(color)))
-        && (table.tableColor === undefined || markdownColors.includes(table.tableColor));
+        && (table.columnColors === undefined || table.columnColors === null
+            || table.columnColors.length <= width && table.columnColors.every(validOptionalColor))
+        && validOptionalColor(table.tableColor);
 }
 
 /** Compare optional editor tables without treating an omitted table as a distinct empty value. */
@@ -482,23 +496,26 @@ export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): 
             || ![ 2, 3, 4, 5 ].includes(Block.columnCount))) ||
         (Block.url !== undefined && (
             (Block.type !== "link_to_page" && Block.type !== "image" && Block.type !== "audio"
-                && Block.type !== "video" && Block.type !== "file") || typeof Block.url !== "string"
+                && Block.type !== "video" && Block.type !== "file" && Block.type !== "pdf")
+            || typeof Block.url !== "string"
         )) ||
         (Block.icon !== undefined && (
             !(Block.type === "link_to_page" || Block.type === "callout") ||
             typeof Block.icon !== "string"
         )) ||
         ((Block.type === "link_to_page" || Block.type === "image" || Block.type === "audio"
-            || Block.type === "video" || Block.type === "file")
+            || Block.type === "video" || Block.type === "file" || Block.type === "pdf")
             && (typeof Block.url !== "string" || Block.url.trim().length === 0)) ||
         (Block.duration !== undefined && (Block.type !== "audio" || !Number.isFinite(Block.duration)
             || Block.duration < 0)) ||
-        (Block.mimeType !== undefined && ((Block.type !== "audio" && Block.type !== "file")
+        (Block.mimeType !== undefined && (!editorMediaBlockTypes.includes(Block.type)
             || typeof Block.mimeType !== "string")) ||
-        (Block.fileName !== undefined && ((Block.type !== "audio" && Block.type !== "file")
+        (Block.fileName !== undefined && (!editorMediaBlockTypes.includes(Block.type)
             || typeof Block.fileName !== "string")) ||
-        (Block.fileSize !== undefined && ((Block.type !== "audio" && Block.type !== "file")
+        (Block.fileSize !== undefined && (!editorMediaBlockTypes.includes(Block.type)
             || !Number.isFinite(Block.fileSize) || Block.fileSize < 0)) ||
+        (Block.waveform !== undefined && (Block.type !== "audio"
+            || !Block.waveform.every((value: number) => Number.isFinite(value)))) ||
         (Block.language !== undefined && (Block.type !== "code" || typeof Block.language !== "string"
             || Block.language.trim().length === 0)) ||
         (Block.expression !== undefined && (Block.type !== "equation"

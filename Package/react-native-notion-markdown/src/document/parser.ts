@@ -490,44 +490,66 @@ function parseMarkdownTokens(
     tokens: Array<InlineToken>,
     context: ParseContext,
     line: SourceLine,
-    state: AnnotationState = { }
+    state: AnnotationState = { },
+    specials: ReadonlyMap<string, RegExpExecArray> = new Map(),
+    outerLink?: string
 ): MarkdownRichText
 {
     const result: MarkdownRichText = [ ];
     const marks: Array<AnnotationState> = [ state ];
-    let link: string | undefined;
+    let link = outerLink;
     const current = (): AnnotationState => marks[marks.length - 1]!;
+    const linked = (item: MarkdownRichText[number]): MarkdownRichText[number] =>
+        link === undefined ? item : {
+            ...(item as unknown as Record<string, unknown>),
+            text:
+            {
+                ...asRecord((item as unknown as Record<string, unknown>).text),
+                link: { url: link }
+            }
+        } as MarkdownRichText[number];
+    // Code and link destinations are literal, so a placeholder in one becomes its source again.
+    const literal = (value: string): string =>
+    {
+        let restored = value;
+        for (const [ placeholder, match ] of specials)
+        {
+            restored = restored
+                .replaceAll(placeholder, match[0])
+                .replaceAll(encodeURIComponent(placeholder), match[0]);
+        }
+        return restored;
+    };
     for (const token of tokens)
     {
         switch (token.type)
         {
             case "text":
-                if (token.content !== "")
+            {
+                let text = "";
+                for (const character of [ ...token.content, "" ])
                 {
-                    const item = plainText(token.content, current());
-                    result.push(link === undefined ? item : {
-                        ...(item as unknown as Record<string, unknown>),
-                        text:
-                        {
-                            ...asRecord((item as unknown as Record<string, unknown>).text),
-                            link: { url: link }
-                        }
-                    } as MarkdownRichText[number]);
+                    const special = specials.get(character);
+                    if (text !== "" && (special !== undefined || character === ""))
+                    {
+                        result.push(linked(plainText(text, current())));
+                        text = "";
+                    }
+
+                    if (special !== undefined)
+                    {
+                        result.push(...specialRichText(special, context, line, current(), link));
+                    }
+                    else
+                    {
+                        text += character;
+                    }
                 }
                 break;
-            case "code_inline":
-            {
-                const item = plainText(token.content, { ...current(), code: true });
-                result.push(link === undefined ? item : {
-                    ...(item as unknown as Record<string, unknown>),
-                    text:
-                    {
-                        ...asRecord((item as unknown as Record<string, unknown>).text),
-                        link: { url: link }
-                    }
-                } as MarkdownRichText[number]);
-                break;
             }
+            case "code_inline":
+                result.push(linked(plainText(literal(token.content), { ...current(), code: true })));
+                break;
             case "softbreak":
             case "hardbreak":
                 result.push(plainText("\n", current()));
@@ -551,15 +573,18 @@ function parseMarkdownTokens(
                 marks.pop();
                 break;
             case "link_open":
-                link = token.attrGet("href") ?? undefined;
+            {
+                const href = token.attrGet("href");
+                link = href === null ? undefined : literal(href);
                 break;
+            }
             case "link_close":
-                link = undefined;
+                link = outerLink;
                 break;
             default:
                 if (token.content !== "")
                 {
-                    result.push(plainText(token.content, current()));
+                    result.push(plainText(literal(token.content), current()));
                 }
 
                 break;
@@ -567,6 +592,112 @@ function parseMarkdownTokens(
     }
 
     return result;
+}
+
+/**
+ * The code points that stand in for an inline construct while Markdown is parsed.
+ *
+ * The symbols are tried first: Markdown treats one as punctuation, as it would the `<`, `$`, `[`, or
+ * `:` that opens the construct, so `**Note:**<br>` is bold. The private-use characters are a
+ * reserve for a line that runs out of symbols.
+ */
+const placeholders: ReadonlyArray<number> = [ [ 0x2800, 0x2AFF ], [ 0xE000, 0xF8FF ] ]
+    .flatMap(([ first, last ]: Array<number>) =>
+        Array.from({ length: last! - first! + 1 }, (_: unknown, index: number) => first! + index));
+
+/* eslint-disable-next-line @stylistic/max-len */
+const specialPattern = /<span\b([^>]*)>([\s\S]*?)<\/span>|<br\s*\/?\s*>|<(mention-(?:user|page|database|data-source|agent|date))\b([^>]*)>([\s\S]*?)<\/\3\s*>|<(mention-date)\b([^>]*)\s*\/?\s*>|<(page|database)\b([^>]*)>([\s\S]*?)<\/\8\s*>|\[\^([^\]]+)\]|\$([^$\n]+)\$|:([A-Za-z0-9_+-]+):|<(mention-(?:user|page|database|data-source|agent))\b([^>]*)\s*\/>/gi;
+
+/**
+ * Build the rich text for one match of the inline constructs Markdown itself does not define.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function specialRichText(
+    match: RegExpExecArray,
+    context: ParseContext,
+    line: SourceLine,
+    state: AnnotationState,
+    link: string | undefined
+): MarkdownRichText
+{
+    const full = match[0];
+
+    if (full.toLowerCase().startsWith("<span"))
+    {
+        const spanAttrs = attributes(match[1] ?? "");
+        const color = parseColor(context, line, spanAttrs.color, "inline");
+        const hasNestedColor = color !== undefined
+            && /<span\b[^>]*\bcolor\s*=\s*["'][^"']+["']/i.test(match[2] ?? "");
+        if (hasNestedColor)
+        {
+            diagnostic(
+                context,
+                line,
+                "nested-inline-color",
+                "Nested inline color spans are not supported; ignoring the conflicting colors.",
+                "error"
+            );
+        }
+        return parseInline(
+            match[2] ?? "",
+            context,
+            line,
+            {
+                ...state,
+                ...(spanAttrs.underline === "true" ? { underline: true } : { }),
+                ...(hasNestedColor || color === undefined
+                    ? { }
+                    : { color }
+                )
+            },
+            link
+        );
+    }
+
+    if (full.toLowerCase().startsWith("<br")) {return [ plainText("\n", state) ];}
+
+    if (match[3] !== undefined)
+    {
+        return customRichText(match[3].toLowerCase(), attributes(match[4] ?? ""), match[5], context, line);
+    }
+
+    if (match[6] !== undefined)
+    {
+        return customRichText(match[6].toLowerCase(), attributes(match[7] ?? ""), undefined, context, line);
+    }
+
+    if (match[8] !== undefined)
+    {
+        return customRichText(match[8].toLowerCase(), attributes(match[9] ?? ""), match[10], context, line);
+    }
+
+    if (match[14] !== undefined)
+    {
+        return customRichText(
+            match[14].toLowerCase(),
+            attributes(match[15] ?? ""),
+            undefined,
+            context,
+            line
+        );
+    }
+
+    if (match[11] !== undefined)
+    {
+        return [ plainText(match[11], { }, { citationUrl: match[11] }) ];
+    }
+
+    if (match[12] !== undefined)
+    {
+        return [ {
+            equation: { expression: match[12] },
+            type: "equation"
+        } as MarkdownRichText[number] ];
+    }
+
+    return match[13] === undefined ? [ ] : [ plainText(match[13], { }, { emojiName: match[13] }) ];
 }
 
 /**
@@ -579,17 +710,21 @@ function parseInline(
     value: string,
     context: ParseContext,
     line: SourceLine,
-    state: AnnotationState = { }
+    state: AnnotationState = { },
+    link?: string
 ): MarkdownRichText
 {
-    const result: MarkdownRichText = [ ];
+    /* Each construct is swapped for one placeholder character before Markdown is parsed, so that
+       formatting can open on one side of it and close on the other: `**a $x$ b**` is bold. */
+    const specials = new Map<string, RegExpExecArray>();
+    let masked = "";
     let cursor = 0;
+    let next = 0;
 
-    /* eslint-disable-next-line @stylistic/max-len */
-    const special = /<span\b([^>]*)>([\s\S]*?)<\/span>|<br\s*\/?\s*>|<(mention-(?:user|page|database|data-source|agent|date))\b([^>]*)>([\s\S]*?)<\/\3\s*>|<(mention-date)\b([^>]*)\s*\/?\s*>|<(page|database)\b([^>]*)>([\s\S]*?)<\/\8\s*>|\[\^([^\]]+)\]|\$([^$\n]+)\$|:([A-Za-z0-9_+-]+):|<(mention-(?:user|page|database|data-source|agent))\b([^>]*)\s*\/>/gi;
+    specialPattern.lastIndex = 0;
 
     let match: RegExpExecArray | null;
-    while ((match = special.exec(value)) !== null)
+    while ((match = specialPattern.exec(value)) !== null)
     {
         const preceding = value.slice(0, match.index).match(/\\+$/)?.[0].length ?? 0;
         if (preceding % 2 === 1)
@@ -597,108 +732,32 @@ function parseInline(
             continue;
         }
 
-        if (match.index > cursor)
+        // A character the text already uses cannot stand in for anything.
+        while (next < placeholders.length && value.includes(String.fromCharCode(placeholders[next]!)))
         {
-            result.push(...parseMarkdownTokens(
-                inlineTokens(value.slice(cursor, match.index)),
-                context,
-                line,
-                state
-            ));
+            next += 1;
         }
 
-        const full = match[0];
+        if (next === placeholders.length)
+        {
+            break;
+        }
 
-        if (full.toLowerCase().startsWith("<span"))
-        {
-            const spanAttrs = attributes(match[1] ?? "");
-            const color = parseColor(context, line, spanAttrs.color, "inline");
-            const hasNestedColor = color !== undefined
-                && /<span\b[^>]*\bcolor\s*=\s*["'][^"']+["']/i.test(match[2] ?? "");
-            if (hasNestedColor)
-            {
-                diagnostic(
-                    context,
-                    line,
-                    "nested-inline-color",
-                    "Nested inline color spans are not supported; ignoring the conflicting colors.",
-                    "error"
-                );
-            }
-            result.push(...parseInline(match[2] ?? "", context, line, {
-                ...state,
-                ...(spanAttrs.underline === "true" ? { underline: true } : { }),
-                ...(hasNestedColor || color === undefined
-                    ? { }
-                    : { color }
-                )
-            }));
-        }
-        else if (full.toLowerCase().startsWith("<br")) {result.push(plainText("\n", state));}
-        else if (match[3] !== undefined)
-        {
-            result.push(...customRichText(
-                match[3].toLowerCase(),
-                attributes(match[4] ?? ""),
-                match[5],
-                context,
-                line
-            ));
-        }
-        else if (match[6] !== undefined)
-        {
-            result.push(...customRichText(
-                match[6]!.toLowerCase(),
-                attributes(match[7] ?? ""),
-                undefined,
-                context,
-                line
-            ));
-        }
-        else if (match[8] !== undefined)
-        {
-            result.push(...customRichText(
-                match[8].toLowerCase(),
-                attributes(match[9] ?? ""),
-                match[10],
-                context,
-                line
-            ));
-        }
-        else if (match[14] !== undefined)
-        {
-            result.push(...customRichText(
-                match[14].toLowerCase(),
-                attributes(match[15] ?? ""),
-                undefined,
-                context,
-                line
-            ));
-        }
-        else if (match[11] !== undefined)
-        {
-            result.push(plainText(match[11], { }, { citationUrl: match[11] }));
-        }
-        else if (match[12] !== undefined)
-        {
-            result.push({
-                equation: { expression: match[12] },
-                type: "equation"
-            } as MarkdownRichText[number]);
-        }
-        else if (match[13] !== undefined)
-        {
-            result.push(plainText(match[13], {}, { emojiName: match[13] }));
-        }
-        cursor = match.index + full.length;
+        const placeholder = String.fromCharCode(placeholders[next]!);
+        next += 1;
+        specials.set(placeholder, match);
+        masked += value.slice(cursor, match.index) + placeholder;
+        cursor = match.index + match[0].length;
     }
 
-    if (cursor < value.length)
-    {
-        result.push(...parseMarkdownTokens(inlineTokens(value.slice(cursor)), context, line, state));
-    }
-
-    return result;
+    return parseMarkdownTokens(
+        inlineTokens(masked + value.slice(cursor)),
+        context,
+        line,
+        state,
+        specials,
+        link
+    );
 }
 
 /**
@@ -709,8 +768,12 @@ function parseInline(
  */
 function removeTrailingAttributes(value: string): { text: string; attrs: Record<string, string> }
 {
-    const match = value.match(/^(.*?)(?:\s+\{([^{}]*)\})?$/);
-    return { text: (match?.[1] ?? value).trimEnd(), attrs: attributes(match?.[2] ?? "") };
+    // An empty block's attributes are the whole value, with no text before them.
+    const match = value.match(/^(.*?)(?:(?:^|\s+)\{([^{}]*)\})?$/);
+    return {
+        attrs: attributes(match?.[2] ?? ""),
+        text: (match?.[1] ?? value).trimEnd()
+    };
 }
 
 /**
@@ -914,7 +977,9 @@ function parseTable(
     const rowPattern = /^<tr(?:\s+([^>]*))?>([\s\S]*)<\/tr>$/i;
     const columnColors: Array<MarkdownColor | undefined> = [];
     const columnPattern = /<col(?:\s+([^>]*))?\s*\/?\s*>/gi;
-    const tableBody = context.lines.slice(start + 1, bodyEnd).map((bodyLine) => bodyLine.text).join("\n");
+    const tableBody = context.lines
+        .slice(start + 1, bodyEnd)
+        .map((bodyLine: SourceLine) => bodyLine.text).join("\n");
     let columnMatch: RegExpExecArray | null;
     while ((columnMatch = columnPattern.exec(tableBody)) !== null)
     {
@@ -1402,6 +1467,8 @@ function parseSequence(
         }
         if (/^<(empty-block)\s*\/>$/i.test(value))
         {
+            const nested = followingChildren(context, index + 1, end, indent, `${ pathValue }.children`);
+
             result.push(makeBlock(
                 context,
                 "paragraph",
@@ -1411,11 +1478,11 @@ function parseSequence(
                 },
                 line,
                 { },
-                undefined,
+                nested.children.length === 0 ? undefined : nested.children,
                 { empty: true }
             ));
 
-            index += 1;
+            index = nested.next;
             continue;
         }
 
@@ -1446,12 +1513,13 @@ function parseSequence(
             continue;
         }
 
-        const heading = value.match(/^(#{1,6})\s+(.+)$/);
+        // The line is trimmed, so an empty heading or list item is its bare marker.
+        const heading = value.match(/^(#{1,6})(?:\s+(.*))?$/);
 
         if (heading !== null)
         {
             const level = Math.min(4, heading[1]!.length);
-            const parsed = removeTrailingAttributes(heading[2]!);
+            const parsed = removeTrailingAttributes(heading[2] ?? "");
             const nested = parsed.attrs.toggle === "true"
                 ? followingChildren(context, index + 1, end, indent, `${ pathValue }.children`)
                 : { children: [ ], next: index + 1 };
@@ -1495,10 +1563,10 @@ function parseSequence(
             continue;
         }
 
-        const bullet = value.match(/^-\s+(.*)$/);
+        const bullet = value.match(/^-(?:\s+(.*))?$/);
         if (bullet !== null)
         {
-            const parsed = removeTrailingAttributes(bullet[1]!);
+            const parsed = removeTrailingAttributes(bullet[1] ?? "");
             const nested = followingChildren(context, index + 1, end, indent, `${pathValue}.children`);
             result.push(makeBlock(
                 context,
@@ -1517,11 +1585,11 @@ function parseSequence(
             continue;
         }
 
-        const numbered = value.match(/^\d+[.)]\s+(.*)$/);
+        const numbered = value.match(/^\d+[.)](?:\s+(.*))?$/);
 
         if (numbered !== null)
         {
-            const parsed = removeTrailingAttributes(numbered[1]!);
+            const parsed = removeTrailingAttributes(numbered[1] ?? "");
             const nested = followingChildren(context, index + 1, end, indent, `${pathValue}.children`);
             result.push(makeBlock(
                 context,
@@ -1664,6 +1732,9 @@ function parseSequence(
             );
         }
 
+        // A text block may hold indented children; `children` stays absent when there are none.
+        const nested = followingChildren(context, index + 1, end, indent, `${ pathValue }.children`);
+
         result.push(makeBlock(
             context,
             "paragraph",
@@ -1672,10 +1743,11 @@ function parseSequence(
                 rich_text: parseInline(parsed.text, context, line)
             },
             line,
-            parsed.attrs
+            parsed.attrs,
+            nested.children.length === 0 ? undefined : nested.children
         ));
 
-        index += 1;
+        index = nested.next;
     }
     return result;
 }

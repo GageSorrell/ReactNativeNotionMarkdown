@@ -18,4 +18,5 @@ export * from "./store.ts";
 export * from "./fields.ts";
 export * from "./tree.ts";
 export * from "./commands.ts";
+export * from "./editorBlocks.ts";
 

@@ -14,6 +14,7 @@ import { mergeMarkdownConfig } from '../Distribution/provider/config.js';
 import {
   defaultMarkdownEditorToolbar,
   defaultMarkdownEditorTurnIntoItems,
+  canConvertEditorBlock,
   editorColorChoices,
   resolveToolbarItems
 } from '../Distribution/editor/ui/customization.js';
@@ -125,10 +126,25 @@ test('the default toolbar lists only built-in ids', () => {
 test('the default turn-into panel follows the Notion-supported block order', () => {
   assert.deepEqual(defaultMarkdownEditorTurnIntoItems, [
     'text', 'heading_1', 'heading_2', 'heading_3', 'heading_4', 'bulleted_list_item',
-    'numbered_list_item', 'to_do', 'toggle', 'code', 'quote', 'callout', 'equation', 'synced_block',
+    'numbered_list_item', 'to_do', 'toggle', 'code', 'quote', 'callout', 'equation',
     'toggle_heading_1', 'toggle_heading_2', 'toggle_heading_3', 'toggle_heading_4',
-    'columns2', 'columns3', 'columns4', 'columns5'
+    'columns2', 'columns3', 'columns4', 'columns5', 'image', 'video', 'audio', 'file', 'pdf'
   ]);
+});
+
+test('canConvertEditorBlock follows the turn-into conversion matrix', () => {
+  assert.equal(canConvertEditorBlock('text', 'heading_1'), true);
+  assert.equal(canConvertEditorBlock('text', 'column_list'), true);
+  assert.equal(canConvertEditorBlock('column_list', 'text'), true);
+  assert.equal(canConvertEditorBlock('image', 'file'), true);
+  assert.equal(canConvertEditorBlock('audio', 'audio'), true);
+  assert.equal(canConvertEditorBlock('image', 'text'), false);
+  assert.equal(canConvertEditorBlock('table', 'text'), true);
+  assert.equal(canConvertEditorBlock('divider', 'heading_1'), true);
+  assert.equal(canConvertEditorBlock('text', 'table'), false);
+  assert.equal(canConvertEditorBlock('text', 'divider'), false);
+  assert.equal(canConvertEditorBlock('text', 'synced_block'), false);
+  assert.equal(canConvertEditorBlock('synced_block', 'text'), false);
 });
 
 test('editorColorChoices builds translated sections from the configured hues', () => {

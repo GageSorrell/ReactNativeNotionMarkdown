@@ -44,6 +44,7 @@ import {
     type MarkdownEditorMainToolbarItem,
     type MarkdownEditorTurnIntoItem,
     type ResolvedToolbarItem,
+    canConvertEditorBlock,
     defaultMarkdownEditorInsertSections,
     defaultMarkdownEditorToolbar,
     defaultMarkdownEditorTurnIntoItems,
@@ -69,6 +70,12 @@ import {
     useWindowDimensions
 } from "react-native";
 import type {
+    MarkdownColor,
+    MarkdownDiagnostic,
+    MarkdownDocument,
+    MarkdownDocumentInput
+} from "../../document/types.ts";
+import type {
     MarkdownEditorBlockAction,
     MarkdownEditorTableAction
 } from "./ActionsBottomSheet.tsx";
@@ -88,25 +95,50 @@ import {
     nativeEditorTheme
 } from "../../NativeEditor.tsx";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fromEditorBlocks, stripSyncedEditorBlocks, toEditorBlocks } from "../../document/editorBlocks.ts";
 import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
 import { AudioBottomSheet } from "./AudioBottomSheet.tsx";
 import type { ComponentType } from "react";
 import { EmojiBottomSheet } from "./EmojiBottomSheet.tsx";
 import { EquationBottomSheet } from "./EquationBottomSheet.tsx";
 import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
-import type { MarkdownColor } from "../../document/types.ts";
 import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
+import { parseMarkdown } from "../../document/parser.ts";
 import { useEditorEquationLayouts } from "./equationLayouts.ts";
 import { withAlpha } from "../../provider/theme.ts";
 
 /** Dependency-free rendering of Lucide's Ellipsis icon for the built-in cell-actions button. */
 function DefaultMoreIcon({ color, size, strokeWidth }: MarkdownEditorIconProps)
 {
-    return <Svg height={ size } viewBox="0 0 24 24" width={ size }>
-        <Circle cx="5" cy="12" fill="none" r="1" stroke={ color } strokeWidth={ strokeWidth } />
-        <Circle cx="12" cy="12" fill="none" r="1" stroke={ color } strokeWidth={ strokeWidth } />
-        <Circle cx="19" cy="12" fill="none" r="1" stroke={ color } strokeWidth={ strokeWidth } />
+    return <Svg
+        height={ size }
+        viewBox="0 0 24 24"
+        width={ size }>
+        <Circle
+            cx="5"
+            cy="12"
+            fill="none"
+            r="1"
+            stroke={ color }
+            strokeWidth={ strokeWidth }
+        />
+        <Circle
+            cx="12"
+            cy="12"
+            fill="none"
+            r="1"
+            stroke={ color }
+            strokeWidth={ strokeWidth }
+        />
+        <Circle
+            cx="19"
+            cy="12"
+            fill="none"
+            r="1"
+            stroke={ color }
+            strokeWidth={ strokeWidth }
+        />
     </Svg>;
 }
 
@@ -272,13 +304,36 @@ export type MarkdownEditorEquationPromptResult =
  */
 export interface MarkdownEditorProps extends ViewProps, MarkdownSharedConfig, MarkdownEditorConfig
 {
-    /** Document state. When omitted, a starter document is created and managed internally. */
+    /**
+     * Initial content: enhanced Markdown or a parsed document. Read once, at mount; remount the
+     * editor with a new `key` to load another document. Ignored when `snapshot` is supplied.
+     * Synced blocks and database references are not supported yet, and are stripped from it.
+     */
+    readonly initial?: MarkdownDocumentInput;
+
+    /** Receives the document after each user edit, undo, or redo. */
+    readonly onChange?: (document: MarkdownDocument) => void;
+
+    /**
+     * Receives the diagnostics for `initial`: the parser's, followed by one warning for each thing
+     * the editor cannot represent and so left out.
+     */
+    readonly onDiagnostics?: (diagnostics: ReadonlyArray<MarkdownDiagnostic>) => void;
+
+    /**
+     * Document state in the native transport shape. When this and `initial` are omitted, a starter
+     * document is created and managed internally. Synced blocks are not supported yet: they, and
+     * the blocks nested under them, are filtered out before the snapshot reaches the native view.
+     */
     readonly snapshot?: EditorSnapshot;
 
     /** An externally controlled native command. */
     readonly command?: EditorCommand;
 
-    /** Receives native editing events. Omit this callback for internally managed document state. */
+    /**
+     * Receives native editing events. Without `initial` or `onChange`, supplying this callback
+     * turns off internally managed document state, and the host owns `snapshot`.
+     */
     readonly onEdit?: (Event: { nativeEvent: EditorEvent }) => void;
 
     /**
@@ -306,6 +361,9 @@ export interface MarkdownEditorProps extends ViewProps, MarkdownSharedConfig, Ma
     /** Replaces the native file picker used by the Insert panel's File action. */
     readonly onFilePicker?: () => void | Promise<void>;
 
+    /** Replaces the native file picker used by the Insert panel's PDF action. */
+    readonly onPdfPicker?: () => void | Promise<void>;
+
     /**
      * Receives selections made by the built-in insert-media sheet; image and
      * video assets are also displayed in the editor automatically.
@@ -321,6 +379,11 @@ export interface MarkdownEditorProps extends ViewProps, MarkdownSharedConfig, Ma
 
     /** Observes picked and cancelled selections from the built-in file picker. */
     readonly onFileSelected?: (
+        Selection: MarkdownEditorFileSelection
+    ) => void | Promise<void>;
+
+    /** Observes picked and cancelled selections from the built-in PDF picker. */
+    readonly onPdfSelected?: (
         Selection: MarkdownEditorFileSelection
     ) => void | Promise<void>;
 
@@ -529,16 +592,6 @@ function BlockOption({
     </Pressable>;
 }
 
-const editorTurnIntoTypes: ReadonlyArray<EditorBlock["type"]> =
-    [
-        "text", "heading_1", "heading_2", "heading_3", "heading_4", "bulleted_list_item",
-        "numbered_list_item", "to_do", "toggle", "code", "quote", "callout", "equation",
-        "synced_block"
-    ];
-const editorTurnIntoTargetTypes: ReadonlyArray<EditorBlock["type"]> = [
-    ...editorTurnIntoTypes, "column_list"
-];
-
 const editorColumnButtons: Readonly<Record<EditorColumnCount, Extract<MarkdownEditorButton,
     "columns2" | "columns3" | "columns4" | "columns5">>> =
     {
@@ -566,21 +619,16 @@ const editorBlockNameMessageIds: Readonly<Record<EditorBlock["type"], MarkdownMe
         image: "blockName.image",
         link_to_page: "blockName.linkToPage",
         numbered_list_item: "blockName.numberedListItem",
+        pdf: "blockName.pdf",
         quote: "blockName.quote",
         synced_block: "blockName.syncedBlock",
-        table_of_contents: "blockName.tableOfContents",
         table: "blockName.table",
+        table_of_contents: "blockName.tableOfContents",
         text: "blockName.text",
         to_do: "blockName.toDo",
         toggle: "blockName.toggle",
         video: "blockName.video"
     };
-
-/** Return whether an editor block supports conversion to the requested editor block type. */
-function canConvertEditorBlock(block: EditorBlock, type: EditorBlock["type"]): boolean
-{
-    return editorTurnIntoTypes.includes(block.type) && editorTurnIntoTargetTypes.includes(type);
-}
 
 /**
  * Return whether a collapsed cursor at the given UTF-16 offset touches a word -- the character
@@ -766,6 +814,7 @@ const turnIntoOptions: Readonly<Record<MarkdownEditorTurnIntoItem, {
     readonly command: Pick<EditorCommand, "type" | "toggle" | "columnCount">;
 }>> =
     {
+        audio: { button: "speech", command: { type: "audio" }, message: "insertPanel.audio" },
         bulleted_list_item: {
             button: "bulletedList",
             command: { type: "bulleted_list_item" },
@@ -796,6 +845,7 @@ const turnIntoOptions: Readonly<Record<MarkdownEditorTurnIntoItem, {
         equation: {
             button: "code", command: { type: "equation" }, message: "insertPanel.blockEquation"
         },
+        file: { button: "filePicker", command: { type: "file" }, message: "insertPanel.file" },
         heading_1: {
             button: "heading1", command: { type: "heading_1" }, message: "insertPanel.heading1"
         },
@@ -808,15 +858,14 @@ const turnIntoOptions: Readonly<Record<MarkdownEditorTurnIntoItem, {
         heading_4: {
             button: "heading4", command: { type: "heading_4" }, message: "insertPanel.heading4"
         },
+        image: { button: "picture", command: { type: "image" }, message: "insertPanel.image" },
         numbered_list_item: {
             button: "numberedList",
             command: { type: "numbered_list_item" },
             message: "insertPanel.numberedList"
         },
+        pdf: { button: "filePicker", command: { type: "pdf" }, message: "insertPanel.pdf" },
         quote: { button: "quote", command: { type: "quote" }, message: "insertPanel.quote" },
-        synced_block: {
-            button: "copy", command: { type: "synced_block" }, message: "insertPanel.syncedBlock"
-        },
         text: { button: "text", command: { type: "text" }, message: "insertPanel.text" },
         to_do: { button: "toDo", command: { type: "to_do" }, message: "insertPanel.toDo" },
         toggle: { button: "toggleList", command: { type: "toggle" }, message: "insertPanel.toggleList" },
@@ -839,7 +888,8 @@ const turnIntoOptions: Readonly<Record<MarkdownEditorTurnIntoItem, {
             button: "toggleHeading4",
             command: { toggle: true, type: "heading_4" },
             message: "insertPanel.toggleHeading4"
-        }
+        },
+        video: { button: "video", command: { type: "video" }, message: "insertPanel.video" }
     };
 
 interface CustomInsertOptionProps
@@ -1001,12 +1051,39 @@ const KeyboardGeometryTolerance = 2;
  */
 const ScrollFadeSteps = 8;
 
+/** The document the editor starts from, with the diagnostics of loading it. */
+interface StarterDocument
+{
+    readonly diagnostics?: ReadonlyArray<MarkdownDiagnostic>;
+    readonly snapshot: EditorSnapshot;
+}
+
+/** Build the starter document from `initial`, or the stock one when there is none. */
+function createStarterDocument(initial: MarkdownDocumentInput | undefined): StarterDocument
+{
+    if (initial === undefined)
+    {
+        return { snapshot: CreateEditorDocument() };
+    }
+
+    const parsed = typeof initial === "string" ? parseMarkdown(initial) : undefined;
+    const projected = toEditorBlocks(parsed?.document ?? initial as MarkdownDocument);
+
+    return {
+        diagnostics: [ ...(parsed?.diagnostics ?? [ ]), ...projected.diagnostics ],
+        snapshot: { blocks: projected.blocks, epoch: 1, revision: 0 }
+    };
+}
+
 /** The editor body, reading its theme and configuration from the scoped provider. */
 function MarkdownEditorContent({
     command: suppliedCommand,
+    initial,
     onBlockActions,
+    onChange,
     onCommand,
     onCreatePageReference,
+    onDiagnostics,
     onEditPageReference,
     onRequestEquation,
     onRequestLink,
@@ -1017,17 +1094,36 @@ function MarkdownEditorContent({
     onAudioSelected,
     onFileSelected,
     onMediaSelected,
-    snapshot: suppliedSnapshot,
+    onPdfPicker,
+    onPdfSelected,
+    snapshot: hostSnapshot,
     ...viewProps
 }: MarkdownEditorContentProps)
 {
+    /* Unchanged, and so the same object, when the host's snapshot holds no synced block. */
+    const suppliedSnapshot = useMemo<EditorSnapshot | undefined>(() =>
+    {
+        if (hostSnapshot === undefined)
+        {
+            return undefined;
+        }
+
+        const blocks = stripSyncedEditorBlocks(hostSnapshot.blocks);
+        return blocks === hostSnapshot.blocks ? hostSnapshot : { ...hostSnapshot, blocks: [ ...blocks ] };
+    }, [ hostSnapshot ]);
     const { config, onOpenUrl, t, theme } = useResolvedEditorConfig();
     const { icons } = config;
     const customButtons = useMemo(() => config.customButtons ?? [ ], [ config.customButtons ]);
     const pagePaddingHorizontal = config.layout?.pagePaddingHorizontal ?? DefaultPagePaddingHorizontal;
     const pageMaxWidth = config.layout?.pageMaxWidth ?? DefaultPageMaxWidth;
     const imageMaxWidth = config.layout?.imageMaxWidth ?? DefaultPageMaxWidth;
-    const [ defaultSnapshot ] = useState(CreateEditorDocument);
+    /* `initial` is read once: later values would replace a document the user is editing. */
+    const [ starter ] = useState(() => createStarterDocument(initial));
+    const defaultSnapshot = starter.snapshot;
+    /* Document-level props keep the internal document (and its undo history) running even when
+       the host also observes raw events through `onEdit`. */
+    const managesDocument = suppliedSnapshot === undefined
+        && (onEdit === undefined || initial !== undefined || onChange !== undefined);
     const [ internalSnapshot, setInternalSnapshot ] = useState<EditorSnapshot>();
     const [ internalCommand, setInternalCommand ] = useState<EditorCommand>();
     const [ row, setRow ] = useState<ToolbarRow>("main");
@@ -1159,9 +1255,17 @@ function MarkdownEditorContent({
             return undefined;
         }
         return {
+            anchor:
+            {
+                column: selectionAnchorPoint.column,
+                row: selectionAnchorPoint.row
+            },
             blockId: cursorBlock.id,
-            anchor: { row: selectionAnchorPoint.row, column: selectionAnchorPoint.column },
-            focus: { row: selectionFocusPoint.row, column: selectionFocusPoint.column }
+            focus:
+            {
+                column: selectionFocusPoint.column,
+                row: selectionFocusPoint.row
+            }
         };
     }, [ cursorBlock, selectionAnchorPoint, selectionFocusPoint, selectionIsCollapsed ]);
     const tableCellActions = tableCellSelection !== undefined;
@@ -1233,7 +1337,7 @@ function MarkdownEditorContent({
                 (item: MarkdownEditorTurnIntoItem) => selectedBlocks.length > 0
                     && turnIntoOptions[ item ].command.type !== undefined
                     && selectedBlocks.every((block: EditorBlock) =>
-                        canConvertEditorBlock(block, turnIntoOptions[ item ].command.type!))
+                        canConvertEditorBlock(block.type, turnIntoOptions[ item ].command.type!))
             )
         );
     }, [ selectionBlockRange, snapshot.blocks ]);
@@ -1277,6 +1381,15 @@ function MarkdownEditorContent({
             currentSnapshot.current = suppliedSnapshot;
         }
     }, [ suppliedSnapshot ]);
+
+    const starterDiagnostics = starter.diagnostics;
+    useEffect(() =>
+    {
+        if (starterDiagnostics !== undefined)
+        {
+            onDiagnostics?.(starterDiagnostics);
+        }
+    }, [ onDiagnostics, starterDiagnostics ]);
 
     const { onLayout: externalOnLayout, style, testID, ...nativeViewProps } = viewProps;
 
@@ -1389,7 +1502,7 @@ function MarkdownEditorContent({
             setEquationBlocks(nativeEvent.blocks);
         }
 
-        if (suppliedSnapshot === undefined && onEdit === undefined)
+        if (managesDocument)
         {
             const previous = currentSnapshot.current;
             const next = AcceptEditorEvent(previous, nativeEvent);
@@ -1414,12 +1527,13 @@ function MarkdownEditorContent({
                     redoStack.current = [ ];
                     setCanUndo(true);
                     setCanRedo(false);
+                    onChange?.(fromEditorBlocks(next.blocks));
                 }
             }
         }
 
         onEdit?.({ nativeEvent });
-    }, [ onEdit, suppliedSnapshot ]);
+    }, [ managesDocument, onChange, onEdit ]);
 
     const handleContentSize = useCallback(({
         nativeEvent
@@ -1642,20 +1756,25 @@ function MarkdownEditorContent({
         setMediaSheetVisible(true);
         send("dismiss");
     }, [ onInsertMedia, send ]);
-    const handleInsertFile = useCallback(async () =>
+    const insertPickedFile = useCallback(async (
+        action: "insertFile" | "insertPdf",
+        type: string,
+        onPicker: (() => void | Promise<void>) | undefined,
+        onSelected: ((Selection: MarkdownEditorFileSelection) => void | Promise<void>) | undefined
+    ) =>
     {
         setOpenPanel(NoPanelOpen);
         send("dismiss");
-        if (onFilePicker !== undefined)
+        if (onPicker !== undefined)
         {
-            await onFilePicker();
+            await onPicker();
             return;
         }
 
         const result = await DocumentPicker.getDocumentAsync({
             copyToCacheDirectory: true,
             multiple: false,
-            type: "*/*"
+            type
         });
         const pickedAsset = result.canceled ? undefined : result.assets?.[ 0 ];
         const selection: MarkdownEditorFileSelection = {
@@ -1671,15 +1790,23 @@ function MarkdownEditorContent({
         };
         if (selection.asset !== undefined)
         {
-            send("insertFile", {
+            send(action, {
                 fileName: selection.asset.fileName,
                 fileSize: selection.asset.fileSize,
                 mimeType: selection.asset.mimeType,
                 url: selection.asset.uri
             });
         }
-        await onFileSelected?.(selection);
-    }, [ onFilePicker, onFileSelected, send ]);
+        await onSelected?.(selection);
+    }, [ send ]);
+    const handleInsertFile = useCallback(
+        () => insertPickedFile("insertFile", "*/*", onFilePicker, onFileSelected),
+        [ insertPickedFile, onFilePicker, onFileSelected ]
+    );
+    const handleInsertPdf = useCallback(
+        () => insertPickedFile("insertPdf", "application/pdf", onPdfPicker, onPdfSelected),
+        [ insertPickedFile, onPdfPicker, onPdfSelected ]
+    );
     const handleInsertAudio = useCallback(() =>
     {
         if (onInsertAudio !== undefined)
@@ -1860,7 +1987,8 @@ function MarkdownEditorContent({
         setInternalSnapshot(restored);
         setCanUndo(undoStack.current.length > 0);
         setCanRedo(true);
-    }, [ ]);
+        onChange?.(fromEditorBlocks(restored.blocks));
+    }, [ onChange ]);
     const handleRedo = useCallback(() =>
     {
         const next = redoStack.current.pop();
@@ -1872,7 +2000,8 @@ function MarkdownEditorContent({
         setInternalSnapshot(restored);
         setCanRedo(redoStack.current.length > 0);
         setCanUndo(true);
-    }, [ ]);
+        onChange?.(fromEditorBlocks(restored.blocks));
+    }, [ onChange ]);
     const handleMoveUp = useCallback(() => send("moveBlockUp"), [ send ]);
     const handleMoveDown = useCallback(() => send("moveBlockDown"), [ send ]);
     const handleRemove = useCallback(() => send("remove"), [ send ]);
@@ -2140,26 +2269,26 @@ function MarkdownEditorContent({
         background: t("actionsSheet.background"),
         chooseAudio: t("audioSheet.chooseFile"),
         chooseColor: t("actionsSheet.chooseColor"),
+        clearTableContents: t("actionsSheet.clearTableContents"),
         color: t("actionsSheet.color"),
         defaultColor: t("actionsSheet.defaultColor"),
         delete: t("actionsSheet.delete"),
+        deleteTableColumn: t("actionsSheet.deleteTableColumn"),
+        deleteTableRow: t("actionsSheet.deleteTableRow"),
         dismiss: t("actionsSheet.dismiss"),
         duplicate: t("actionsSheet.duplicate"),
+        duplicateTableColumn: t("actionsSheet.duplicateTableColumn"),
+        duplicateTableRow: t("actionsSheet.duplicateTableRow"),
         editIcon: t("actionsSheet.editIcon"),
+        fitTableWidth: t("actionsSheet.fitTableWidth"),
+        headerColumn: t("actionsSheet.headerColumn"),
+        headerRow: t("actionsSheet.headerRow"),
         insertAbove: t("actionsSheet.insertAbove"),
         insertBelow: t("actionsSheet.insertBelow"),
-        fitTableWidth: t("actionsSheet.fitTableWidth"),
-        headerRow: t("actionsSheet.headerRow"),
-        headerColumn: t("actionsSheet.headerColumn"),
-        insertTableRowAbove: t("actionsSheet.insertTableRowAbove"),
-        insertTableRowBelow: t("actionsSheet.insertTableRowBelow"),
         insertTableColumnLeft: t("actionsSheet.insertTableColumnLeft"),
         insertTableColumnRight: t("actionsSheet.insertTableColumnRight"),
-        duplicateTableRow: t("actionsSheet.duplicateTableRow"),
-        duplicateTableColumn: t("actionsSheet.duplicateTableColumn"),
-        deleteTableRow: t("actionsSheet.deleteTableRow"),
-        deleteTableColumn: t("actionsSheet.deleteTableColumn"),
-        clearTableContents: t("actionsSheet.clearTableContents"),
+        insertTableRowAbove: t("actionsSheet.insertTableRowAbove"),
+        insertTableRowBelow: t("actionsSheet.insertTableRowBelow"),
         /* Reuses the insert-media sheet's own labels -- replacing an image performs the exact
            same gallery/camera pick as inserting one. */
         openGallery: t("mediaSheet.openGallery"),
@@ -2424,12 +2553,8 @@ function MarkdownEditorContent({
                     ? handleUnavailableInsert
                     : handleCreatePageReference
             },
+            pdf: { button: "filePicker", label: t("insertPanel.pdf"), onPress: handleInsertPdf },
             quote: { button: "quote", label: t("insertPanel.quote"), onPress: handleQuote },
-            syncedBlock: {
-                button: "copy",
-                label: t("insertPanel.syncedBlock"),
-                onPress: handleUnavailableInsert
-            },
             table: { button: "table", label: t("insertPanel.table"), onPress: handleTable },
             tableOfContents: {
                 button: "tableOfContents",
@@ -2478,6 +2603,7 @@ function MarkdownEditorContent({
         handleHeading4,
         handleInsertAudio,
         handleInsertFile,
+        handleInsertPdf,
         handleInsertMedia,
         handleNumberedList,
         handleQuote,
@@ -2494,10 +2620,13 @@ function MarkdownEditorContent({
         t
     ]);
     const insertSections = config.insertPanel?.sections ?? defaultMarkdownEditorInsertSections;
-    const turnIntoRows = useMemo(
-        () => rowsOfTwo(config.turnIntoPanel?.items ?? defaultMarkdownEditorTurnIntoItems),
-        [ config.turnIntoPanel?.items ]
-    );
+    const turnIntoRows = useMemo(() =>
+    {
+        const items = config.turnIntoPanel?.items ?? defaultMarkdownEditorTurnIntoItems;
+        const applicableItems = items.filter((item: MarkdownEditorTurnIntoItem) =>
+            allowedTurnIntoTypes.has(item));
+        return rowsOfTwo(applicableItems.length > 0 ? applicableItems : items);
+    }, [ allowedTurnIntoTypes, config.turnIntoPanel?.items ]);
     const colorChoices = useMemo(
         () => editorColorChoices(config.colorPanel, t, t("colorPanel.default")),
         [ config.colorPanel, t ]
@@ -2511,6 +2640,7 @@ function MarkdownEditorContent({
             emptyToDoPlaceholder: t("native.emptyToDoPlaceholder"),
             emptyTogglePlaceholder: t("native.emptyTogglePlaceholder"),
             file: t("native.file"),
+            pdf: t("native.pdf"),
             selectTableColumn: t("native.selectTableColumn"),
             selectTableRow: t("native.selectTableRow"),
             tableActions: t("native.tableActions"),
@@ -2643,30 +2773,35 @@ function MarkdownEditorContent({
                         style={ panelStyle }>
                         <Text accessibilityRole="header"
                             style={ panelTitleStyle }>{ t("turnIntoPanel.title") }</Text>
-                        {
-                            turnIntoRows.map((
-                                pair: TurnIntoRow
-                            ) => pair[ 1 ] === undefined
-                                ? <BlockOption button={ turnIntoOptions[ pair[ 0 ] ].button }
-                                    disabled={ !allowedTurnIntoTypes.has(pair[ 0 ]) }
-                                    key={ pair[ 0 ] }
-                                    label={ t(turnIntoOptions[ pair[ 0 ] ].message) }
-                                    layout="full"
-                                    onPress={ handleTurnInto(pair[ 0 ]) } />
-                                : <View key={ pair[ 0 ] }
-                                    style={ styles.blockRow }>
-                                    {
-                                        pair.map((type: MarkdownEditorTurnIntoItem | undefined) =>
-                                            type !== undefined
-                                            && <BlockOption button={ turnIntoOptions[ type ].button }
-                                                disabled={ !allowedTurnIntoTypes.has(type) }
-                                                key={ type }
-                                                label={ t(turnIntoOptions[ type ].message) }
-                                                layout="half"
-                                                onPress={ handleTurnInto(type) } />)
-                                    }
-                                </View>)
-                        }
+                        <ScrollView contentContainerStyle={ styles.panelScrollContent }
+                            keyboardShouldPersistTaps="always"
+                            showsVerticalScrollIndicator={ false }
+                            style={ styles.panelScroll }>
+                            {
+                                turnIntoRows.map((
+                                    pair: TurnIntoRow
+                                ) => pair[ 1 ] === undefined
+                                    ? <BlockOption button={ turnIntoOptions[ pair[ 0 ] ].button }
+                                        disabled={ !allowedTurnIntoTypes.has(pair[ 0 ]) }
+                                        key={ pair[ 0 ] }
+                                        label={ t(turnIntoOptions[ pair[ 0 ] ].message) }
+                                        layout="full"
+                                        onPress={ handleTurnInto(pair[ 0 ]) } />
+                                    : <View key={ pair[ 0 ] }
+                                        style={ styles.blockRow }>
+                                        {
+                                            pair.map((type: MarkdownEditorTurnIntoItem | undefined) =>
+                                                type !== undefined
+                                                && <BlockOption button={ turnIntoOptions[ type ].button }
+                                                    disabled={ !allowedTurnIntoTypes.has(type) }
+                                                    key={ type }
+                                                    label={ t(turnIntoOptions[ type ].message) }
+                                                    layout="half"
+                                                    onPress={ handleTurnInto(type) } />)
+                                        }
+                                    </View>)
+                            }
+                        </ScrollView>
                     </Animated.View>
                 }
                 {
@@ -2746,7 +2881,8 @@ function MarkdownEditorContent({
                         onReplaceImage={ handleReplaceBlockImage }
                         onTableAction={ handleTableAction }
                         onTableColor={ handleTableColor }
-                        showBlockColorActions={ editorBlockColorTypes.includes(blockActionsRequest.blockType) }
+                        showBlockColorActions={
+                            editorBlockColorTypes.includes(blockActionsRequest.blockType) }
                         showCalloutActions={ blockActionsRequest.blockType === "callout" }
                         showInsertAbove={ blockActionsRequest.blockType !== "divider" }
                         showReplaceAudio={ blockActionsRequest.blockType === "audio" }
