@@ -479,6 +479,160 @@ export const Table: Story =
         }
     };
 
+/* Each inline equation is one U+FFFC placeholder character carrying an `equation` mark. */
+const inlineMathIntro = "The mass-energy relation \uFFFC and the fraction \uFFFC sit inline with text.";
+const inlineMathShapes = "Radical \uFFFC, vector \uFFFC, and cancelled \uFFFC.";
+const inlineMathHeading = "Heading with \uFFFC";
+const inlineMathListItem = "A list item with \uFFFC";
+const inlineMathInvalid = "An invalid expression shows its source: \uFFFC";
+const inlineMathCell = "Area \uFFFC";
+const inlineMathInvalidLong = "A long invalid expression wraps: \uFFFC and text continues.";
+const inlineMathInvalidLongExpression =
+    "\\frac{a + b + c}{\\sqrt{x^2 + y^2 + z^2}} + \\left( \\sum_{i=1}^{n} i^2 + \\int_0^1 f(t)\\,dt";
+
+export const InlineMath: Story =
+    {
+        args:
+        {
+            snapshot:
+            {
+                blocks:
+                [
+                    {
+                        id: "math:heading",
+                        marks:
+                        [
+                            {
+                                end: inlineMathHeading.length,
+                                expression: "\\frac{a}{b}",
+                                kind: "equation",
+                                start: inlineMathHeading.length - 1
+                            }
+                        ],
+                        text: inlineMathHeading,
+                        type: "heading_1"
+                    },
+                    {
+                        id: "math:intro",
+                        marks:
+                        [
+                            {
+                                end: inlineMathIntro.indexOf("\uFFFC") + 1,
+                                expression: "E = mc^2",
+                                kind: "equation",
+                                start: inlineMathIntro.indexOf("\uFFFC")
+                            },
+                            {
+                                end: inlineMathIntro.lastIndexOf("\uFFFC") + 1,
+                                expression: "\\frac{a}{b}",
+                                kind: "equation",
+                                start: inlineMathIntro.lastIndexOf("\uFFFC")
+                            }
+                        ],
+                        text: inlineMathIntro,
+                        type: "text"
+                    },
+                    {
+                        id: "math:shapes",
+                        marks:
+                        [
+                            { end: 9, expression: "\\sqrt{x+1}", kind: "equation", start: 8 },
+                            { end: 19, expression: "\\vec{v}", kind: "equation", start: 18 },
+                            {
+                                end: inlineMathShapes.length - 1,
+                                expression: "\\cancel{x}",
+                                kind: "equation",
+                                start: inlineMathShapes.length - 2
+                            }
+                        ],
+                        text: inlineMathShapes,
+                        type: "text"
+                    },
+                    {
+                        id: "math:list",
+                        marks:
+                        [
+                            {
+                                end: inlineMathListItem.length,
+                                expression: "\\sum_{i=1}^{n} i^2",
+                                kind: "equation",
+                                start: inlineMathListItem.length - 1
+                            }
+                        ],
+                        text: inlineMathListItem,
+                        type: "bulleted_list_item"
+                    },
+                    {
+                        id: "math:invalid",
+                        marks:
+                        [
+                            {
+                                end: inlineMathInvalid.length,
+                                expression: "\\frac{a}{",
+                                kind: "equation",
+                                start: inlineMathInvalid.length - 1
+                            }
+                        ],
+                        text: inlineMathInvalid,
+                        type: "text"
+                    },
+                    {
+                        id: "math:invalid-long",
+                        marks:
+                        [
+                            {
+                                end: inlineMathInvalidLong.indexOf("\uFFFC") + 1,
+                                expression: inlineMathInvalidLongExpression,
+                                kind: "equation",
+                                start: inlineMathInvalidLong.indexOf("\uFFFC")
+                            }
+                        ],
+                        text: inlineMathInvalidLong,
+                        type: "text"
+                    },
+                    {
+                        id: "math:table",
+                        table:
+                        {
+                            fitPageWidth: true,
+                            headerColumn: false,
+                            headerRow: true,
+                            rows:
+                            [
+                                { cells: [ { text: "Shape" }, { text: "Formula" } ] },
+                                {
+                                    cells:
+                                    [
+                                        { text: "Circle" },
+                                        {
+                                            marks:
+                                            [
+                                                {
+                                                    end: inlineMathCell.length,
+                                                    expression: "\\pi r^2",
+                                                    kind: "equation",
+                                                    start: inlineMathCell.length - 1
+                                                }
+                                            ],
+                                            text: inlineMathCell
+                                        }
+                                    ]
+                                },
+                                { cells: [ { text: "Square" }, { text: "" } ] }
+                            ]
+                        },
+                        text: "",
+                        type: "table"
+                    },
+                    { id: "math:after", text: "Plain paragraph after the equations.", type: "text" }
+                ],
+                epoch: 1,
+                revision: 0
+            },
+            style: { flex: 1 }
+        }
+    };
+
 export const Callout: Story =
     {
         args:

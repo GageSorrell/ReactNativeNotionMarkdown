@@ -39,6 +39,7 @@ export type NativeEditorColorName =
     | "background"
     | "border"
     | "calloutBorder"
+    | "error"
     | "foreground"
     | "inlineCodeBackground"
     | "inlineCodeForeground"
@@ -51,9 +52,6 @@ export type NativeEditorColorName =
     | "placeholder"
     | "shadow"
     | "surface"
-    | "switchThumb"
-    | "switchTrackOff"
-    | "switchTrackOn"
     | "tableBorder"
     | "tableControl"
     | "tableHeaderBackground";
@@ -87,7 +85,6 @@ export interface NativeEditorLabels
     readonly emptyToDoPlaceholder: string;
     readonly emptyTogglePlaceholder: string;
     readonly file: string;
-    readonly fitTableWidth: string;
     readonly selectTableColumn: string;
     readonly selectTableRow: string;
 
@@ -140,6 +137,7 @@ export function nativeEditorTheme(theme: MarkdownTheme): NativeEditorTheme
             background: document.background,
             border: document.border,
             calloutBorder: editor.callout.border,
+            error: document.error,
             foreground: document.foreground,
             inlineCodeBackground: document.inlineCodeBackground,
             inlineCodeForeground: document.inlineCodeForeground,
@@ -152,9 +150,6 @@ export function nativeEditorTheme(theme: MarkdownTheme): NativeEditorTheme
             placeholder: document.placeholder,
             shadow: editor.shadow,
             surface: document.surface,
-            switchThumb: editor.switch.thumb,
-            switchTrackOff: editor.switch.trackOff,
-            switchTrackOn: editor.switch.trackOn,
             tableBorder: editor.table.border,
             tableControl: editor.table.control,
             tableHeaderBackground: editor.table.headerBackground
@@ -198,6 +193,14 @@ export interface NativeEditorProps extends ViewProps
     readonly onContentSize?: (
         Event: { nativeEvent: NativeContentSizeEvent }
     ) => void;
+
+    /**
+     * Fired when an inline equation should be prompted for: the user tapped one, or a
+     * `"requestEquation"` command resolved the selection. Answer with an `"equation"` command.
+     */
+    readonly onEquationRequest?: (
+        Event: { nativeEvent: NativeEquationRequestEvent }
+    ) => void;
     /** Optional glyph used by the native editor view when a page has no fetched icon. */
     readonly pageReferenceFallbackIcon?: string;
 
@@ -209,6 +212,13 @@ export interface NativeEditorProps extends ViewProps
 
     /** Strings the view draws or announces. Defaults to the built-in English. */
     readonly labels?: NativeEditorLabels;
+
+    /**
+     * The layout of each inline equation in the snapshot, keyed by its expression: the RaTeX
+     * DisplayList JSON, or `null` when RaTeX rejected the expression. An equation with no entry
+     * shows its source until one arrives. `useEditorEquationLayouts` builds this value.
+     */
+    readonly equations?: Readonly<Record<string, string | null>>;
 }
 
 /**
@@ -238,6 +248,21 @@ export interface NativeBlockActionsPressEvent
     readonly type: EditorBlock["type"];
     readonly scope?: EditorBlockActionScope;
     readonly selection?: EditorTableSelection;
+}
+
+/**
+ * Data emitted when the native editor asks for an inline equation's source.
+ *
+ * @category Interfaces
+ * @since 1.0.0
+ */
+export interface NativeEquationRequestEvent
+{
+    /** The selected equation's LaTeX source, or the selected plain text to start a new one from. */
+    readonly expression: string;
+
+    /** Whether the selection is an existing equation, which the answer updates in place. */
+    readonly editing: boolean;
 }
 
 /**

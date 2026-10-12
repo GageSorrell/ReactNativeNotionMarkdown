@@ -41,6 +41,7 @@ export type MarkdownEditorButton =
     | "strikethrough"
     | "underline"
     | "code"
+    | "equation"
     | "mermaid"
     | "eraseFormatting"
     | "link"
@@ -156,6 +157,7 @@ export type MarkdownEditorFormatToolbarItem =
     | "strikethrough"
     | "underline"
     | "code"
+    | "equation"
     | "link"
     | "eraseFormatting";
 
@@ -406,7 +408,9 @@ export/**
        */
 const defaultMarkdownEditorToolbar: Required<MarkdownEditorToolbar> =
     {
-        format: [ "bold", "italic", "strikethrough", "underline", "code", "link", "eraseFormatting" ],
+        format: [
+            "bold", "italic", "strikethrough", "underline", "code", "equation", "link", "eraseFormatting"
+        ],
         main: [
             "color", "insert", "format", "speech", "filePicker", "turnInto", "undo", "redo", "remove",
             "indent", "outdent", "moveUp", "moveDown", "edit"

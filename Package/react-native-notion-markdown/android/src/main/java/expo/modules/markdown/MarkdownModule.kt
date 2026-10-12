@@ -14,11 +14,12 @@ class MarkdownModule : Module() {
     // Milestone-one editor coordinator: kept for regression. Superseded below by the
     // multi-field architecture (TextField/SelectionOverlay) for milestone four.
     View(MarkdownEditorView::class) {
-      Events("onEdit", "onPageReferencePress", "onBlockActionsPress", "onContentSize")
+      Events("onEdit", "onPageReferencePress", "onBlockActionsPress", "onContentSize", "onEquationRequest")
       Prop("snapshot") { view: MarkdownEditorView, value: Map<String, Any?> -> view.setSnapshot(value) }
       Prop("command") { view: MarkdownEditorView, value: Map<String, Any?>? -> value?.let { view.command(it) } }
       Prop("theme") { view: MarkdownEditorView, value: Map<String, Any?>? -> view.setTheme(value) }
       Prop("labels") { view: MarkdownEditorView, value: Map<String, Any?>? -> view.setLabels(value) }
+      Prop("equations") { view: MarkdownEditorView, value: Map<String, Any?>? -> view.setEquations(value) }
       Prop("pageReferenceFallbackIcon") { view: MarkdownEditorView, value: String? -> view.setPageReferenceFallbackIcon(value) }
       Prop("imageMaxWidth") { view: MarkdownEditorView, value: Int? -> view.setImageMaxWidth(value) }
     }

@@ -18,6 +18,9 @@ export {
     type MarkdownEditorFileAsset,
     type MarkdownEditorFileSelection,
     type MarkdownEditorBlockActionsSelection,
+    type MarkdownEditorEquationPromptResult,
+    type MarkdownEditorEquationResult,
+    type MarkdownEditorEquationSelection,
     type MarkdownEditorLinkPromptResult,
     type MarkdownEditorLinkResult,
     type MarkdownEditorLinkSelection,
@@ -29,6 +32,9 @@ export {
     type MarkdownEditorProps
 } from "./MarkdownEditor.tsx";
 export { type MarkdownEditorBlockAction, type MarkdownEditorTableAction } from "./ActionsBottomSheet.tsx";
+
+/** For hosts that mount `NativeEditor` directly: the value of its `equations` prop. */
+export { useEditorEquationLayouts, type EditorEquationLayouts } from "./equationLayouts.ts";
 export { Switch, type SwitchProps, type SwitchSize } from "./Switch.tsx";
 
 /** Toolbar, panel, icon, and layout customization -- see `MarkdownEditorConfig`. */

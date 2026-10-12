@@ -25,7 +25,8 @@ import {
     type EditorSnapshot,
     type EditorTableSelection,
     type EditorTextMark,
-    type EditorTextMarkKind
+    type EditorTextMarkKind,
+    editorEquationExpressions
 } from "../../prototype.ts";
 import Animated, { FadeIn, FadeOut, useAnimatedStyle } from "react-native-reanimated";
 import { Circle, Svg } from "react-native-svg";
@@ -82,6 +83,7 @@ import {
     type NativeContentSizeEvent,
     NativeEditor,
     type NativeEditorLabels,
+    type NativeEquationRequestEvent,
     type NativePageReferencePressEvent,
     nativeEditorTheme
 } from "../../NativeEditor.tsx";
@@ -90,10 +92,12 @@ import { ActionsBottomSheet } from "./ActionsBottomSheet.tsx";
 import { AudioBottomSheet } from "./AudioBottomSheet.tsx";
 import type { ComponentType } from "react";
 import { EmojiBottomSheet } from "./EmojiBottomSheet.tsx";
+import { EquationBottomSheet } from "./EquationBottomSheet.tsx";
 import { LinkBottomSheet } from "./LinkBottomSheet.tsx";
 import type { MarkdownColor } from "../../document/types.ts";
 import { MediaBottomSheet } from "./MediaBottomSheet.tsx";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
+import { useEditorEquationLayouts } from "./equationLayouts.ts";
 import { withAlpha } from "../../provider/theme.ts";
 
 /** Dependency-free rendering of Lucide's Ellipsis icon for the built-in cell-actions button. */
@@ -233,6 +237,29 @@ export type MarkdownEditorLinkPromptResult =
     | undefined
     | Promise<MarkdownEditorLinkResult | null | undefined>;
 
+/** The inline equation handed to a host equation prompt. */
+export interface MarkdownEditorEquationSelection
+{
+    /** The equation's LaTeX source when editing; otherwise the selected text, which may be empty. */
+    readonly expression: string;
+
+    /** Whether an existing equation is being edited rather than a new one created. */
+    readonly editing: boolean;
+}
+
+/** An equation returned by a host equation prompt or the built-in equation sheet. */
+export interface MarkdownEditorEquationResult
+{
+    readonly expression: string;
+}
+
+/** Host-supplied equation prompt result. Returning nothing leaves the selection unchanged. */
+export type MarkdownEditorEquationPromptResult =
+    | MarkdownEditorEquationResult
+    | null
+    | undefined
+    | Promise<MarkdownEditorEquationResult | null | undefined>;
+
 /**
  * Props for the "batteries included" editor.
  *
@@ -254,12 +281,15 @@ export interface MarkdownEditorProps extends ViewProps, MarkdownSharedConfig, Ma
     /** Receives native editing events. Omit this callback for internally managed document state. */
     readonly onEdit?: (Event: { nativeEvent: EditorEvent }) => void;
 
-    /** Receives actions selected in the editor UI, plus any level/color/type/mark/url/label it carries. */
+    /**
+     * Receives actions selected in the editor UI, plus any level/color/type/mark/url/label/expression
+     * it carries.
+     */
     readonly onCommand?: (
         Action: EditorCommand["action"],
         Extra?: Pick<EditorCommand,
             "level" | "color" | "colorTarget" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
-            | "label" | "blockId"
+            | "label" | "expression" | "blockId"
             | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize"
             | "selection" | "row" | "column">
     ) => void;
@@ -308,6 +338,11 @@ export interface MarkdownEditorProps extends ViewProps, MarkdownSharedConfig, Ma
     readonly onRequestLink?: (
         Selection: MarkdownEditorLinkSelection
     ) => MarkdownEditorLinkPromptResult;
+
+    /** Prompts for an inline equation's LaTeX source instead of using the built-in sheet. */
+    readonly onRequestEquation?: (
+        Selection: MarkdownEditorEquationSelection
+    ) => MarkdownEditorEquationPromptResult;
 
     /**
      * Replaces the built-in block-actions sheet -- opened by tapping a block that doesn't
@@ -722,7 +757,7 @@ const mainToolbarItems: ReadonlyArray<MarkdownEditorMainToolbarItem> =
 
 /** The ids of the built-in format-row buttons, used to resolve `toolbar.format`. */
 const formatToolbarItems: ReadonlyArray<MarkdownEditorFormatToolbarItem> =
-    [ "bold", "italic", "strikethrough", "underline", "code", "link", "eraseFormatting" ];
+    [ "bold", "italic", "strikethrough", "underline", "code", "equation", "link", "eraseFormatting" ];
 
 /** The icon, label, and native command of each turn-into option. */
 const turnIntoOptions: Readonly<Record<MarkdownEditorTurnIntoItem, {
@@ -973,6 +1008,7 @@ function MarkdownEditorContent({
     onCommand,
     onCreatePageReference,
     onEditPageReference,
+    onRequestEquation,
     onRequestLink,
     onEdit,
     onFilePicker,
@@ -1003,6 +1039,12 @@ function MarkdownEditorContent({
     const [ audioReplacementBlockId, setAudioReplacementBlockId ] = useState<string>();
     const [ linkSheetVisible, setLinkSheetVisible ] = useState(false);
     const [ linkRequest, setLinkRequest ] = useState<MarkdownEditorLinkSelection>();
+    const [ equationRequest, setEquationRequest ] = useState<MarkdownEditorEquationSelection>();
+    /* The blocks last reported by the native view whenever their set of equations changed. A
+       host may keep passing the same `snapshot` while the user adds equations, so the layouts
+       follow the native document rather than that prop. */
+    const [ equationBlocks, setEquationBlocks ] = useState<ReadonlyArray<EditorBlock>>();
+    const equationExpressionsKey = useRef<string>(undefined);
     const [ blockActionsRequest, setBlockActionsRequest ] = useState<MarkdownEditorBlockActionsSelection>();
     const [ emojiSheetVisible, setEmojiSheetVisible ] = useState(false);
     const [ emojiSheetBlockId, setEmojiSheetBlockId ] = useState<string>();
@@ -1143,6 +1185,23 @@ function MarkdownEditorContent({
         && snapshot.blocks.slice(selectionBlockRange.low, selectionBlockRange.high + 1).some(
             (block: EditorBlock) => (block.depth ?? 0) > 0
         );
+    /* An inline equation needs a selection inside one table cell, or inside one block that
+       renders rich text. The native view resolves the actual range when asked, so a collapsed
+       cursor is enough. */
+    const selectionIsInOneCell = selectionAnchorPoint?.field === "cell"
+        && selectionFocusPoint?.field === "cell"
+        && selectionAnchorPoint.blockId === selectionFocusPoint.blockId
+        && selectionAnchorPoint.row === selectionFocusPoint.row
+        && selectionAnchorPoint.column === selectionFocusPoint.column;
+    const canEquationSelection = selectionIsInOneCell
+        || (selectionBlockRange !== undefined
+            && selectionBlockRange.low === selectionBlockRange.high
+            && selectionAnchorPoint?.field !== "cell"
+            && selectionFocusPoint?.field !== "cell"
+            && [
+                "text", "heading_1", "heading_2", "heading_3", "heading_4",
+                "bulleted_list_item", "numbered_list_item", "to_do", "toggle", "callout", "quote"
+            ].includes(snapshot.blocks[ selectionBlockRange.low ]?.type ?? ""));
     const selectedPageReference = useMemo<MarkdownEditorPageReference | undefined>(() =>
     {
         if (selectionBlockRange === undefined || selectionBlockRange.low !== selectionBlockRange.high)
@@ -1251,7 +1310,7 @@ function MarkdownEditorContent({
         action: EditorCommand["action"],
         extra?: Pick<EditorCommand,
             "level" | "color" | "colorTarget" | "icon" | "type" | "toggle" | "mark" | "columnCount" | "url"
-            | "label" | "blockId"
+            | "label" | "expression" | "blockId"
             | "duration" | "waveform" | "mimeType" | "fileName" | "fileSize"
             | "selection" | "row" | "column">
     ) =>
@@ -1322,6 +1381,13 @@ function MarkdownEditorContent({
         setSelectionFocusBlockId(nativeEvent.focus.blockId);
         setSelectionFocusOffset(nativeEvent.focus.offset);
         setSelectionFocusPoint(nativeEvent.focus);
+
+        const expressionsKey = JSON.stringify(editorEquationExpressions(nativeEvent.blocks));
+        if (expressionsKey !== equationExpressionsKey.current)
+        {
+            equationExpressionsKey.current = expressionsKey;
+            setEquationBlocks(nativeEvent.blocks);
+        }
 
         if (suppliedSnapshot === undefined && onEdit === undefined)
         {
@@ -1650,6 +1716,43 @@ function MarkdownEditorContent({
         }
         send("link", { label: result.label, url: result.url });
     }, [ send ]);
+    const handleEquationResult = useCallback((
+        result: MarkdownEditorEquationResult | null | undefined
+    ) =>
+    {
+        setEquationRequest(undefined);
+        if (result === null || result === undefined || result.expression.trim().length === 0)
+        {
+            send("focus");
+            return;
+        }
+        send("equation", { expression: result.expression });
+    }, [ send ]);
+    /* Both ways of asking for an equation -- the format-row button and a tap on an existing
+       one -- arrive here as the native view's request, already resolved against its selection. */
+    const handleEquationRequest = useCallback(({
+        nativeEvent
+    }: { nativeEvent: NativeEquationRequestEvent }) =>
+    {
+        const request: MarkdownEditorEquationSelection =
+            {
+                editing: nativeEvent.editing,
+                expression: nativeEvent.expression
+            };
+        send("dismiss");
+        setOpenPanel(NoPanelOpen);
+        if (onRequestEquation !== undefined)
+        {
+            void Promise.resolve(onRequestEquation(request))
+                .then(handleEquationResult)
+                .catch(() => handleEquationResult(undefined));
+        }
+        else
+        {
+            setEquationRequest(request);
+        }
+    }, [ handleEquationResult, onRequestEquation, send ]);
+    const handleEquation = useCallback(() => send("requestEquation"), [ send ]);
     const handleLink = useCallback(() =>
     {
         if (!canLinkSelection || selectionBlockRange === undefined
@@ -2074,6 +2177,18 @@ function MarkdownEditorContent({
     const handleMainRow = useMemo(() => handleMode("main"), [ handleMode ]);
     const handleFormatRow = useMemo(() => handleMode("format"), [ handleMode ]);
     const handleLinkDismiss = useCallback(() => handleLinkResult(undefined), [ handleLinkResult ]);
+    const equationLabels = useMemo(() => ({
+        apply: t("equationSheet.apply"),
+        cancel: t("equationSheet.cancel"),
+        expression: t("equationSheet.expression"),
+        placeholder: t("equationSheet.placeholder"),
+        preview: t("equationSheet.preview"),
+        title: t("equationSheet.title")
+    }), [ t ]);
+    const handleEquationDismiss = useCallback(
+        () => handleEquationResult(undefined),
+        [ handleEquationResult ]
+    );
     const handleReplaceBlockImage = useCallback(
         (url: string) => blockActionsRequest === undefined
             ? undefined
@@ -2187,6 +2302,12 @@ function MarkdownEditorContent({
                 label: t("toolbar.code"),
                 onPress: handleFormat("code")
             },
+            equation: {
+                button: "equation",
+                disabled: !canEquationSelection,
+                label: t("toolbar.equation"),
+                onPress: handleEquation
+            },
             eraseFormatting: {
                 button: "eraseFormatting",
                 disabled: !canFormatSelection,
@@ -2218,7 +2339,16 @@ function MarkdownEditorContent({
                 onPress: handleFormat("underline")
             }
         }
-    ), [ canFormatSelection, canLinkSelection, handleEraseFormatting, handleFormat, handleLink, t ]);
+    ), [
+        canEquationSelection,
+        canFormatSelection,
+        canLinkSelection,
+        handleEquation,
+        handleEraseFormatting,
+        handleFormat,
+        handleLink,
+        t
+    ]);
     const mainToolbarList = config.toolbar?.main ?? defaultMarkdownEditorToolbar.main;
     const formatToolbarList = config.toolbar?.format ?? defaultMarkdownEditorToolbar.format;
     const mainRowItems = useMemo(
@@ -2373,6 +2503,7 @@ function MarkdownEditorContent({
         [ config.colorPanel, t ]
     );
     const nativeTheme = useMemo(() => nativeEditorTheme(theme), [ theme ]);
+    const equations = useEditorEquationLayouts(equationBlocks ?? snapshot.blocks);
     const nativeLabels = useMemo<NativeEditorLabels>(() => (
         {
             audio: t("native.audio"),
@@ -2380,7 +2511,6 @@ function MarkdownEditorContent({
             emptyToDoPlaceholder: t("native.emptyToDoPlaceholder"),
             emptyTogglePlaceholder: t("native.emptyTogglePlaceholder"),
             file: t("native.file"),
-            fitTableWidth: t("native.fitTableWidth"),
             selectTableColumn: t("native.selectTableColumn"),
             selectTableRow: t("native.selectTableRow"),
             tableActions: t("native.tableActions"),
@@ -2408,11 +2538,13 @@ function MarkdownEditorContent({
                     <View style={ pageStyle }>
                         <NativeEditor
                             command={ command }
+                            equations={ equations }
                             imageMaxWidth={ imageMaxWidth }
                             labels={ nativeLabels }
                             onBlockActionsPress={ handleBlockActionsPress }
                             onContentSize={ handleContentSize }
                             onEdit={ receiveEdit }
+                            onEquationRequest={ handleEquationRequest }
                             onPageReferencePress={ handlePageReferencePress }
                             pageReferenceFallbackIcon={ pageReferenceFallbackGlyph }
                             snapshot={ snapshot }
@@ -2585,6 +2717,13 @@ function MarkdownEditorContent({
                     onDismiss={ handleAudioSheetDismiss }
                     onSelected={ handleAudioSelected }
                     replacement={ audioReplacementBlockId !== undefined } />
+            }
+            {
+                equationRequest !== undefined && <EquationBottomSheet
+                    initialExpression={ equationRequest.expression }
+                    labels={ equationLabels }
+                    onDismiss={ handleEquationDismiss }
+                    onSubmit={ handleEquationResult } />
             }
             {
                 linkSheetVisible && linkRequest !== undefined && <LinkBottomSheet

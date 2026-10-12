@@ -99,6 +99,8 @@ private const val COLUMNS_TEXT = "\u200B"
 private const val EMPTY_BLOCK_TEXT = "\u200B"
 private const val TABLE_TEXT = "\uFFFC"
 private const val MEDIA_TEXT = "\uFFFC"
+/** The one character an inline equation occupies; `MARKDOWN_ATOM_PLACEHOLDER` in fields.ts. */
+private const val EQUATION_PLACEHOLDER = '\uFFFC'
 private const val DEFAULT_CALLOUT_ICON = "\uD83D\uDCAC"
 private const val TOGGLE_BUTTON_WIDTH_SCALE = 1.5f
 private const val TODO_CHECKBOX_WIDTH_SCALE = 1.5f
@@ -197,7 +199,8 @@ private data class EditorBlock(
           "start" to it.start,
           "end" to it.end,
           "url" to it.url,
-          "color" to it.color
+          "color" to it.color,
+          "expression" to it.expression
         ).filterValues { value -> value != null }
       }
     }
@@ -213,8 +216,14 @@ private data class EditorTableCell(
   fun payload(): Map<String, Any?> = mapOf(
       "text" to text,
     "marks" to marks.map { mark ->
-      mapOf("kind" to mark.kind, "start" to mark.start, "end" to mark.end, "url" to mark.url, "color" to mark.color)
-        .filterValues { value -> value != null }
+      mapOf(
+        "kind" to mark.kind,
+        "start" to mark.start,
+        "end" to mark.end,
+        "url" to mark.url,
+        "color" to mark.color,
+        "expression" to mark.expression
+      ).filterValues { value -> value != null }
     },
     "color" to color
   ).filterValues { value -> value != null }
@@ -265,10 +274,15 @@ private fun parseEditorTable(value: Any?): EditorTable? {
         val end = (mark["end"] as? Number)?.toInt() ?: return@forEach
         val url = (mark["url"] as? String)?.takeIf { kind == "link" }
         val color = (mark["color"] as? String)?.takeIf { kind == "color" && it in editorValidColors }
+        val expression = (mark["expression"] as? String)?.takeIf { kind == "equation" }
         if (start >= 0 && end > start && end <= text.length &&
           (kind in listOf("bold", "italic", "strikethrough", "underline", "code") ||
             (kind == "color" && color != null) ||
-            (kind == "link" && !url.isNullOrBlank()))) marks.add(EditorMark(kind, start, end, url, color))
+            (kind == "link" && !url.isNullOrBlank()) ||
+            (kind == "equation" && isValidEquationMark(text, start, end, expression)
+              && marks.none { it.kind == "equation" && it.start == start }))) {
+          marks.add(EditorMark(kind, start, end, url, color, expression))
+        }
       }
       if (hasOverlappingColorMarks(marks)) return@mapNotNull null
       EditorTableCell(text, marks, (cell["color"] as? String)?.takeIf { it in editorValidColors })
@@ -295,8 +309,18 @@ private data class EditorMark(
   var start: Int,
   var end: Int,
   val url: String? = null,
-  val color: String? = null
+  val color: String? = null,
+  /** LaTeX source of an `equation` mark. */
+  val expression: String? = null
 )
+
+/**
+ * Whether an `equation` mark is well formed for [text]: it covers exactly one placeholder character
+ * and carries a non-blank expression. `validEditorMarks` in prototype.ts applies the same rule.
+ */
+private fun isValidEquationMark(text: String, start: Int, end: Int, expression: String?): Boolean =
+  start >= 0 && end == start + 1 && end <= text.length &&
+    text[start] == EQUATION_PLACEHOLDER && !expression.isNullOrBlank()
 
 private fun hasOverlappingColorMarks(marks: List<EditorMark>): Boolean {
   val colors = marks.filter { it.kind == "color" }.sortedBy { it.start }
@@ -329,7 +353,8 @@ private data class EditorPasteBlock(
 private class EditorInlineMarkSpan(
   val kind: String,
   val url: String? = null,
-  val color: String? = null
+  val color: String? = null,
+  val expression: String? = null
 ) : android.text.style.CharacterStyle() {
   override fun updateDrawState(textPaint: android.text.TextPaint) = Unit
 }
@@ -341,6 +366,10 @@ private class EditorInlineMarkSpan(
  * [chooseHeight] to tell a block's boundary line from an interior wrapped line.
  * This also implements [UpdateLayout] because [MarkdownEditorView.styleBlocks] replaces these spans
  * after edits; DynamicLayout only recalculates existing lines when a changed span has that marker.
+ *
+ * It also makes room for the block's inline equations. An [InlineMathSpan] cannot grow its line
+ * through its own font metrics without that growth being carried into the next wrapped line, so
+ * it reports the room it needs and this span adds, and later undoes, it with the padding.
  */
 private class BlockPaddingSpan(
   private val top: Int,
@@ -373,6 +402,17 @@ private class BlockPaddingSpan(
       if (fm.bottom == previousBottom) fm.bottom -= addedBelow
     }
     val naturalHeight = fm.descent - fm.ascent
+    var mathAbove = 0
+    var mathBelow = 0
+    (text as? Spanned)?.getSpans(start, end, InlineMathSpan::class.java)?.forEach { span ->
+      if (text.getSpanStart(span) !in start until end) return@forEach
+      mathAbove = maxOf(mathAbove, span.lineAscent + fm.ascent)
+      mathBelow = maxOf(mathBelow, span.lineDescent - fm.descent)
+    }
+    fm.ascent -= mathAbove
+    fm.top -= mathAbove
+    fm.descent += mathBelow
+    fm.bottom += mathBelow
     val firstLineTop = if (start <= blockStart) top else 0
     val lastLineBottom = if (end >= blockEnd) bottom else 0
     val wrapGap = if (end < blockEnd) (naturalHeight * 0.125f).roundToInt() else 0
@@ -387,8 +427,8 @@ private class BlockPaddingSpan(
     previousTop = fm.top
     previousDescent = fm.descent
     previousBottom = fm.bottom
-    addedTop = firstLineTop
-    addedBelow = lastLineBottom + wrapGap
+    addedTop = firstLineTop + mathAbove
+    addedBelow = lastLineBottom + wrapGap + mathBelow
   }
 }
 
@@ -1329,6 +1369,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   /** Fires whenever the native text layout's own content height changes (e.g. an image finishes
    *  sizing), so the RN side can size this view to its true content instead of clipping it. */
   private val onContentSize by EventDispatcher()
+  /** Asks JS to prompt for an inline equation's source: `{ expression, editing }`. */
+  private val onEquationRequest by EventDispatcher()
   private var lastReportedContentHeightPx = -1
   private var pageReferenceFallbackIcon: String? = null
   private var labels = EditorLabels.DEFAULT
@@ -1344,6 +1386,14 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private var titleTypeface: Typeface = Typeface.DEFAULT_BOLD
   private var monospaceTypeface: Typeface = Typeface.MONOSPACE
   private val blocks = mutableListOf<EditorBlock>()
+  /** The `equations` prop as delivered, and its parsed form; a null layout is a rejected expression. */
+  private var equationSources: Map<String, String?> = emptyMap()
+  private var equationLayouts: Map<String, MathLayout?> = emptyMap()
+  private val inlineMathHost = object : InlineMathHost {
+    override fun lineWidth(): Int = input.width - input.compoundPaddingLeft - input.compoundPaddingRight
+
+    override fun textPaint(): android.text.TextPaint = input.paint
+  }
   // Android may dispatch selection callbacks while the inner EditText is still being constructed.
   private var inputInitialized = false
   private val input = EditorInput(context)
@@ -1409,6 +1459,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
       override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
         if (applying || blocks.isEmpty()) return
+        // An edit moves text out from under the range an equation prompt was opened for.
+        pendingEquation = null
         val sourceBlock = blocks.getOrNull(editBlock)
         val continuedType = sourceBlock?.type?.takeIf {
           it == "bulleted_list_item" || it == "numbered_list_item" || it == "to_do"
@@ -1489,11 +1541,14 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         val end = (mark["end"] as? Number)?.toInt() ?: return@forEach
         val markUrl = (mark["url"] as? String)?.takeIf { kind == "link" }
         val markColor = (mark["color"] as? String)?.takeIf { kind == "color" && it in editorValidColors }
+        val markExpression = (mark["expression"] as? String)?.takeIf { kind == "equation" }
         if ((kind in listOf("bold", "italic", "strikethrough", "underline", "code")
           || (kind == "color" && markColor != null)
-          || (kind == "link" && !markUrl.isNullOrBlank())) &&
+          || (kind == "link" && !markUrl.isNullOrBlank())
+          || (kind == "equation" && isValidEquationMark(text, start, end, markExpression)
+            && marks.none { it.kind == "equation" && it.start == start })) &&
           start >= 0 && end > start && end <= text.length) {
-          marks.add(EditorMark(kind, start, end, markUrl, markColor))
+          marks.add(EditorMark(kind, start, end, markUrl, markColor, markExpression))
         }
       }
       val columnCount = (block["columnCount"] as? Number)?.toInt()?.takeIf { it in 2..5 }
@@ -1683,6 +1738,74 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     if (blocks.isNotEmpty()) styleBlocks()
   }
 
+  /**
+   * Receives the RaTeX layout of every inline equation, keyed by expression: DisplayList JSON, or
+   * null when RaTeX rejected the expression. An expression with no entry is still pending.
+   *
+   * Only the affected [InlineMathSpan]s are set again so their lines re-measure. [styleBlocks] is
+   * deliberately avoided: it rebuilds every table-cell editor and would reset an active cell's
+   * selection.
+   */
+  fun setEquations(value: Map<String, Any?>?) {
+    val nextSources = value.orEmpty().mapValues { it.value as? String }
+    val changed = (equationSources.keys + nextSources.keys).filterTo(mutableSetOf()) { expression ->
+      equationSources.containsKey(expression) != nextSources.containsKey(expression)
+        || equationSources[expression] != nextSources[expression]
+    }
+    if (changed.isEmpty()) return
+    equationLayouts = nextSources.mapValues { (expression, json) ->
+      if (expression in changed) MathLayout.parse(json) else equationLayouts[expression]
+    }
+    equationSources = nextSources
+    // Cell editors are refreshed in place too, so a focused cell keeps its focus and cursor.
+    tableOverlay.cellEditors().forEach { refreshEquationSpans(it.text, changed) }
+    if (!refreshEquationSpans(input.text, changed)) return
+    // Taller math moves everything below it, including the table overlay's cell editors.
+    tableOverlay.requestLayout()
+    input.post { reportContentSize() }
+  }
+
+  /** Set the [changed] expressions' spans again so their text re-measures; false when there were none. */
+  private fun refreshEquationSpans(editable: Editable, changed: Set<String>): Boolean {
+    val spans = editable.getSpans(0, editable.length, InlineMathSpan::class.java)
+    // A changed equation can move the source text that wraps after it in the same paragraph.
+    spans.forEach { it.invalidate() }
+    val stale = spans.filter { it.expression in changed }
+    stale.forEach { span ->
+      val start = editable.getSpanStart(span)
+      val end = editable.getSpanEnd(span)
+      val flags = editable.getSpanFlags(span)
+      editable.removeSpan(span)
+      if (start in 0 until end) editable.setSpan(span, start, end, flags)
+    }
+    return stale.isNotEmpty()
+  }
+
+  private fun equationLayoutState(expression: String): MathLayoutState = when {
+    !equationLayouts.containsKey(expression) -> MathLayoutState.Pending
+    else -> equationLayouts[expression]?.let { MathLayoutState.Ready(it) } ?: MathLayoutState.Invalid
+  }
+
+  /**
+   * A replacement span draws without the block's color spans, so an equation resolves its own ink:
+   * the inline color mark over it, then the block's color, then the theme foreground.
+   */
+  private fun inlineMathColors(block: EditorBlock, mark: EditorMark): InlineMathColors {
+    val markColor = block.marks
+      .firstOrNull { it.kind == "color" && it.start <= mark.start && it.end >= mark.end }?.color
+    return InlineMathColors(
+      foreground = theme.textColor(markColor)
+        ?: theme.muted.takeIf { block.type == "to_do" && block.checked }
+        ?: theme.textColor(block.color)
+        ?: theme.foreground,
+      background = theme.backgroundColor(markColor)
+        ?: theme.backgroundColor(block.color).takeIf { block.type != "callout" },
+      muted = theme.muted,
+      error = theme.error,
+      monospace = monospaceTypeface
+    )
+  }
+
   /** Applies the translated strings from JS; see `NativeEditorLabels` in NativeEditor.tsx. */
   fun setLabels(value: Map<String, Any?>?) {
     labels = EditorLabels.from(value)
@@ -1805,6 +1928,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         value["url"] as? String,
         value["label"] as? String
       )
+      "requestEquation" -> requestEquation()
+      "equation" -> applyEquation(value["expression"] as? String)
       "remove" -> removeBlocks()
       "turnInto" -> turnIntoBlocks(
         (value["type"] as? String)?.takeIf { it in editorValidBlockTypes && it != "link_to_page" },
@@ -1930,7 +2055,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     val cell = tableCell(editor.address) ?: return
     val next = mutableListOf<EditorMark>()
     cell.marks.forEach { mark ->
-      if (mark.end <= range.first || mark.start >= range.second) {
+      // As in a text block, an equation is content and survives clearing formats.
+      if (mark.end <= range.first || mark.start >= range.second || mark.kind == "equation") {
         next.add(mark)
       } else {
         if (mark.start < range.first) next.add(mark.copy(end = range.first))
@@ -2052,6 +2178,180 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     scheduleEvent("link")
   }
 
+  /**
+   * The selection as the target of an inline-equation command: a block that can hold one, the
+   * selected local range, and the equation mark when that range is exactly one equation.
+   */
+  private data class EquationTarget(val index: Int, val start: Int, val end: Int, val mark: EditorMark?)
+
+  /** Resolve the selection to an [EquationTarget], or null when it spans blocks or cannot hold one. */
+  private fun equationTarget(): EquationTarget? {
+    if (activeTableEditor?.hasFocus() == true) return null
+    val range = selectedBlockRange() ?: return null
+    if (range.first != range.last) return null
+    val block = blocks[range.first]
+    if (block.type !in editorInlineColorBlockTypes) return null
+    val blockStart = offsetOf(range.first)
+    val start = (minOf(input.selectionStart, input.selectionEnd) - blockStart).coerceIn(0, block.text.length)
+    val end = (maxOf(input.selectionStart, input.selectionEnd) - blockStart).coerceIn(start, block.text.length)
+    val mark = block.marks.firstOrNull { it.kind == "equation" && it.start == start && it.end == end }
+    return EquationTarget(range.first, start, end, mark)
+  }
+
+  /**
+   * The range an equation prompt was opened for. It is remembered, and the selection collapsed,
+   * rather than left selected while the prompt is up: Android restarts a long-press selection
+   * when the prompt's window closes, and that restart would re-select the new equation.
+   */
+  private data class PendingEquation(val blockId: String, val start: Int, val end: Int)
+
+  private var pendingEquation: PendingEquation? = null
+
+  /** [PendingEquation]'s counterpart for a range inside one table cell. */
+  private data class CellEquationTarget(val address: TableCellAddress, val start: Int, val end: Int)
+
+  private var pendingCellEquation: CellEquationTarget? = null
+
+  private fun cellEditor(address: TableCellAddress): TableCellEditor? =
+    activeTableEditor?.takeIf { it.address == address }
+      ?: tableOverlay.cellEditors().firstOrNull { it.address == address }
+
+  /** The focused cell's selection as an equation target. */
+  private fun cellEquationTarget(): CellEquationTarget? {
+    val editor = activeTableEditor?.takeIf { it.hasFocus() } ?: return null
+    val cell = tableCell(editor.address) ?: return null
+    val start = minOf(editor.selectionStart, editor.selectionEnd).coerceIn(0, cell.text.length)
+    val end = maxOf(editor.selectionStart, editor.selectionEnd).coerceIn(start, cell.text.length)
+    return CellEquationTarget(editor.address, start, end)
+  }
+
+  /** Hold a cell range for the prompt, collapse the cell's selection, and ask JS to prompt. */
+  private fun requestCellEquation(editor: TableCellEditor, target: CellEquationTarget) {
+    val cell = tableCell(target.address) ?: return
+    val mark = cell.marks
+      .firstOrNull { it.kind == "equation" && it.start == target.start && it.end == target.end }
+    pendingEquation = null
+    pendingCellEquation = target
+    val caret = target.end.coerceAtMost(editor.text.length)
+    if (editor.selectionStart != caret || editor.selectionEnd != caret) editor.setSelection(caret)
+    val expression = mark?.expression ?: cell.text
+      .substring(target.start, target.end)
+      .replace(EQUATION_PLACEHOLDER.toString(), "")
+    onEquationRequest(mapOf("expression" to expression, "editing" to (mark != null)))
+  }
+
+  /** The cell twin of [applyEquation], following [applyCellLink]. */
+  private fun applyCellEquation(target: CellEquationTarget, expression: String) {
+    val cell = tableCell(target.address) ?: return
+    val editor = cellEditor(target.address) ?: return
+    if (target.end > cell.text.length) return
+    val mark = cell.marks
+      .firstOrNull { it.kind == "equation" && it.start == target.start && it.end == target.end }
+    if (mark != null) {
+      cell.marks[cell.marks.indexOf(mark)] = mark.copy(expression = expression)
+    } else {
+      val text = cell.text.substring(0, target.start) + EQUATION_PLACEHOLDER + cell.text.substring(target.end)
+      updateCellMarksAfterEdit(cell, target.start, target.end - target.start, 1, text.length)
+      cell.text = text
+      cell.marks.add(EditorMark("equation", target.start, target.start + 1, expression = expression))
+      cell.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+    }
+    applyCellSpans(editor, cell)
+    editor.requestFocus()
+    editor.setSelection((target.start + 1).coerceAtMost(editor.text.length))
+    inputMethodManager().restartInput(editor)
+    editor.post { inputMethodManager().showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT) }
+    scheduleEvent("equation")
+  }
+
+  private fun holdEquationTarget(target: EquationTarget) {
+    pendingCellEquation = null
+    pendingEquation = PendingEquation(blocks[target.index].id, target.start, target.end)
+    val caret = (offsetOf(target.index) + target.end).coerceAtMost(input.text.length)
+    if (input.selectionStart != caret || input.selectionEnd != caret) input.setSelection(caret)
+  }
+
+  /** The held prompt range as a target, when its block still has room for it. */
+  private fun pendingEquationTarget(): EquationTarget? {
+    val pending = pendingEquation ?: return null
+    val index = blocks.indexOfFirst { it.id == pending.blockId }.takeIf { it >= 0 } ?: return null
+    val block = blocks[index]
+    if (block.type !in editorInlineColorBlockTypes || pending.end > block.text.length) return null
+    val mark = block.marks
+      .firstOrNull { it.kind == "equation" && it.start == pending.start && it.end == pending.end }
+    return EquationTarget(index, pending.start, pending.end, mark)
+  }
+
+  /** Open the equation prompt for the equation that starts at a global text offset. */
+  private fun requestEquationAt(globalStart: Int, expression: String) {
+    val (index, start) = logicalSelectionPoint(globalStart)
+    holdEquationTarget(EquationTarget(index, start, start + 1, null))
+    onEquationRequest(mapOf("expression" to expression, "editing" to true))
+  }
+
+  /**
+   * Ask JS to prompt for an equation at the selection: the selected equation's source to edit, or
+   * the selected plain text as the starting point of a new one.
+   */
+  private fun requestEquation() {
+    val cellTarget = cellEquationTarget()
+    if (cellTarget != null) {
+      cellEditor(cellTarget.address)?.let { requestCellEquation(it, cellTarget) }
+      return
+    }
+    val target = equationTarget() ?: return
+    holdEquationTarget(target)
+    val expression = target.mark?.expression ?: blocks[target.index].text
+      .substring(target.start, target.end)
+      .replace(EQUATION_PLACEHOLDER.toString(), "")
+      .replace('\u2028', ' ')
+    onEquationRequest(mapOf("expression" to expression, "editing" to (target.mark != null)))
+  }
+
+  /**
+   * Answer [requestEquation]: give the selected equation a new source, or replace the selection
+   * with a new equation. Either way the caret ends up after the equation with the keyboard up.
+   */
+  private fun applyEquation(rawExpression: String?) {
+    val expression = rawExpression?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    val pendingCell = pendingCellEquation
+    if (pendingCell != null || (pendingEquation == null && activeTableEditor?.hasFocus() == true)) {
+      val cellTarget = pendingCell ?: cellEquationTarget() ?: return
+      pendingCellEquation = null
+      pendingEquation = null
+      applyCellEquation(cellTarget, expression)
+      return
+    }
+    val target = pendingEquationTarget() ?: equationTarget() ?: return
+    pendingEquation = null
+    val block = blocks[target.index]
+    val blockStart = offsetOf(target.index)
+    if (target.mark != null) {
+      block.marks[block.marks.indexOf(target.mark)] = target.mark.copy(expression = expression)
+    } else {
+      // The text watcher recaptures the block's marks around the new placeholder character.
+      input.text.replace(blockStart + target.start, blockStart + target.end, EQUATION_PLACEHOLDER.toString())
+      block.marks.removeAll { it.kind == "equation" && it.start == target.start }
+      block.marks.add(EditorMark("equation", target.start, target.start + 1, expression = expression))
+      block.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+    }
+    styleBlocks()
+    input.setSelection((offsetOf(target.index) + target.start + 1).coerceAtMost(input.text.length))
+    // The replaced text may have been the IME's composing region.
+    if (input.hasFocus()) inputMethodManager().restartInput(input)
+    requestKeyboard()
+    scheduleEvent("equation")
+  }
+
+  /** The inline equation drawn under a touch on the main input or a cell editor, if any. */
+  private fun equationAt(view: EditText, event: MotionEvent): InlineMathSpan? {
+    val x = event.x - view.totalPaddingLeft + view.scrollX
+    val y = event.y - view.totalPaddingTop + view.scrollY
+    val text = view.text
+    return text.getSpans(0, text.length, InlineMathSpan::class.java)
+      .firstOrNull { text.getSpanStart(it) >= 0 && it.contains(x, y) }
+  }
+
   /** Return the global [start, end) bounds targeted by the link action. */
   private fun linkSelectionBounds(): Pair<Int, Int>? {
     val ranges = selectedBlockRange() ?: return null
@@ -2128,7 +2428,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private fun clearMarkRange(block: EditorBlock, start: Int, end: Int, kind: String? = null) {
     val next = mutableListOf<EditorMark>()
     block.marks.forEach { mark ->
-      if (mark.end <= start || mark.start >= end || (kind != null && mark.kind != kind)) {
+      // An equation is content rather than formatting, so clearing formats leaves it in place.
+      if (mark.end <= start || mark.start >= end || (kind != null && mark.kind != kind)
+        || (kind == null && mark.kind == "equation")) {
         next.add(mark)
       } else {
         if (mark.start < start) next.add(mark.copy(end = start))
@@ -2712,7 +3014,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
               .put("kind", mark.kind)
               .put("start", markStart - textStart)
               .put("end", markEnd - textStart)
-              .apply { mark.url?.let { put("url", it) } })
+              .apply { mark.url?.let { put("url", it) } }
+              .apply { mark.expression?.let { put("expression", it) } })
           }
         }
         if (marks.length() > 0) item.put("marks", marks)
@@ -2803,11 +3106,14 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
               val markEnd = mark.getInt("end")
               val markUrl = if (mark.has("url")) mark.getString("url") else null
               val markColor = if (mark.has("color")) mark.getString("color") else null
+              val markExpression = if (mark.has("expression")) mark.getString("expression") else null
               require(kind in listOf("bold", "italic", "strikethrough", "underline", "code")
                 || (kind == "color" && markColor in editorValidColors)
-                || (kind == "link" && !markUrl.isNullOrBlank()))
+                || (kind == "link" && !markUrl.isNullOrBlank())
+                || (kind == "equation" && isValidEquationMark(text, markStart, markEnd, markExpression)
+                  && marks.none { it.kind == "equation" && it.start == markStart }))
               require(markStart >= 0 && markEnd > markStart && markEnd <= text.length)
-              marks.add(EditorMark(kind, markStart, markEnd, markUrl, markColor))
+              marks.add(EditorMark(kind, markStart, markEnd, markUrl, markColor, markExpression))
             }
           }
           require(!hasOverlappingColorMarks(marks))
@@ -2829,9 +3135,19 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         }
         val start = minOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
         val firstBlock = input.text.take(start).count { it == '\n' }
-        val startsAtBoundary = pointAt(start)["offset"] == 0
+        val startOffset = pointAt(start)["offset"] as? Int ?: 0
+        val startsAtBoundary = startOffset == 0
         replaceSelection(parts.joinToString("\n") { it.text })
         parts.forEachIndexed { index, part ->
+          if (index == 0 && !startsAtBoundary) {
+            // Pasted into the middle of a block, the first part adopts that block's formatting,
+            // but its equations are content: without their marks only bare placeholders remain.
+            val target = blocks[firstBlock]
+            part.marks.filter { it.kind == "equation" }.forEach { mark ->
+              target.marks.add(mark.copy(start = mark.start + startOffset, end = mark.end + startOffset))
+            }
+            target.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+          }
           if (index > 0 || startsAtBoundary) {
             blocks[firstBlock + index].type = part.type
             blocks[firstBlock + index].color = part.color
@@ -2844,8 +3160,12 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             blocks[firstBlock + index].fileName = part.fileName
             blocks[firstBlock + index].fileSize = part.fileSize
             blocks[firstBlock + index].waveform = part.waveform
-            blocks[firstBlock + index].marks.clear()
+            // Text that followed the caret now trails the last part; its marks sit past the
+            // pasted text and stay with it.
+            blocks[firstBlock + index].marks.removeAll { it.start < part.text.length }
             blocks[firstBlock + index].marks.addAll(part.marks)
+            blocks[firstBlock + index].marks
+              .sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
           }
         }
         styleBlocks()
@@ -3112,6 +3432,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     editable.getSpans(0, editable.length, ForegroundColorSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, BackgroundColorSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, InlineCodeSpan::class.java).forEach { editable.removeSpan(it) }
+    editable.getSpans(0, editable.length, InlineMathSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, UnderlineSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, StrikethroughSpan::class.java).forEach { editable.removeSpan(it) }
     editable.getSpans(0, editable.length, TypefaceSpan::class.java).forEach { editable.removeSpan(it) }
@@ -3346,7 +3667,12 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           val markStart = (start + mark.start).coerceIn(start, end)
           val markEnd = (start + mark.end).coerceIn(markStart, end)
           if (markStart >= markEnd) return@forEach
-          editable.setSpan(EditorInlineMarkSpan(mark.kind, mark.url, mark.color), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          editable.setSpan(
+            EditorInlineMarkSpan(mark.kind, mark.url, mark.color, mark.expression),
+            markStart,
+            markEnd,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+          )
           when (mark.kind) {
             "bold" -> editable.setSpan(StyleSpan(Typeface.BOLD), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             "italic" -> editable.setSpan(StyleSpan(Typeface.ITALIC), markStart, markEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -3375,6 +3701,27 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           editable.setSpan(ForegroundColorSpan(theme.muted), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
           editable.setSpan(StrikethroughSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        // Set after every other span so the equation is the replacement its character draws with,
+        // and skipped inside a collapsed toggle, whose own replacement must keep hiding the block.
+        if (!collapsed) {
+          block.marks.forEach { mark ->
+            val expression = mark.expression
+            if (mark.kind != "equation" || expression == null ||
+              !isValidEquationMark(block.text, mark.start, mark.end, expression)) return@forEach
+            editable.setSpan(
+              InlineMathSpan(
+                expression,
+                context.assets,
+                inlineMathColors(block, mark),
+                inlineMathHost,
+                ::equationLayoutState
+              ),
+              start + mark.start,
+              start + mark.end,
+              Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+          }
+        }
       }
       if (block.toggle && block.collapsed) collapsedDepth = block.depth
       start = end + 1
@@ -3397,7 +3744,12 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         .toString().lastIndexOf('\n') + 1
       val localStart = (globalStart - blockStart).coerceIn(0, block.text.length)
       val localEnd = (globalEnd - blockStart).coerceIn(localStart, block.text.length)
-      if (localStart < localEnd) block.marks.add(EditorMark(span.kind, localStart, localEnd, span.url, span.color))
+      if (localStart >= localEnd) return@forEach
+      // An edit can leave an equation's marker over other text (typing over the selected token);
+      // the mark only survives while it still covers its one placeholder character.
+      if (span.kind == "equation" && (!isValidEquationMark(block.text, localStart, localEnd, span.expression)
+          || block.marks.any { it.kind == "equation" && it.start == localStart })) return@forEach
+      block.marks.add(EditorMark(span.kind, localStart, localEnd, span.url, span.color, span.expression))
     }
     blocks.forEach { block ->
       block.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
@@ -3471,6 +3823,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           mark.end += delta
           false
         }
+        // An equation whose character was edited away is gone; clamping it like a formatting
+        // range would slide it onto the next character.
+        mark.kind == "equation" -> true
         else -> {
           mark.end = (mark.end + delta).coerceAtMost(newLength).coerceAtLeast(mark.start + 1)
           mark.start >= newLength || mark.end <= mark.start
@@ -3511,6 +3866,32 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         }
       }
     }
+    // Set last, as in styleBlocks, so the equation is the replacement its character draws with.
+    cell.marks.forEach { mark ->
+      val expression = mark.expression
+      if (mark.kind != "equation" || expression == null ||
+        !isValidEquationMark(cell.text, mark.start, mark.end, expression)) return@forEach
+      val markColor = cell.marks
+        .firstOrNull { it.kind == "color" && it.start <= mark.start && it.end >= mark.end }?.color
+      value.setSpan(
+        InlineMathSpan(
+          expression,
+          context.assets,
+          InlineMathColors(
+            foreground = theme.textColor(markColor) ?: tableCellTextColor(editor.address),
+            background = theme.backgroundColor(markColor),
+            muted = theme.muted,
+            error = theme.error,
+            monospace = monospaceTypeface
+          ),
+          editor.mathHost,
+          ::equationLayoutState
+        ),
+        mark.start,
+        mark.end,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+      )
+    }
     syncingTableEditor = true
     val selectionStart = editor.selectionStart.coerceAtLeast(0)
     val selectionEnd = editor.selectionEnd.coerceAtLeast(0)
@@ -3529,6 +3910,14 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     private var downX = 0f
     private var downY = 0f
     private var downTime = 0L
+    private var pressedEquation: InlineMathSpan? = null
+
+    /** A cell is a single line, so equation source never wraps in it: no line width is given. */
+    val mathHost = object : InlineMathHost {
+      override fun lineWidth(): Int = 0
+
+      override fun textPaint(): android.text.TextPaint = paint
+    }
 
     init {
       setSingleLine(true)
@@ -3570,6 +3959,13 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
         override fun afterTextChanged(s: Editable?) {
           if (syncingTableEditor) return
+          pendingCellEquation = null
+          // Typing over a selected equation leaves its span on the new text; an equation only
+          // draws over its one placeholder character.
+          s?.getSpans(0, s.length, InlineMathSpan::class.java)?.forEach { span ->
+            val spanStart = s.getSpanStart(span)
+            if (s.getSpanEnd(span) != spanStart + 1 || s[spanStart] != EQUATION_PLACEHOLDER) s.removeSpan(span)
+          }
           val cell = tableCell(address) ?: return
           val nextText = s?.toString()?.replace('\n', ' ') ?: ""
           val oldLength = cell.text.length
@@ -3625,12 +4021,14 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           downX = event.x
           downY = event.y
           downTime = event.eventTime
+          pressedEquation = equationAt(this, event)
         }
         MotionEvent.ACTION_MOVE -> {
           val density = resources.displayMetrics.density
           val edge = 14 * density
           val fromEdge = downX <= edge || downX >= width - edge || downY <= edge || downY >= height - edge
           val moved = hypot((event.x - downX).toDouble(), (event.y - downY).toDouble())
+          if (moved >= ViewConfiguration.get(context).scaledTouchSlop) pressedEquation = null
           if (!rangeDrag && fromEdge && event.eventTime - downTime >= 300
             && moved >= ViewConfiguration.get(context).scaledTouchSlop) {
             rangeDrag = true
@@ -3640,11 +4038,27 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           if (rangeDrag) tableOverlay.updateRangeFrom(this, event.x, event.y)
         }
         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+          val equation = pressedEquation
+          pressedEquation = null
           if (rangeDrag) {
             tableOverlay.updateRangeFrom(this, event.x, event.y)
             parent?.requestDisallowInterceptTouchEvent(false)
             rangeDrag = false
             scheduleEvent("selection")
+            return true
+          }
+          val equationStart = equation?.let { text.getSpanStart(it) } ?: -1
+          if (event.actionMasked == MotionEvent.ACTION_UP && equation != null && equationStart >= 0 &&
+            equationAt(this, event) === equation &&
+            event.eventTime - event.downTime < ViewConfiguration.getLongPressTimeout()) {
+            // As in the main input: a tap on an equation edits it, and the base class sees a cancel.
+            val cancel = MotionEvent.obtain(event)
+            cancel.action = MotionEvent.ACTION_CANCEL
+            super.onTouchEvent(cancel)
+            cancel.recycle()
+            requestFocus()
+            requestCellEquation(this, CellEquationTarget(address, equationStart, equationStart + 1))
+            performClick()
             return true
           }
         }
@@ -3660,7 +4074,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
 
   private inner class TableOverlay(context: Context) : FrameLayout(context) {
     private val editors = mutableListOf<TableCellEditor>()
-    private val widthToggles = mutableListOf<TableWidthToggle>()
+
+    fun cellEditors(): List<TableCellEditor> = editors
+
     private val actionButtons = mutableListOf<TableActionsButton>()
     private val rowThumbs = mutableListOf<TableSelectionThumb>()
     private val columnThumbs = mutableListOf<TableSelectionThumb>()
@@ -3707,62 +4123,6 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             else -> true
           }
         }
-      }
-    }
-
-    private inner class TableWidthToggle(
-      context: Context,
-      val blockIndex: Int
-    ) : View(context) {
-      private val density = resources.displayMetrics.density
-      private val trackWidth = (54 * density).roundToInt()
-      private val trackHeight = (34 * density).roundToInt()
-      private val thumbSize = (30 * density).roundToInt()
-      private val thumbTravel = (20 * density).roundToInt()
-
-      init {
-        contentDescription = labels.fitTableWidth
-        isClickable = true
-      }
-
-      fun trackWidthForLayout(): Int = trackWidth
-      fun trackHeightForLayout(): Int = trackHeight
-
-      override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(trackWidth, trackHeight)
-      }
-
-      override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val fit = blocks.getOrNull(blockIndex)?.table?.fitPageWidth == true
-        val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = if (fit) theme.switchTrackOn else theme.switchTrackOff
-          style = Paint.Style.FILL
-        }
-        val radius = trackHeight / 2f
-        canvas.drawRoundRect(0f, 0f, trackWidth.toFloat(), trackHeight.toFloat(), radius, radius, track)
-        val thumb = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = theme.switchThumb
-          style = Paint.Style.FILL
-            setShadowLayer(1.5f * density, 0f, density, theme.shadowWithAlpha(0x4A))
-        }
-        setLayerType(LAYER_TYPE_SOFTWARE, thumb)
-        val left = 2f * density + if (fit) thumbTravel.toFloat() else 0f
-        canvas.drawCircle(left + thumbSize / 2f, trackHeight / 2f, thumbSize / 2f, thumb)
-      }
-
-      override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked != MotionEvent.ACTION_UP) return true
-        val block = blocks.getOrNull(blockIndex) ?: return true
-        block.table?.fitPageWidth = !(block.table?.fitPageWidth ?: false)
-        replaceNativeTextAndSelect(blockIndex)
-        performClick()
-        return true
-      }
-
-      override fun performClick(): Boolean {
-        super.performClick()
-        return true
       }
     }
 
@@ -3978,17 +4338,14 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val restore = activeTableCell
       removeAllViews()
       editors.clear()
-      widthToggles.clear()
       actionButtons.clear()
       rowThumbs.clear()
       columnThumbs.clear()
       blocks.forEachIndexed { blockIndex, block ->
         if (block.type != "table") return@forEachIndexed
-        val widthToggle = TableWidthToggle(context, blockIndex)
         val actionButton = TableActionsButton(context, blockIndex)
         val rowThumb = TableSelectionThumb(context, blockIndex, 0, null)
         val columnThumb = TableSelectionThumb(context, blockIndex, null, 0)
-        widthToggles.add(widthToggle)
         actionButtons.add(actionButton)
         rowThumbs.add(rowThumb)
         columnThumbs.add(columnThumb)
@@ -4000,7 +4357,6 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             addView(editor, LayoutParams(0, 0))
           }
         }
-        addView(widthToggle, LayoutParams(0, 0))
         addView(actionButton, LayoutParams(0, 0))
         addView(rowThumb, LayoutParams(0, 0))
         addView(columnThumb, LayoutParams(0, 0))
@@ -4026,9 +4382,6 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       startHandle.visibility = if (visible) View.VISIBLE else View.GONE
       endHandle.visibility = if (visible) View.VISIBLE else View.GONE
       val active = rangeAnchor ?: activeTableCell
-      widthToggles.forEachIndexed { index, view ->
-        view.visibility = if (active?.blockIndex == view.blockIndex) View.VISIBLE else View.GONE
-      }
       actionButtons.forEachIndexed { index, view ->
         view.visibility = if (active?.blockIndex == view.blockIndex) View.VISIBLE else View.GONE
       }
@@ -4058,12 +4411,6 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         editor.measure(
           MeasureSpec.makeMeasureSpec(cellWidth, MeasureSpec.EXACTLY),
           MeasureSpec.makeMeasureSpec(rowHeight, MeasureSpec.EXACTLY)
-        )
-      }
-      widthToggles.forEach { toggle ->
-        toggle.measure(
-          MeasureSpec.makeMeasureSpec(toggle.trackWidthForLayout(), MeasureSpec.EXACTLY),
-          MeasureSpec.makeMeasureSpec(toggle.trackHeightForLayout(), MeasureSpec.EXACTLY)
         )
       }
       actionButtons.forEach { button ->
@@ -4119,12 +4466,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         val tableTop = textLayout.getLineBaseline(line) - tableHeightPx(table)
         val tableLeft = input.left + input.paddingLeft
         val tableRight = tableLeft + tableDisplayWidthPx(input, table)
-        val toggle = widthToggles.firstOrNull { it.blockIndex == blockIndex }
         val actions = actionButtons.firstOrNull { it.blockIndex == blockIndex }
-        if (toggle != null && toggle.visibility == View.VISIBLE && actions != null) {
+        if (actions != null && actions.visibility == View.VISIBLE) {
           val actionsLeft = tableRight - chromeSize
-          val toggleLeft = actionsLeft - toggle.measuredWidth
-          toggle.layout(toggleLeft, tableTop + 4 * resources.displayMetrics.density.roundToInt(), actionsLeft, tableTop + 4 * resources.displayMetrics.density.roundToInt() + toggle.measuredHeight)
           actions.layout(actionsLeft, tableTop + 4 * resources.displayMetrics.density.roundToInt(), tableRight, tableTop + 4 * resources.displayMetrics.density.roundToInt() + actions.measuredHeight)
         }
         val active = rangeAnchor ?: activeTableCell
@@ -4160,6 +4504,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     private var pressedAudioBlock = -1
     private var pressedFileBlock = -1
     private var pressedTableBlock = -1
+    private var pressedEquation: InlineMathSpan? = null
     private var pressStartX = 0f
     private var pressStartY = 0f
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -4389,6 +4734,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           pressedAudioBlock = audioBlock ?: -1
           pressedFileBlock = fileBlock ?: -1
           pressedTableBlock = tableBlock ?: -1
+          // An equation only arms here: the press still reaches the base class, so placing the
+          // cursor beside it, long-press selection, and scrolling keep working.
+          pressedEquation = equationAt(this, event)
           if (pressedToggleBlock >= 0) return true
           if (pressedTodoBlock >= 0) return true
           if (pressedPageReferenceBlock >= 0) return true
@@ -4404,12 +4752,29 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         // between -- this is what actually opens the actions sheet mid-scroll and, since nothing
         // else was ever asked to handle the gesture, is also why the swipe fails to scroll at all.
         MotionEvent.ACTION_MOVE -> {
-          if (hasPressedBlock() &&
-            (abs(event.x - pressStartX) > touchSlop || abs(event.y - pressStartY) > touchSlop)) {
-            clearPressedBlocks()
+          if (abs(event.x - pressStartX) > touchSlop || abs(event.y - pressStartY) > touchSlop) {
+            pressedEquation = null
+            if (hasPressedBlock()) clearPressedBlocks()
           }
         }
         MotionEvent.ACTION_UP -> {
+          val equation = pressedEquation
+          pressedEquation = null
+          val equationStart = equation?.let { text.getSpanStart(it) } ?: -1
+          if (equation != null && equationStart >= 0 && equationAt(this, event) === equation &&
+            event.eventTime - event.downTime < ViewConfiguration.getLongPressTimeout()) {
+            // A tap on an equation edits it. The base class sees a cancel instead of this release,
+            // so it neither moves the cursor nor raises the keyboard under the prompt.
+            val cancel = MotionEvent.obtain(event)
+            cancel.action = MotionEvent.ACTION_CANCEL
+            super.onTouchEvent(cancel)
+            cancel.recycle()
+            clearPressedBlocks()
+            requestFocus()
+            requestEquationAt(equationStart, equation.expression)
+            performClick()
+            return true
+          }
           val pressed = pressedToggleBlock
           val pressedTodo = pressedTodoBlock
           val pressedPageReference = pressedPageReferenceBlock
@@ -4490,6 +4855,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           }
         }
         MotionEvent.ACTION_CANCEL -> {
+          pressedEquation = null
           clearPressedBlocks()
         }
       }

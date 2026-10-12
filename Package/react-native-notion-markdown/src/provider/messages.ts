@@ -29,6 +29,7 @@ export type MarkdownMessageId =
     | "toolbar.strikethrough"
     | "toolbar.underline"
     | "toolbar.code"
+    | "toolbar.equation"
     | "toolbar.eraseFormatting"
     | "toolbar.link"
     | "toolbar.speech"
@@ -77,6 +78,12 @@ export type MarkdownMessageId =
     | "linkSheet.label"
     | "linkSheet.cancel"
     | "linkSheet.apply"
+    | "equationSheet.title"
+    | "equationSheet.expression"
+    | "equationSheet.placeholder"
+    | "equationSheet.preview"
+    | "equationSheet.cancel"
+    | "equationSheet.apply"
     | "actionsSheet.title"
     | "actionsSheet.insertAbove"
     | "actionsSheet.insertBelow"
@@ -184,7 +191,6 @@ export type MarkdownMessageId =
     | "native.emptyToDoPlaceholder"
     | "native.emptyTogglePlaceholder"
     | "native.file"
-    | "native.fitTableWidth"
     | "native.selectTableColumn"
     | "native.selectTableRow"
     | "native.tableActions"
@@ -828,6 +834,42 @@ const defaultMarkdownMessages: Readonly<Record<MarkdownMessageId, MarkdownMessag
             description: "Title of the emoji picker; coupled to callout blocks for now",
             id: "emojiSheet.title"
         },
+        "equationSheet.apply":
+        {
+            defaultMessage: "Apply",
+            description: "Submits the inline equation's LaTeX source",
+            id: "equationSheet.apply"
+        },
+        "equationSheet.cancel":
+        {
+            defaultMessage: "Cancel",
+            description: "Dismisses the inline equation sheet",
+            id: "equationSheet.cancel"
+        },
+        "equationSheet.expression":
+        {
+            defaultMessage: "LaTeX",
+            description: "Label of the inline equation sheet's source field",
+            id: "equationSheet.expression"
+        },
+        "equationSheet.placeholder":
+        {
+            defaultMessage: "E = mc^2",
+            description: "Placeholder shown in the inline equation sheet's empty source field",
+            id: "equationSheet.placeholder"
+        },
+        "equationSheet.preview":
+        {
+            defaultMessage: "Preview",
+            description: "Label of the inline equation sheet's rendered preview",
+            id: "equationSheet.preview"
+        },
+        "equationSheet.title":
+        {
+            defaultMessage: "Inline equation",
+            description: "Title of the inline equation sheet",
+            id: "equationSheet.title"
+        },
         "insertPanel.advancedTitle":
         {
             defaultMessage: "Advanced",
@@ -1145,12 +1187,6 @@ const defaultMarkdownMessages: Readonly<Record<MarkdownMessageId, MarkdownMessag
             defaultMessage: "File",
             description: "Fallback title of a file block whose file has no name",
             id: "native.file"
-        },
-        "native.fitTableWidth":
-        {
-            defaultMessage: "Fit table to page width",
-            description: "Accessibility description of the switch that fits a table to the page width",
-            id: "native.fitTableWidth"
         },
         "native.selectTableColumn":
         {
@@ -1541,6 +1577,12 @@ const defaultMarkdownMessages: Readonly<Record<MarkdownMessageId, MarkdownMessag
             defaultMessage: "Edit",
             description: "Refocuses the native text field",
             id: "toolbar.edit"
+        },
+        "toolbar.equation":
+        {
+            defaultMessage: "Inline equation",
+            description: "Adds an inline equation, or turns the selected text into one",
+            id: "toolbar.equation"
         },
         "toolbar.eraseFormatting":
         {

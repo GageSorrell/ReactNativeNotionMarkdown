@@ -8,6 +8,7 @@
  */
 
 import { type MarkdownColor, isMarkdownColor, markdownColors } from "./document/types.ts";
+import { MARKDOWN_ATOM_PLACEHOLDER } from "./document/fields.ts";
 
 /**
  * A block in the milestone-one transport model. This is not the public Markdown AST.
@@ -86,14 +87,19 @@ export type EditorTextMarkKind =
 /** Supported column counts for a `column_list` block. */
 export type EditorColumnCount = 2 | 3 | 4 | 5;
 
-/** A UTF-16 range carrying one inline formatting mark. */
+/**
+ * A UTF-16 range carrying one inline formatting mark. An `"equation"` mark covers exactly one
+ * `MARKDOWN_ATOM_PLACEHOLDER` character and carries the equation's LaTeX source.
+ */
 export interface EditorTextMark
 {
     readonly end: number;
-    readonly kind: EditorTextMarkKind | "color" | "link";
+    readonly kind: EditorTextMarkKind | "color" | "link" | "equation";
     readonly start: number;
     readonly color?: MarkdownColor;
     readonly url?: string;
+    /** LaTeX source of an `"equation"` mark. */
+    readonly expression?: string;
 }
 
 /** Target selected by the public color command. */
@@ -210,6 +216,8 @@ export type Action =
     | "format"
     | "clearFormat"
     | "link"
+    | "requestEquation"
+    | "equation"
     | "color"
     | "icon"
     | "remove"
@@ -298,6 +306,12 @@ export interface EditorCommand
     readonly label?: string;
 
     /**
+     * LaTeX source for an `"equation"` action, which answers the native view's equation request:
+     * it updates the selected inline equation, or replaces the selection with a new one.
+     */
+    readonly expression?: string;
+
+    /**
      * Target block id for a `"insertAbove"`, `"insertBelow"`, `"duplicateBlock"`,
      * `"deleteBlock"`, or `"replaceImage"` action -- these act on the identified block directly
      * rather than on the current selection, since the block-actions sheet can be opened for a
@@ -369,7 +383,10 @@ const validEditorBlockTypes: ReadonlyArray<EditorBlock[ "type" ]> =
         "link_to_page"
     ];
 
-/** Validate editor mark ranges, including the single-color-per-range invariant. */
+/**
+ * Validate editor mark ranges, including the single-color-per-range invariant and the
+ * one-placeholder-per-equation invariant.
+ */
 function validEditorMarks(marks: ReadonlyArray<EditorTextMark> | undefined, text: string): boolean
 {
     if (marks === undefined) {return true;}
@@ -377,9 +394,17 @@ function validEditorMarks(marks: ReadonlyArray<EditorTextMark> | undefined, text
         mark.start >= 0 && mark.end > mark.start && mark.end <= text.length
         && ([ "bold", "italic", "strikethrough", "underline", "code" ].includes(mark.kind)
             || (mark.kind === "color" && isMarkdownColor(mark.color))
-            || (mark.kind === "link" && typeof mark.url === "string" && mark.url.length > 0))
+            || (mark.kind === "link" && typeof mark.url === "string" && mark.url.length > 0)
+            || (mark.kind === "equation" && mark.end === mark.start + 1
+                && text[ mark.start ] === MARKDOWN_ATOM_PLACEHOLDER
+                && typeof mark.expression === "string" && mark.expression.trim().length > 0))
     );
     if (!valid) {return false;}
+
+    const equationOffsets = marks
+        .filter((mark: EditorTextMark) => mark.kind === "equation")
+        .map((mark: EditorTextMark) => mark.start);
+    if (new Set(equationOffsets).size !== equationOffsets.length) {return false;}
 
     const colors = marks
         .filter((mark: EditorTextMark) => mark.kind === "color")
@@ -510,7 +535,8 @@ export function AcceptEditorEvent(current: EditorSnapshot, event: EditorEvent): 
                             && next.kind === mark.kind
                             && next.start === mark.start
                             && next.color === mark.color
-                            && next.url === mark.url;
+                            && next.url === mark.url
+                            && next.expression === mark.expression;
                     }
                 );
             return previous?.text === block.text
@@ -546,6 +572,42 @@ export/**
        * @since 1.0.0
        */
 const acceptEditorEvent = AcceptEditorEvent;
+
+/**
+ * Collect the unique inline-equation expressions of a document, in document order. A table
+ * block contributes its cells row by row.
+ *
+ * @since 1.0.0
+ */
+export function editorEquationExpressions(blocks: ReadonlyArray<EditorBlock>): Array<string>
+{
+    const expressions = new Set<string>();
+    const collect = (marks: ReadonlyArray<EditorTextMark> | undefined): void =>
+    {
+        for (const mark of marks ?? [])
+        {
+            if (mark.kind === "equation" && typeof mark.expression === "string")
+            {
+                expressions.add(mark.expression);
+            }
+        }
+    };
+
+    for (const block of blocks)
+    {
+        collect(block.marks);
+
+        for (const row of block.table?.rows ?? [])
+        {
+            for (const cell of row.cells)
+            {
+                collect(cell.marks);
+            }
+        }
+    }
+
+    return [ ...expressions ];
+}
 
 /**
  * Native buffer uses newline boundaries and U+2028 for within-block soft breaks.

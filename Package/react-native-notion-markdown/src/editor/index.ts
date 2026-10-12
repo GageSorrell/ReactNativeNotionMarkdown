@@ -17,6 +17,7 @@ export {
     type NativeEditorColorName,
     type NativeEditorLabels,
     type NativeEditorTheme,
+    type NativeEquationRequestEvent,
     type NativePageReferencePressEvent,
     type NativeEditorProps
 } from "../NativeEditor.tsx";

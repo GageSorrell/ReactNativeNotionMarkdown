@@ -4,6 +4,7 @@ import {
   createEditorDocument,
   acceptEditorEvent,
   editorPointAt,
+  editorEquationExpressions,
   parseMarkdown,
   serializeMarkdown,
   fromMarkdownBlocks,
@@ -308,6 +309,134 @@ test('editor snapshots preserve inline colors and reject overlapping color marks
     revision: 1
   });
   assert.equal(invalid, initial);
+});
+test('editor equation marks round-trip and accept an expression-only change', () => {
+  const initial = createEditorDocument();
+  const equation = {
+    ...initial.blocks[0],
+    text: 'Mass \uFFFC here',
+    marks: [ { end: 6, expression: 'E = mc^2', kind: 'equation', start: 5 } ]
+  };
+  const accepted = acceptEditorEvent(initial, {
+    ...initial,
+    blocks: [equation, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  assert.deepEqual(accepted.blocks[0].marks, equation.marks);
+  assert.equal(accepted.blocks[0].text, equation.text);
+
+  const unchanged = acceptEditorEvent(accepted, {
+    ...accepted,
+    blocks: [{ ...equation, marks: [ { ...equation.marks[0] } ] }, ...accepted.blocks.slice(1)],
+    revision: 2
+  });
+  assert.equal(unchanged.blocks[0], accepted.blocks[0]);
+
+  const edited = acceptEditorEvent(accepted, {
+    ...accepted,
+    blocks: [{ ...equation, marks: [ { ...equation.marks[0], expression: 'E = mc^3' } ] }, ...accepted.blocks.slice(1)],
+    revision: 2
+  });
+  assert.notEqual(edited.blocks[0], accepted.blocks[0]);
+  assert.equal(edited.blocks[0].marks[0].expression, 'E = mc^3');
+  assert.equal(edited.blocks[1], accepted.blocks[1]);
+});
+test('malformed editor equation marks are rejected in blocks and table cells', () => {
+  const initial = createEditorDocument();
+  const text = 'a\uFFFC\uFFFCb';
+  const valid = { end: 2, expression: 'x', kind: 'equation', start: 1 };
+  const malformed = {
+    'wrong length': [ { ...valid, end: 3 } ],
+    'not on U+FFFC': [ { ...valid, end: 1, start: 0 } ],
+    'blank expression': [ { ...valid, expression: '  ' } ],
+    'missing expression': [ { end: 2, kind: 'equation', start: 1 } ],
+    'duplicate offset': [ valid, { ...valid, expression: 'y' } ]
+  };
+  const blockEvent = (marks) => ({
+    ...initial,
+    blocks: [{ ...initial.blocks[0], marks, text }, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  const cellEvent = (marks) => ({
+    ...initial,
+    blocks: [{
+      ...initial.blocks[0],
+      text: '',
+      type: 'table',
+      table: {
+        fitPageWidth: false,
+        headerRow: false,
+        headerColumn: false,
+        rows: [ { cells: [ { text, marks }, { text: 'plain' } ] } ]
+      }
+    }, ...initial.blocks.slice(1)],
+    revision: 1
+  });
+
+  const adjacent = [ valid, { end: 3, expression: 'y', kind: 'equation', start: 2 } ];
+  assert.deepEqual(acceptEditorEvent(initial, blockEvent(adjacent)).blocks[0].marks, adjacent);
+  assert.deepEqual(
+    acceptEditorEvent(initial, cellEvent(adjacent)).blocks[0].table.rows[0].cells[0].marks,
+    adjacent
+  );
+  for (const [ name, marks ] of Object.entries(malformed)) {
+    assert.equal(acceptEditorEvent(initial, blockEvent(marks)), initial, `block: ${name}`);
+    assert.equal(acceptEditorEvent(initial, cellEvent(marks)), initial, `cell: ${name}`);
+  }
+});
+test('an expression-only change inside a table cell is accepted', () => {
+  const initial = createEditorDocument();
+  const tableWith = (expression) => ({
+    ...initial.blocks[0],
+    text: '',
+    type: 'table',
+    table: {
+      fitPageWidth: false,
+      headerRow: false,
+      headerColumn: false,
+      rows: [ { cells: [ { text: '\uFFFC', marks: [ { end: 1, expression, kind: 'equation', start: 0 } ] } ] } ]
+    }
+  });
+  const accepted = acceptEditorEvent(initial, {
+    ...initial,
+    blocks: [tableWith('x'), ...initial.blocks.slice(1)],
+    revision: 1
+  });
+  const edited = acceptEditorEvent(accepted, {
+    ...accepted,
+    blocks: [tableWith('y'), ...accepted.blocks.slice(1)],
+    revision: 2
+  });
+  assert.equal(edited.blocks[0].table.rows[0].cells[0].marks[0].expression, 'y');
+});
+test('editorEquationExpressions dedupes across blocks and table cells in document order', () => {
+  const equation = (start, expression) => ({ end: start + 1, expression, kind: 'equation', start });
+  const blocks = [
+    {
+      id: 'a',
+      type: 'text',
+      text: '\uFFFC bold \uFFFC',
+      marks: [ equation(0, 'b'), { end: 6, kind: 'bold', start: 2 }, equation(7, 'a') ]
+    },
+    { id: 'b', type: 'heading_1', text: 'No marks' },
+    {
+      id: 'c',
+      type: 'table',
+      text: '',
+      table: {
+        fitPageWidth: false,
+        headerRow: false,
+        headerColumn: false,
+        rows: [
+          { cells: [ { text: '\uFFFC', marks: [ equation(0, 'c') ] }, { text: 'plain' } ] },
+          { cells: [ { text: '\uFFFC', marks: [ equation(0, 'a') ] }, { text: '\uFFFC', marks: [ equation(0, 'd') ] } ] }
+        ]
+      }
+    },
+    { id: 'd', type: 'text', text: '\uFFFC', marks: [ equation(0, 'b') ] }
+  ];
+  assert.deepEqual(editorEquationExpressions(blocks), [ 'b', 'a', 'c', 'd' ]);
+  assert.deepEqual(editorEquationExpressions(createEditorDocument().blocks), []);
 });
 
 test('soft breaks stay in a block; empty blocks have selectable endpoints', () => {
