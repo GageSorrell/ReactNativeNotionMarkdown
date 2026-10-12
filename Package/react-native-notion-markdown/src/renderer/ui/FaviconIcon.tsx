@@ -12,9 +12,9 @@
 /** Favicon loading and fallback icon presentation for arbitrary web links. */
 
 import { Image, Text, View } from "react-native";
-import type { MarkdownReferenceIconComponent } from "./types.ts";
-import { createElement, useEffect, useMemo, useState } from "react";
+import { createElement, useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
+import type { MarkdownReferenceIconComponent } from "./types.ts";
 import { useResolvedRendererConfig } from "../../provider/MarkdownProvider.tsx";
 
 interface FaviconIconProps
@@ -154,12 +154,18 @@ export function FaviconIcon({
         return () => { live = false; };
     }, [ url ]);
 
+    const faviconSource = useMemo(() => ({ uri: favicon?.value }), [ favicon?.value ]);
+    const onFailedUrl = useCallback(() =>
+    {
+        return () => setFailedUrl(url);
+    }, [ url ]);
+
     if (favicon?.url === url && favicon.value !== undefined && failedUrl !== url)
     {
         return <Image
             accessibilityLabel={ t("renderer.webPageFavicon") }
-            onError={ () => setFailedUrl(url) }
-            source={ { uri: favicon.value } }
+            onError={ onFailedUrl }
+            source={ faviconSource }
             style={ imageStyle }
         />;
     }

@@ -642,7 +642,7 @@ function ColorChoice({ choice, onSelect }: ColorChoiceProps)
     );
     const handlePress = useCallback(() => onSelect(choice.color), [ choice.color, onSelect ]);
 
-    return <Pressable accessibilityLabel={ choice.label }
+    return <Pressable accessibilityLabel={ choice.accessibilityLabel }
         accessibilityRole="button"
         android_ripple={ ripple }
         onPress={ handlePress }

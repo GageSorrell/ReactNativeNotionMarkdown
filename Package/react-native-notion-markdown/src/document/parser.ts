@@ -714,6 +714,64 @@ function removeTrailingAttributes(value: string): { text: string; attrs: Record<
 }
 
 /**
+ * Split an `![Caption](URL) {attrs}` line into its parts, or return `undefined` if it is not one.
+ *
+ * The caption is rich text, so it may hold escaped brackets, links, and citations; it ends at
+ * the bracket that balances the opening one rather than at the first `]`.
+ *
+ * @category Functions
+ * @since 1.0.0
+ */
+function parseImageLine(value: string): { caption: string; url: string; attrs: string } | undefined
+{
+    if (!value.startsWith("!["))
+    {
+        return undefined;
+    }
+
+    let depth = 1;
+    let close = -1;
+
+    for (let index: number = 2; index < value.length && close < 0; index += 1)
+    {
+        const character = value[index]!;
+        if (character === "\\")
+        {
+            index += 1;
+        }
+        else if (character === "`" || character === "$")
+        {
+            // Code and equation spans are literal, so brackets inside them do not nest.
+            const spanEnd = value.indexOf(character, index + 1);
+            index = spanEnd < 0 ? index : spanEnd;
+        }
+        else if (character === "[")
+        {
+            depth += 1;
+        }
+        else if (character === "]")
+        {
+            depth -= 1;
+            close = depth === 0 ? index : -1;
+        }
+    }
+
+    if (close < 0)
+    {
+        return undefined;
+    }
+
+    // The URL may hold balanced parentheses, e.g. `photo_(1).png`.
+    const target = value
+        .slice(close + 1)
+        .match(/^\(((?:[^()]|\([^()]*\))+|[^)]+)\)(?:\s+\{([^{}]*)\})?$/);
+
+    return target === null
+        ? undefined
+        : { attrs: target[2] ?? "", caption: value.slice(2, close), url: target[1]! };
+}
+
+/**
  * Find the minimum indentation of child lines after the given starting index.
  *
  * @category Functions
@@ -1224,7 +1282,23 @@ function parseSequence(
             const attrs = attributes(container[2] ?? "");
             const close = findClosing(context.lines, index + 1, end, tag, indent);
             const bodyEnd = close === end ? end : close;
-            const children = parseChildren(context, index + 1, bodyEnd, indent, pathValue);
+            // A toggle's summary is its first body line; a later one belongs to a nested toggle.
+            const firstBodyLine = context.lines
+                .slice(index + 1, bodyEnd)
+                .find((bodyLine: SourceLine) => bodyLine.text.trim() !== "");
+            const summary = tag === "details" &&
+                firstBodyLine !== undefined &&
+                /^<summary>/i.test(firstBodyLine.text.trim())
+                ? firstBodyLine
+                : undefined;
+            // The summary may be indented like a child, so it must not be parsed as one.
+            const children = parseChildren(
+                context,
+                summary === undefined ? index + 1 : context.lines.indexOf(summary) + 1,
+                bodyEnd,
+                indent,
+                pathValue
+            );
             let block: MarkdownBlock;
             if (tag === "columns" || tag === "column")
             {
@@ -1241,9 +1315,6 @@ function parseSequence(
             }
             else if (tag === "details")
             {
-                const summary = context.lines
-                    .slice(index + 1, bodyEnd)
-                    .find((bodyLine: SourceLine) => /^<summary>/.test(bodyLine.text.trim()));
                 const title = summary?.text
                     .trim()
                     .replace(/^<summary>/i, "")
@@ -1492,22 +1563,22 @@ function parseSequence(
             continue;
         }
 
-        const media = value.match(/^!\[([^\]]*)\]\(([^)]+)\)(?:\s+\{([^{}]*)\})?$/);
+        const media = parseImageLine(value);
 
-        if (media !== null)
+        if (media !== undefined)
         {
-            const parsed = removeTrailingAttributes(media[1]!);
+            const parsed = removeTrailingAttributes(media.caption);
             result.push(makeBlock(
                 context,
                 "image",
                 pathValue,
                 {
                     caption: parseInline(parsed.text, context, line),
-                    external: { url: media[2]! },
+                    external: { url: media.url },
                     type: "external"
                 },
                 line,
-                attributes(media[3] ?? "")
+                attributes(media.attrs)
             ));
 
             index += 1;

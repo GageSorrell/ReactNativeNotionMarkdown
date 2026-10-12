@@ -15,12 +15,16 @@
  * Colors come from the editor theme's `switch` tokens via the nearest `MarkdownProvider`.
  */
 
-import { Animated, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { Animated, Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useResolvedEditorConfig } from "../../provider/MarkdownProvider.tsx";
 
-export type SwitchSize = "medium" | "small";
+/** The size of a switch. */
+export type SwitchSize =
+    | "medium"
+    | "small";
 
+/** {@inheritDoc Switch} */
 export interface SwitchProps
 {
     readonly accessibilityLabel?: string;
@@ -56,6 +60,7 @@ export function Switch({
 }: SwitchProps): React.JSX.Element
 {
     const dimensions = dimensionsBySize[ size ];
+    /* eslint-disable-next-line react-hooks/refs */
     const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
     const { theme } = useResolvedEditorConfig();
     const colors = theme.editor.switch;
@@ -93,26 +98,32 @@ export function Switch({
         }).start();
     }, [ progress, value ]);
 
+    const animatedStyle = useMemo(() => [
+        thumbStyle,
+        {
+            transform: [ {
+                /* eslint-disable-next-line react-hooks/refs */
+                translateX: progress.interpolate({
+                    inputRange: [ 0, 1 ],
+                    outputRange: [ 0, dimensions.travel ]
+                })
+            } ]
+        }
+    ], [ dimensions.travel, progress, thumbStyle ]);
+
+    const accessibilityState = useMemo(() => ({ checked: value, disabled }), [  disabled, value ]);
+
     return <Pressable
         accessibilityLabel={ accessibilityLabel }
         accessibilityRole="switch"
-        accessibilityState={ { checked: value, disabled } }
+        accessibilityState={ accessibilityState }
         disabled={ disabled }
         onPress={ onPress }
         style={ pressStyle }>
-        <View pointerEvents="none" style={ styles.thumbViewport }>
-            <Animated.View
-                style={ [
-                    thumbStyle,
-                    {
-                        transform: [ {
-                            translateX: progress.interpolate({
-                                inputRange: [ 0, 1 ],
-                                outputRange: [ 0, dimensions.travel ]
-                            })
-                        } ]
-                    }
-                ] } />
+        <View
+            pointerEvents="none"
+            style={ styles.thumbViewport }>
+            <Animated.View style={ animatedStyle } />
         </View>
     </Pressable>;
 }

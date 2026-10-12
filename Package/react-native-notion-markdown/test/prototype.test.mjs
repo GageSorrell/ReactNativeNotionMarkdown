@@ -266,6 +266,26 @@ test('audio Markdown preserves its URL and caption through a round trip', () => 
   assert.equal(parsed.document.blocks[0].audio.external.url, 'file:///tmp/memo.m4a');
   assert.match(serializeMarkdown(parsed.document), /<audio src="file:\/\/\/tmp\/memo\.m4a">Voice \*\*memo\*\*<\/audio>/);
 });
+test('image Markdown stays an image when its caption holds formatting', () => {
+  for (const source of [
+    '![**bold** and *italic*](https://example.com/a.png)',
+    '![see [docs](https://example.com/d)](https://example.com/a.png)',
+    '![a \\[b\\] c](https://example.com/a.png)',
+    '![cited[^https://example.com/c]](https://example.com/a.png) {color="blue"}',
+    '![range $[0,1)$](https://example.com/a.png)',
+    '![cap](https://example.com/a_(1).png)'
+  ]) {
+    const parsed = parseMarkdown(source);
+    assert.equal(parsed.document.blocks.length, 1, source);
+    assert.equal(parsed.document.blocks[0].type, 'image', source);
+    assert.equal(serializeMarkdown(parsed.document).trim(), source);
+  }
+  const linked = parseMarkdown('![see [docs](https://example.com/d)](https://example.com/a.png)').document.blocks[0];
+  assert.equal(linked.image.external.url, 'https://example.com/a.png');
+  assert.equal(linked.image.caption.map((item) => item.plain_text ?? item.text.content).join(''), 'see docs');
+  assert.equal(parseMarkdown('![a](https://example.com/a.png) trailing text').document.blocks[0].type, 'paragraph');
+  assert.equal(parseMarkdown('![a](https://example.com/a.png)![b](https://example.com/b.png)').document.blocks[0].type, 'paragraph');
+});
 test('editor link marks preserve URLs and reject malformed links', () => {
   const initial = createEditorDocument();
   const linked = {
@@ -471,6 +491,17 @@ test('block and inline colors compose without creating a second inline color', (
   assert.equal(serializeMarkdown(parsed.document), source);
 });
 
+test('callouts serialize a single icon attribute', () => {
+  const source = [
+    '<callout icon="🎯" color="blue_bg">',
+    '\tShip the MVP by **Friday**.',
+    '</callout>'
+  ].join('\n');
+  const parsed = parseMarkdown(source);
+  assert.deepEqual(parsed.diagnostics, []);
+  assert.equal(serializeMarkdown(parsed.document), source);
+});
+
 test('invalid and nested inline colors are diagnosed and omitted', () => {
   const parsed = parseMarkdown([
     'Unsupported {color="chartreuse"}',
@@ -513,6 +544,35 @@ test('Milestone 2 parses recursive containers, tables, mentions, and literal cod
   assert.equal(result.document.blocks[3].code.rich_text[0].text.content, '**literal** \\ $x$');
   assert.equal(result.document.blocks[4].paragraph.rich_text[0].mention.user.id, 'abc123');
   assert.match(serializeMarkdown(result.document), /<table/);
+});
+
+test('toggle summaries are not duplicated across round trips', () => {
+  const canonical = [
+    '<details color="blue">',
+    '<summary>More</summary>',
+    '\t- Child',
+    '\t<details>',
+    '\t<summary>Inner</summary>',
+    '\t\tNested',
+    '\t</details>',
+    '</details>',
+    '<details>',
+    '<summary>Empty</summary>',
+    '</details>'
+  ].join('\n');
+  // Older serializer output indented the summary like a child.
+  const indented = canonical.replace(/^(\t*)<summary>/gm, '$1\t<summary>');
+  for (const markdown of [ canonical, indented ]) {
+    const parsed = parseMarkdown(markdown);
+    assert.deepEqual(parsed.diagnostics, []);
+    const [ outer, empty ] = parsed.document.blocks;
+    assert.deepEqual(outer.children.map((child) => child.type), [ 'bulleted_list_item', 'toggle' ]);
+    assert.deepEqual(outer.children[1].children.map((child) => child.type), [ 'paragraph' ]);
+    assert.deepEqual(empty.children ?? [], []);
+    const once = serializeMarkdown(parsed.document);
+    assert.equal(once.trim(), canonical);
+    assert.equal(serializeMarkdown(parseMarkdown(once).document), once);
+  }
 });
 
 test('table optional attributes and rich-text colors round trip canonically', () => {

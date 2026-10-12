@@ -12,13 +12,13 @@
 import { Image, Pressable, Text, View } from "react-native";
 import type { MarkdownBlock, MarkdownRichText } from "../../document/types.ts";
 import type { MarkdownDocumentTheme, MarkdownTheme } from "../../provider/theme.ts";
-import type { MarkdownMessageId } from "../../provider/messages.ts";
-import type { MarkdownMediaRequest } from "./types.ts";
-import type { MarkdownOpenUrl } from "../../provider/MarkdownProvider.tsx";
 import { type StatusChangeEventPayload, VideoView, useVideoPlayer } from "expo-video";
 import { asRecord, getMarkdownBlockPayload } from "../../internal.ts";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { MarkdownMediaRequest } from "./types.ts";
+import type { MarkdownMessageId } from "../../provider/messages.ts";
+import type { MarkdownOpenUrl } from "../../provider/MarkdownProvider.tsx";
 import { MarkdownRichTextView } from "./RichText.tsx";
 import Pdf from "react-native-pdf";
 import { useResolvedRendererConfig } from "../../provider/MarkdownProvider.tsx";
@@ -155,6 +155,18 @@ function AudioPreview({ url, theme, onUnavailable }: {
         fontSize: theme.fontSize
     }), [ theme.fontFamily, theme.fontSize, theme.foreground ]);
 
+    const handlePress = useCallback(() =>
+    {
+        if (status.playing)
+        {
+            player.pause();
+        }
+        else
+        {
+            player.play();
+        }
+    }, [ player, status.playing ]);
+
     if (status.error)
     {
         return (
@@ -164,11 +176,12 @@ function AudioPreview({ url, theme, onUnavailable }: {
             />
         );
     }
+
     return (
         <Pressable
             accessibilityLabel={ t(status.playing ? "renderer.pauseAudio" : "renderer.playAudio") }
             accessibilityRole="button"
-            onPress={ () => status.playing ? player.pause() : player.play() }
+            onPress={ handlePress }
             style={ rootStyle }>
             <Text style={ textStyle }>
                 {
@@ -363,6 +376,8 @@ export function MarkdownMediaView({
         [ theme.fontSize, theme.muted ]
     );
 
+    const handleOpenedKey = useCallback(() => setOpenedKey(activeKey), [ activeKey ]);
+
     return (
         <View
             style={ rootStyle }
@@ -370,7 +385,7 @@ export function MarkdownMediaView({
             {!active && (
                 <Pressable accessibilityLabel={ t("renderer.loadMediaPreview", { kind: heading }) }
                     accessibilityRole="button"
-                    onPress={ () => setOpenedKey(activeKey) }
+                    onPress={ handleOpenedKey }
                     style={ loadStyle }>
                     <Text style={ loadTextStyle }>
                         { t("renderer.loadMediaPreview", { kind: heading }) }
@@ -397,7 +412,9 @@ export function MarkdownMediaView({
             {
                 active && !error && url && kind === "image" && (
                     <Image
-                        accessibilityLabel={ t(source.caption?.length ? "renderer.imageWithCaption" : "renderer.image") }
+                        accessibilityLabel={ t(source.caption?.length
+                            ? "renderer.imageWithCaption"
+                            : "renderer.image") }
                         onError={ () => failed(t("renderer.imageUnavailable")) }
                         onLoad={ () => setResult({ key: requestKey, loaded: true, url }) }
                         resizeMode="contain"
@@ -410,7 +427,7 @@ export function MarkdownMediaView({
                 active && !error && url && kind === "pdf" && (
                     <Pdf
                         onError={ () => failed(t("renderer.pdfUnavailable")) }
-                        onLoadComplete={ () => setResult({ key: requestKey, url, loaded: true }) }
+                        onLoadComplete={ () => setResult({ key: requestKey, loaded: true, url }) }
                         source={ { cache: true, uri: url } }
                         style={ pdfStyle }
                     />

@@ -10,9 +10,7 @@
  */
 
 import {
-    KeyboardAvoidingView,
     Modal,
-    Platform,
     Pressable,
     StyleSheet,
     Text,
@@ -20,6 +18,7 @@ import {
     View
 } from "react-native";
 import { useCallback, useMemo, useState } from "react";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import type { MarkdownEditorEquationResult } from "./MarkdownEditor.tsx";
 import { MarkdownMathView } from "../../renderer/ui/MathView.tsx";
 import { editorFontStyle } from "./customization.ts";
@@ -107,8 +106,10 @@ export function EquationBottomSheet({
         statusBarTranslucent
         transparent
         visible>
+        { /* React Native's own KeyboardAvoidingView does nothing here on Android: the modal's
+             window is edge-to-edge and is not resized for the keyboard. */ }
         <KeyboardAvoidingView
-            behavior={ Platform.OS === "ios" ? "padding" : undefined }
+            behavior="padding"
             style={ styles.root }>
             <Pressable
                 accessibilityLabel={ labels.cancel }

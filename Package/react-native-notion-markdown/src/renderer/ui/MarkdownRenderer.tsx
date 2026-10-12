@@ -15,18 +15,18 @@ import type {
     MarkdownRichText,
     MarkdownRichTextItem
 } from "../../document/types.ts";
-import type {
-    MarkdownRendererConfig,
-    MarkdownRendererProps,
-    MarkdownReferenceDisplay
-} from "./types.ts";
 import type { MarkdownDocumentTheme, MarkdownPalette, MarkdownTheme } from "../../provider/theme.ts";
 import {
-    MarkdownProvider,
     type MarkdownOpenUrl,
+    MarkdownProvider,
     type MarkdownTranslateById,
     useResolvedRendererConfig
 } from "../../provider/MarkdownProvider.tsx";
+import type {
+    MarkdownReferenceDisplay,
+    MarkdownRendererConfig,
+    MarkdownRendererProps
+} from "./types.ts";
 import {
     Pressable,
     ScrollView,
@@ -37,13 +37,13 @@ import {
 } from "react-native";
 import { asRecord, getMarkdownBlockPayload, getMarkdownMetadata } from "../../internal.ts";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { markdownColor } from "../../provider/theme.ts";
 import { FaviconIcon } from "./FaviconIcon.tsx";
 import { MarkdownMathView } from "./MathView.tsx";
 import { MarkdownMediaView } from "./Previews.tsx";
 import { MarkdownMermaidView } from "./MermaidView.tsx";
 import { MarkdownRichTextView } from "./RichText.tsx";
 import type { ReactNode } from "react";
+import { markdownColor } from "../../provider/theme.ts";
 import { openPageReferenceUrl } from "../../openPageReference.ts";
 import { parseMarkdown } from "../../document/parser.ts";
 
@@ -191,7 +191,9 @@ function listItemRunPosition(blocks: ReadonlyArray<MarkdownBlock>, index: number
  */
 function containsHeading(blocks: ReadonlyArray<MarkdownBlock>, id: string): boolean
 {
-    return blocks.some((block: MarkdownBlock) => block.id === id || containsHeading(block.children ?? [ ], id));
+    return blocks.some(
+        (block: MarkdownBlock) => block.id === id || containsHeading(block.children ?? [ ], id)
+    );
 }
 
 /**
@@ -347,12 +349,18 @@ function ToggleContent({ block, context, depth, seen, title }: {
         trigger: { alignItems: "flex-start" as const, flexDirection: "row" as const, minHeight: 35 }
     }), [ context.theme.fontFamily, context.theme.fontSize, context.theme.muted ]);
 
+    const accessibilityState = useMemo(() => ({ expanded }), [ expanded ]);
+    const onPress = useCallback(() =>
+    {
+        return () => setLocalExpansion({ block, value: !expanded });
+    }, [ block, expanded ]);
+
     return <View>
         <Pressable
             accessibilityLabel={ context.t(expanded ? "renderer.collapseToggle" : "renderer.expandToggle") }
             accessibilityRole="button"
-            accessibilityState={ { expanded } }
-            onPress={ () => setLocalExpansion({ block, value: !expanded }) }
+            accessibilityState={ accessibilityState }
+            onPress={ onPress }
             style={ styles.trigger }>
             <Text style={ styles.arrow }>
                 { expanded ? "▼" : "▶" }
@@ -672,9 +680,9 @@ function TableCell({
     return (
         <View style={ cellStyle }>
             <Rich
+                color={ foregroundColor }
                 context={ context }
                 value={ value }
-                color={ foregroundColor }
                 weight={ weight }
             />
         </View>
@@ -749,12 +757,16 @@ function TableView({ block, context }: { readonly block: MarkdownBlock; readonly
                                             ?? rowMeta?.rowColors?.[ rowIndex ]
                                             ?? table?.columnColors?.[ columnIndex ]
                                             ?? table?.tableColor;
-                                        const mappedColor = markdownColor(color as string | undefined, context.palette);
+                                        const mappedColor =
+                                            markdownColor(color as string | undefined, context.palette);
                                         const explicitBackground = typeof color === "string"
                                             && (color.endsWith("_bg") || color.endsWith("_background"));
                                         const backgroundColor = explicitBackground
                                             ? mappedColor ?? context.theme.background
-                                            : ((headerRow && rowIndex === 0) || (headerColumn && columnIndex === 0))
+                                            : (
+                                                (headerRow && rowIndex === 0) ||
+                                                (headerColumn && columnIndex === 0)
+                                            )
                                                 ? context.theme.surface
                                                 : context.theme.background;
                                         const foregroundColor = explicitBackground ? undefined : mappedColor;
@@ -802,11 +814,16 @@ function TableOfContentsEntry({ entry, entryRowStyle, entryTextStyle, context }:
         { paddingLeft: Math.min(entry.depth, 4) * 12 }
     ], [ entry.depth, entryRowStyle ]);
 
+    const onPress = useCallback(() =>
+    {
+        return () => context.goToHeading(entry.block.id);
+    }, [ context, entry.block.id ]);
     return (
-        <Pressable accessibilityLabel={ `Go to ${ entry.text }` }
+        <Pressable
+            accessibilityLabel={ `Go to ${ entry.text }` }
             accessibilityRole="link"
-            onPress={ () => context.goToHeading(entry.block.id) }
-            style={ style }>
+            style={ style }
+            { ...{ onPress } }>
             <Text style={ entryTextStyle }>
                 { entry.text }
             </Text>
@@ -911,8 +928,15 @@ export function MarkdownBlockView({
     ]);
 
     const todoStyles = useMemo(() => ({
-        checkboxCheckmark: { color: context.theme.onAccent, fontSize: 12, fontWeight: "700" as const, lineHeight: 14 },
-        checkboxDefault: {
+        checkboxCheckmark:
+        {
+            color: context.theme.onAccent,
+            fontSize: 12,
+            fontWeight: "700" as const,
+            lineHeight: 14
+        },
+        checkboxDefault:
+        {
             alignItems: "center" as const,
             backgroundColor: checked ? context.theme.accent : "transparent",
             borderColor: checked ? context.theme.accent : context.theme.border,
@@ -1045,6 +1069,11 @@ export function MarkdownBlockView({
         context.theme.surface
     ]);
 
+    const ref = useMemo(() =>
+    {
+        return (view: View | null) => context.registerHeading(block.id, view);
+    }, [ block.id, context ]);
+
     if (override)
     {
         const Component = override;
@@ -1122,7 +1151,7 @@ export function MarkdownBlockView({
             return (
                 <View
                     accessibilityRole="header"
-                    ref={ (view: View | null) => context.registerHeading(block.id, view) }
+                    ref={ ref }
                     style={ headingStyles.root }
                     testID={ `heading-${ block.id }` }>
                     {
@@ -1445,23 +1474,26 @@ function MarkdownRendererContent(props: MarkdownRendererContentProps)
             headings.current.delete(id);
         }
     };
-    const goToHeading = (id: string) =>
+
+    const context: RenderContext = useMemo(() =>
     {
-        setTarget({ document, id });
-        setTimeout(() =>
+        const goToHeading = (id: string) =>
         {
-            const heading = headings.current.get(id);
-            if (heading && content.current)
+            setTarget({ document, id });
+            setTimeout(() =>
             {
-                heading.measureLayout(
-                    content.current,
-                    (_x: number, y: number) => scroll.current?.scrollTo({ animated: true, y })
-                );
-            }
-        }, 150);
-    };
-    const context: RenderContext =
-        {
+                const heading = headings.current.get(id);
+                if (heading && content.current)
+                {
+                    heading.measureLayout(
+                        content.current,
+                        (_x: number, y: number) => scroll.current?.scrollTo({ animated: true, y })
+                    );
+                }
+            }, 150);
+        };
+
+        return {
             availableWidth,
             config: resolved.config,
             dark,
@@ -1478,6 +1510,18 @@ function MarkdownRendererContent(props: MarkdownRendererContentProps)
             targetHeading,
             theme
         };
+    }, [
+        availableWidth,
+        dark,
+        document,
+        fullTheme,
+        resolved.config,
+        resolved.onOpenUrl,
+        resolved.t,
+        targetHeading,
+        theme,
+        width
+    ]);
 
     const scrollStyle = useMemo(() => ({ backgroundColor: theme.background, flex: 1 }), [ theme.background ]);
     const contentStyle = useMemo(() => ({ padding: theme.spacing }), [ theme.spacing ]);

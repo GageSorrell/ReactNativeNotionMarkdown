@@ -93,7 +93,15 @@ export type MarkdownEditorButton =
     | "toggleHeading2"
     | "toggleHeading3"
     | "toggleHeading4"
-    | "returnToKeyboard";
+    | "returnToKeyboard"
+    | "insertAbove"
+    | "insertBelow"
+    | "insertLeft"
+    | "insertRight"
+    | "headerRow"
+    | "headerColumn"
+    | "fitTableWidth"
+    | "clearContents";
 
 /**
  * Props accepted by an icon component supplied by the host application.
@@ -469,6 +477,8 @@ const defaultMarkdownEditorTurnIntoItems: ReadonlyArray<MarkdownEditorTurnIntoIt
  */
 export interface EditorColorChoice
 {
+    /** The spoken name, which unlike {@link label} tells a background hue from its text hue. */
+    readonly accessibilityLabel: string;
     readonly background: boolean;
     readonly color: MarkdownColor | undefined;
     readonly hue: MarkdownColorName | undefined;
@@ -493,13 +503,20 @@ export function editorColorChoices(
         background: boolean
     ): Array<EditorColorChoice> => [
         ...(showDefault
-            ? [ { background, color: undefined, hue: undefined, label: defaultLabel } ]
+            ? [ {
+                accessibilityLabel: defaultLabel,
+                background,
+                color: undefined,
+                hue: undefined,
+                label: defaultLabel
+            } ]
             : [ ]),
         ...hues.map((hue: MarkdownColorName): EditorColorChoice => ({
+            accessibilityLabel: t(background ? `color.${ hue }Background` : `color.${ hue }`),
             background,
             color: (background ? `${ hue }_bg` : hue) as MarkdownColor,
             hue,
-            label: t(background ? `color.${ hue }Background` : `color.${ hue }`)
+            label: t(`color.${ hue }`)
         }))
     ];
 

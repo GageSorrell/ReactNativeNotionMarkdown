@@ -486,6 +486,9 @@ const inlineMathHeading = "Heading with \uFFFC";
 const inlineMathListItem = "A list item with \uFFFC";
 const inlineMathInvalid = "An invalid expression shows its source: \uFFFC";
 const inlineMathCell = "Area \uFFFC";
+const inlineMathLong = "A long equation wraps onto new lines: \uFFFC and text continues.";
+const inlineMathLongExpression =
+    "a^2 + b^2 + c^2 + d^2 = \\sum_{i=1}^{n} x_i^2 + \\frac{1}{2} y + \\sqrt{z + 1} + w + u + v + t";
 const inlineMathInvalidLong = "A long invalid expression wraps: \uFFFC and text continues.";
 const inlineMathInvalidLongExpression =
     "\\frac{a + b + c}{\\sqrt{x^2 + y^2 + z^2}} + \\left( \\sum_{i=1}^{n} i^2 + \\int_0^1 f(t)\\,dt";
@@ -561,6 +564,20 @@ export const InlineMath: Story =
                         ],
                         text: inlineMathListItem,
                         type: "bulleted_list_item"
+                    },
+                    {
+                        id: "math:long",
+                        marks:
+                        [
+                            {
+                                end: inlineMathLong.indexOf("\uFFFC") + 1,
+                                expression: inlineMathLongExpression,
+                                kind: "equation",
+                                start: inlineMathLong.indexOf("\uFFFC")
+                            }
+                        ],
+                        text: inlineMathLong,
+                        type: "text"
                     },
                     {
                         id: "math:invalid",

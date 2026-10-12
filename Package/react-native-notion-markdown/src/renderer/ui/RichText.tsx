@@ -10,19 +10,19 @@
  */
 
 import type { MarkdownMetadata, MarkdownRichText, MarkdownRichTextItem } from "../../document/types.ts";
+import type { MarkdownOpenUrl, MarkdownTranslateById } from "../../provider/MarkdownProvider.tsx";
 import type {
     MarkdownReferenceDisplay,
     MarkdownReferenceIconComponent,
     MarkdownReferenceRequest
 } from "./types.ts";
-import type { MarkdownOpenUrl, MarkdownTranslateById } from "../../provider/MarkdownProvider.tsx";
 import { type MarkdownTheme, markdownColor } from "../../provider/theme.ts";
 import { Text, View, type ViewStyle } from "react-native";
 import { asRecord, getMarkdownMetadata } from "../../internal.ts";
 import { useEffect, useMemo, useState } from "react";
+import { FaviconIcon } from "./FaviconIcon.tsx";
 import { MarkdownMathView } from "./MathView.tsx";
 import { useResolvedRendererConfig } from "../../provider/MarkdownProvider.tsx";
-import { FaviconIcon } from "./FaviconIcon.tsx";
 
 /**
  * Props for rendering a given rich-text collection. The theme, link icon, link opening, and
@@ -37,7 +37,9 @@ export interface MarkdownRichTextViewProps
     readonly linkFallbackIcon?: MarkdownReferenceIconComponent;
     readonly theme?: MarkdownTheme;
     readonly onOpenUrl?: MarkdownOpenUrl;
-    readonly resolveReference?: (request: MarkdownReferenceRequest) => Promise<MarkdownReferenceDisplay | null>;
+    readonly resolveReference?:
+    (request: MarkdownReferenceRequest) => Promise<MarkdownReferenceDisplay | null>;
+
     readonly textStyle?:
     {
         readonly fontFamily?: string;

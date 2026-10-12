@@ -69,6 +69,14 @@ import kotlin.math.sin
 private const val FRAGMENT_MIME = "application/vnd.react-native-notion-markdown.editor+json"
 private const val AUDIO_WAVEFORM_BAR_COUNT = 32
 
+/**
+ * The plain text and structured fragment of the last copy made by an editor in this process.
+ * Something between copy and paste may rewrite the system clip as plain text and drop the
+ * fragment -- a clipboard manager, a keyboard's clipboard, an emulator's host clipboard sharing.
+ * While the clip's text is still the text that was copied, the fragment is taken from here.
+ */
+private var lastCopiedFragment: Pair<String, String>? = null
+
 /** Relative text size applied to each heading level's span, matching Markdown's own descending scale. */
 private val headingScale = mapOf(1 to 1.875f, 2 to 1.5f, 3 to 1.25f, 4 to 1.125f)
 
@@ -322,6 +330,33 @@ private fun isValidEquationMark(text: String, start: Int, end: Int, expression: 
   start >= 0 && end == start + 1 && end <= text.length &&
     text[start] == EQUATION_PLACEHOLDER && !expression.isNullOrBlank()
 
+/** How long after deleting text a keyboard may put it back and still count as rewriting it. */
+private const val EQUATION_REWRITE_WINDOW_MS = 1000L
+
+/**
+ * Equations removed by a pure deletion, in order. Some keyboards rewrite the word around the
+ * cursor as two edits -- delete it, then insert it again -- and the equation in that word comes
+ * back as a bare placeholder. An insertion at the same offset, right away, holding as many
+ * placeholders as were deleted is that second half.
+ */
+private class EquationRewrite(
+  private val offset: Int = -1,
+  private val expressions: List<String> = emptyList(),
+  private val time: Long = 0L
+) {
+  /** The deleted expressions when an insertion of [placeholders] at [insertedAt] puts them back. */
+  fun reinserted(insertedAt: Int, placeholders: Int): List<String> =
+    expressions.takeIf {
+      it.isNotEmpty() && insertedAt == offset && placeholders == it.size
+        && android.os.SystemClock.uptimeMillis() - time < EQUATION_REWRITE_WINDOW_MS
+    }.orEmpty()
+
+  companion object {
+    fun of(offset: Int, expressions: List<String>): EquationRewrite =
+      EquationRewrite(offset, expressions, android.os.SystemClock.uptimeMillis())
+  }
+}
+
 private fun hasOverlappingColorMarks(marks: List<EditorMark>): Boolean {
   val colors = marks.filter { it.kind == "color" }.sortedBy { it.start }
   return colors.zipWithNext().any { (first, second) -> second.start < first.end }
@@ -346,7 +381,8 @@ private data class EditorPasteBlock(
   val mimeType: String? = null,
   val fileName: String? = null,
   val fileSize: Double? = null,
-  val waveform: List<Float>? = null
+  val waveform: List<Float>? = null,
+  val table: EditorTable? = null
 )
 
 /** Marker span used to preserve inline marks while Android adjusts ranges during text edits. */
@@ -1403,6 +1439,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private var activeTableEditor: TableCellEditor? = null
   private var syncingTableEditor = false
   private var removed = ""
+  /** Every equation's global text offset and expression, as of just before an edit. */
+  private var equationsBeforeEdit: List<Pair<Int, String>> = emptyList()
+  /** The equations the last edit deleted, where it deleted them, for [EquationRewrite.reinserted]. */
+  private var deletedEquations = EquationRewrite()
   private var editBlock = 0
   private var probeConnection: InputConnection? = null
   private var keyboardRequestPending = false
@@ -1455,6 +1495,14 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         if (applying) return
         removed = s?.subSequence(start, start + count)?.toString() ?: ""
         editBlock = s?.take(start)?.count { it == '\n' } ?: 0
+        var offset = 0
+        equationsBeforeEdit = blocks.flatMap { block ->
+          val blockStart = offset
+          offset += block.nativeText().length + 1
+          block.marks.mapNotNull { mark ->
+            mark.expression?.takeIf { mark.kind == "equation" }?.let { (blockStart + mark.start) to it }
+          }
+        }
       }
 
       override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -1488,6 +1536,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
           }
         }
         captureInlineMarks()
+        if (s != null) restoreEquationMarks(s, start, before, count)
         scheduleEvent("text")
       }
 
@@ -2977,14 +3026,216 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     input.setSelection(startOffset, endOffset)
   }
 
+  /** An inline equation as plain text: the enhanced Markdown spec's `$expression$` syntax. */
+  private fun equationSource(expression: String): String =
+    "$" + expression.replace('\n', ' ').replace('\r', ' ') + "$"
+
+  /**
+   * [text] as it leaves the rich model: each placeholder character becomes the source of the
+   * equation [expressionAt] finds at that offset, and any other placeholder is kept.
+   */
+  private fun plainTextWithEquations(text: CharSequence, expressionAt: (Int) -> String?): String {
+    val plain = StringBuilder(text.length)
+    text.forEachIndexed { offset, character ->
+      val expression = if (character == EQUATION_PLACEHOLDER) expressionAt(offset) else null
+      if (expression != null) plain.append(equationSource(expression)) else plain.append(character)
+    }
+    return plain.toString()
+  }
+
+  /** Plain text arriving from outside has no marks, so a placeholder in it could only be stray. */
+  private fun withoutPlaceholders(text: String): String = text.replace(EQUATION_PLACEHOLDER.toString(), "")
+
+  /**
+   * Turn a block's inline equations back into `$expression$` text, for block types that show
+   * their text literally. Returns each expansion as its original offset and the length it added.
+   */
+  private fun expandInlineEquations(block: EditorBlock): List<Pair<Int, Int>> {
+    val equations = block.marks
+      .filter { it.kind == "equation" && isValidEquationMark(block.text, it.start, it.end, it.expression) }
+      .sortedBy { it.start }
+    if (equations.isEmpty()) return emptyList()
+    val sources = equations.map { equationSource(it.expression.orEmpty()) }
+    val shifts = equations.mapIndexed { index, mark -> mark.start to (sources[index].length - 1) }
+    fun shifted(offset: Int): Int = offset + shifts.filter { it.first < offset }.sumOf { it.second }
+    val text = StringBuilder()
+    var cursor = 0
+    equations.forEachIndexed { index, mark ->
+      text.append(block.text, cursor, mark.start).append(sources[index])
+      cursor = mark.end
+    }
+    text.append(block.text, cursor, block.text.length)
+    val others = block.marks.filter { it.kind != "equation" }
+      .map { it.copy(start = shifted(it.start), end = shifted(it.end)) }
+    block.text = text.toString()
+    block.marks.clear()
+    block.marks.addAll(others)
+    return shifts
+  }
+
+  /** Put [plain] on the system clipboard with its structured [json] fragment riding along. */
+  private fun setFragmentClip(label: String, plain: String, json: String) {
+    lastCopiedFragment = plain to json
+    // A single item exposes interoperable text plus private structured data, not two pasted items.
+    clipboard().setPrimaryClip(
+      ClipData(
+        ClipDescription(label, arrayOf("text/plain", FRAGMENT_MIME)),
+        ClipData.Item(plain, null, Intent().putExtra(FRAGMENT_MIME, json), null)
+      )
+    )
+  }
+
+  /** The structured fragment a clip carries, or the remembered one when its text is unchanged. */
+  private fun clipFragment(clip: ClipData): String? {
+    val item = clip.getItemAt(0)
+    val carried = item.intent?.getStringExtra(FRAGMENT_MIME)
+      ?.takeIf { clip.description.hasMimeType(FRAGMENT_MIME) }
+    val fragment = carried ?: lastCopiedFragment?.let { (plain, json) ->
+      val text = item.coerceToText(context)?.toString().orEmpty()
+      json.takeIf { text.replace("\r", "") == plain.replace("\r", "") }
+    }
+    return fragment?.takeIf { it.length <= 1_000_000 }
+  }
+
+  /** One mark of a fragment block, clipped to [textStart, textEnd) of the text it came from. */
+  private fun fragmentMarks(marks: List<EditorMark>, textStart: Int, textEnd: Int): JSONArray {
+    val result = JSONArray()
+    marks.forEach { mark ->
+      val markStart = maxOf(mark.start, textStart)
+      val markEnd = minOf(mark.end, textEnd)
+      if (markStart < markEnd) {
+        result.put(JSONObject()
+          .put("kind", mark.kind)
+          .put("start", markStart - textStart)
+          .put("end", markEnd - textStart)
+          .apply { mark.url?.let { put("url", it) } }
+          .apply { mark.color?.let { put("color", it) } }
+          .apply { mark.expression?.let { put("expression", it) } })
+      }
+    }
+    return result
+  }
+
+  /**
+   * Paste a structured fragment into a table cell: its blocks joined on one line, with their
+   * marks. Colors are left behind, since a cell allows one color per range and the pasted text
+   * may land inside one. Returns false when the fragment has no text.
+   */
+  private fun pasteCellFragment(editor: TableCellEditor, parts: List<EditorPasteBlock>): Boolean {
+    val cell = tableCell(editor.address) ?: return false
+    val pasted = StringBuilder()
+    val pastedMarks = mutableListOf<EditorMark>()
+    parts.filter { it.text.isNotEmpty() }.forEach { part ->
+      if (pasted.isNotEmpty()) pasted.append(' ')
+      val shift = pasted.length
+      pasted.append(part.text.replace('\u2028', ' '))
+      part.marks.filter { it.kind != "color" }
+        .forEach { pastedMarks.add(it.copy(start = it.start + shift, end = it.end + shift)) }
+    }
+    if (pasted.isEmpty()) return false
+    val start = minOf(editor.selectionStart, editor.selectionEnd).coerceIn(0, cell.text.length)
+    val end = maxOf(editor.selectionStart, editor.selectionEnd).coerceIn(start, cell.text.length)
+    val text = cell.text.substring(0, start) + pasted + cell.text.substring(end)
+    updateCellMarksAfterEdit(cell, start, end - start, pasted.length, text.length)
+    cell.text = text
+    cell.marks.addAll(pastedMarks.map { it.copy(start = it.start + start, end = it.end + start) })
+    cell.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+    applyCellSpans(editor, cell)
+    editor.setSelection((start + pasted.length).coerceAtMost(editor.text.length))
+    return true
+  }
+
+  /** Parse a structured clipboard fragment into the blocks to paste; throws when it is malformed. */
+  private fun parseFragment(json: String): List<EditorPasteBlock> {
+    val fragment = JSONObject(json)
+    val data = fragment.getJSONArray("blocks")
+    require(fragment.getInt("version") == 1 && data.length() in 1..10000)
+    val parts = (0 until data.length()).map { index ->
+      val block = data.getJSONObject(index)
+      val type = block.getString("type")
+      val text = block.getString("text")
+      require(type in editorValidBlockTypes && !text.contains('\n'))
+      val color = if (block.has("color")) block.getString("color").takeIf { it in editorValidColors } else null
+      val url = if (block.has("url")) block.getString("url") else null
+      val duration = if (block.has("duration")) block.getDouble("duration") else null
+      val mimeType = if (block.has("mimeType")) block.getString("mimeType") else null
+      val fileName = if (block.has("fileName")) block.getString("fileName") else null
+      val fileSize = if (block.has("fileSize")) block.getDouble("fileSize") else null
+      val waveform = if (block.has("waveform")) {
+        (0 until block.getJSONArray("waveform").length()).mapNotNull { index ->
+          block.getJSONArray("waveform").optDouble(index).toFloat().takeIf { it.isFinite() }
+        }.map { it.coerceIn(0f, 1f) }.take(AUDIO_WAVEFORM_BAR_COUNT).takeIf { it.isNotEmpty() }
+      } else null
+      val icon = if (block.has("icon")) block.getString("icon") else null
+      val columnCount = if (block.has("columnCount")) block.getInt("columnCount") else null
+      require(columnCount?.let { type == "column_list" && it in 2..5 } ?: true)
+      val table = if (type == "table") parseEditorTable(jsonValue(block.opt("table"))) else null
+      require((type == "table") == (table != null) && (table == null || text.isEmpty()))
+      require((type != "link_to_page" && type != "image" && type != "audio" && type != "video") || !url.isNullOrBlank())
+      require(type != "audio" || (duration == null || duration.isFinite() && duration >= 0)
+        && (fileSize == null || fileSize.isFinite() && fileSize >= 0))
+      val marks = mutableListOf<EditorMark>()
+      block.optJSONArray("marks")?.let { markData ->
+        for (markIndex in 0 until markData.length()) {
+          val mark = markData.getJSONObject(markIndex)
+          val kind = mark.getString("kind")
+          val markStart = mark.getInt("start")
+          val markEnd = mark.getInt("end")
+          val markUrl = if (mark.has("url")) mark.getString("url") else null
+          val markColor = if (mark.has("color")) mark.getString("color") else null
+          val markExpression = if (mark.has("expression")) mark.getString("expression") else null
+          require(kind in listOf("bold", "italic", "strikethrough", "underline", "code")
+            || (kind == "color" && markColor in editorValidColors)
+            || (kind == "link" && !markUrl.isNullOrBlank())
+            || (kind == "equation" && isValidEquationMark(text, markStart, markEnd, markExpression)
+              && marks.none { it.kind == "equation" && it.start == markStart }))
+          require(markStart >= 0 && markEnd > markStart && markEnd <= text.length)
+          marks.add(EditorMark(kind, markStart, markEnd, markUrl, markColor, markExpression))
+        }
+      }
+      require(!hasOverlappingColorMarks(marks))
+      EditorPasteBlock(
+        type,
+        text,
+        color,
+        marks,
+        block.optBoolean("checked", false) && type == "to_do",
+        url,
+        icon,
+        columnCount,
+        duration,
+        mimeType,
+        fileName,
+        fileSize,
+        waveform,
+        table
+      )
+    }
+    return parts
+  }
+
+  /** A parsed JSON value as the maps and lists a bridge payload is made of. */
+  private fun jsonValue(value: Any?): Any? = when (value) {
+    is JSONObject -> value.keys().asSequence().associateWith { jsonValue(value.get(it)) }
+    is JSONArray -> (0 until value.length()).map { jsonValue(value.get(it)) }
+    JSONObject.NULL -> null
+    else -> value
+  }
+
   private fun copy(cut: Boolean): Boolean {
     val cellEditor = activeTableEditor?.takeIf { it.hasFocus() }
     if (cellEditor != null) {
       val start = minOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
       val end = maxOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
       if (start == end) return true
-      val selected = cellEditor.text.subSequence(start, end).toString()
-      clipboard().setPrimaryClip(ClipData.newPlainText("Markdown table cell", selected))
+      val cellMarks = tableCell(cellEditor.address)?.marks.orEmpty()
+      val selected = plainTextWithEquations(cellEditor.text.subSequence(start, end)) { offset ->
+        cellMarks.firstOrNull { it.kind == "equation" && it.start == start + offset }?.expression
+      }
+      val block = JSONObject().put("type", "text").put("text", cellEditor.text.subSequence(start, end).toString())
+      fragmentMarks(cellMarks, start, end).takeIf { it.length() > 0 }?.let { block.put("marks", it) }
+      val cellJson = JSONObject().put("version", 1).put("blocks", JSONArray().put(block)).toString()
+      setFragmentClip("Markdown table cell", selected, cellJson)
       if (cut) {
         cellEditor.text.delete(start, end)
         cellEditor.setSelection(start)
@@ -2996,28 +3247,26 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     val end = maxOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
     if (start == end) return true
     val fragment = JSONArray()
+    val expressions = HashMap<Int, String>()
     var offset = 0
     blocks.forEach { block ->
       val blockEnd = offset + block.nativeText().length
       if (offset <= end && blockEnd >= start) {
+        block.marks.forEach { mark ->
+          val expression = mark.expression
+          if (mark.kind == "equation" && expression != null) expressions[offset + mark.start] = expression
+        }
         val textStart = (start - offset).coerceIn(0, block.text.length)
         val textEnd = (end - offset).coerceIn(0, block.text.length)
-        val item = JSONObject().put("type", block.type).put("text", block.text.substring(
-          textStart, textEnd))
+        // A table is one placeholder character: it is copied whole or, when the selection only
+        // touches its edge, not at all.
+        val table = block.table?.takeIf { block.type == "table" && start <= offset && end >= blockEnd }
+        val item = JSONObject()
+          .put("type", if (block.type == "table" && table == null) "text" else block.type)
+          .put("text", if (block.type == "table") "" else block.text.substring(textStart, textEnd))
+        table?.let { item.put("table", JSONObject(it.payload())) }
         block.color?.let { item.put("color", it) }
-        val marks = JSONArray()
-        block.marks.forEach { mark ->
-          val markStart = maxOf(mark.start, textStart)
-          val markEnd = minOf(mark.end, textEnd)
-          if (markStart < markEnd) {
-            marks.put(JSONObject()
-              .put("kind", mark.kind)
-              .put("start", markStart - textStart)
-              .put("end", markEnd - textStart)
-              .apply { mark.url?.let { put("url", it) } }
-              .apply { mark.expression?.let { put("expression", it) } })
-          }
-        }
+        val marks = fragmentMarks(block.marks, textStart, textEnd)
         if (marks.length() > 0) item.put("marks", marks)
         if (block.type == "to_do") item.put("checked", block.checked)
         if (block.type == "column_list") item.put("columnCount", (block.columnCount ?: 2).coerceIn(2, 5))
@@ -3041,13 +3290,10 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       offset = blockEnd + 1
     }
     val json = JSONObject().put("version", 1).put("blocks", fragment).toString()
-    val intent = Intent().putExtra(FRAGMENT_MIME, json)
-    val plain = input.text.subSequence(start, end).toString()
+    val plain = plainTextWithEquations(input.text.subSequence(start, end)) { expressions[start + it] }
       .replace(EMPTY_BLOCK_TEXT, "")
       .replace('\u2028', '\n')
-    // A single item exposes interoperable text plus private structured data, not two pasted items.
-    clipboard().setPrimaryClip(ClipData(ClipDescription("Markdown document fragment", arrayOf("text/plain", FRAGMENT_MIME)),
-      ClipData.Item(plain, null, intent, null)))
+    setFragmentClip("Markdown document fragment", plain, json)
     if (cut) replaceSelection("")
     scheduleEvent(if (cut) "structured-cut" else "structured-copy")
     return true
@@ -3058,7 +3304,13 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     if (cellEditor != null) {
       val clip = clipboard().primaryClip ?: return true
       if (clip.itemCount == 0) return true
-      val pasted = clip.getItemAt(0).coerceToText(context).toString().replace('\r', ' ').replace('\n', ' ')
+      val cellParts = clipFragment(clip)?.let { runCatching { parseFragment(it) }.getOrNull() }
+      if (cellParts != null && pasteCellFragment(cellEditor, cellParts)) {
+        scheduleEvent("table-paste")
+        return true
+      }
+      val pasted = withoutPlaceholders(clip.getItemAt(0).coerceToText(context).toString())
+        .replace('\r', ' ').replace('\n', ' ')
       val start = minOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
       val end = maxOf(cellEditor.selectionStart, cellEditor.selectionEnd).coerceAtLeast(0)
       cellEditor.text.replace(start, end, pasted)
@@ -3069,81 +3321,30 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     val clip = clipboard().primaryClip ?: return true
     if (clip.itemCount == 0) return true
     val item = clip.getItemAt(0)
-    val json = item.intent?.getStringExtra(FRAGMENT_MIME)
-    if (json != null && json.length <= 1_000_000 && clip.description.hasMimeType(FRAGMENT_MIME)) {
+    val json = clipFragment(clip)
+    if (json != null) {
       try {
-        val fragment = JSONObject(json)
-        val data = fragment.getJSONArray("blocks")
-        require(fragment.getInt("version") == 1 && data.length() in 1..10000)
-        val parts = (0 until data.length()).map { index ->
-          val block = data.getJSONObject(index)
-          val type = block.getString("type")
-          val text = block.getString("text")
-          require(type in editorValidBlockTypes && !text.contains('\n'))
-          val color = if (block.has("color")) block.getString("color").takeIf { it in editorValidColors } else null
-          val url = if (block.has("url")) block.getString("url") else null
-          val duration = if (block.has("duration")) block.getDouble("duration") else null
-          val mimeType = if (block.has("mimeType")) block.getString("mimeType") else null
-          val fileName = if (block.has("fileName")) block.getString("fileName") else null
-          val fileSize = if (block.has("fileSize")) block.getDouble("fileSize") else null
-          val waveform = if (block.has("waveform")) {
-            (0 until block.getJSONArray("waveform").length()).mapNotNull { index ->
-              block.getJSONArray("waveform").optDouble(index).toFloat().takeIf { it.isFinite() }
-            }.map { it.coerceIn(0f, 1f) }.take(AUDIO_WAVEFORM_BAR_COUNT).takeIf { it.isNotEmpty() }
-          } else null
-          val icon = if (block.has("icon")) block.getString("icon") else null
-          val columnCount = if (block.has("columnCount")) block.getInt("columnCount") else null
-          require(columnCount?.let { type == "column_list" && it in 2..5 } ?: true)
-          require((type != "link_to_page" && type != "image" && type != "audio" && type != "video") || !url.isNullOrBlank())
-          require(type != "audio" || (duration == null || duration.isFinite() && duration >= 0)
-            && (fileSize == null || fileSize.isFinite() && fileSize >= 0))
-          val marks = mutableListOf<EditorMark>()
-          block.optJSONArray("marks")?.let { markData ->
-            for (markIndex in 0 until markData.length()) {
-              val mark = markData.getJSONObject(markIndex)
-              val kind = mark.getString("kind")
-              val markStart = mark.getInt("start")
-              val markEnd = mark.getInt("end")
-              val markUrl = if (mark.has("url")) mark.getString("url") else null
-              val markColor = if (mark.has("color")) mark.getString("color") else null
-              val markExpression = if (mark.has("expression")) mark.getString("expression") else null
-              require(kind in listOf("bold", "italic", "strikethrough", "underline", "code")
-                || (kind == "color" && markColor in editorValidColors)
-                || (kind == "link" && !markUrl.isNullOrBlank())
-                || (kind == "equation" && isValidEquationMark(text, markStart, markEnd, markExpression)
-                  && marks.none { it.kind == "equation" && it.start == markStart }))
-              require(markStart >= 0 && markEnd > markStart && markEnd <= text.length)
-              marks.add(EditorMark(kind, markStart, markEnd, markUrl, markColor, markExpression))
-            }
-          }
-          require(!hasOverlappingColorMarks(marks))
-          EditorPasteBlock(
-            type,
-            text,
-            color,
-            marks,
-            block.optBoolean("checked", false) && type == "to_do",
-            url,
-            icon,
-            columnCount,
-            duration,
-            mimeType,
-            fileName,
-            fileSize,
-            waveform
-          )
-        }
+        val parts = parseFragment(json)
         val start = minOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
-        val firstBlock = input.text.take(start).count { it == '\n' }
+        val precedingBlock = input.text.take(start).count { it == '\n' }
         val startOffset = pointAt(start)["offset"] as? Int ?: 0
-        val startsAtBoundary = startOffset == 0
-        replaceSelection(parts.joinToString("\n") { it.text })
+        // A table takes a block of its own: it cannot share one with the text around the caret.
+        val end = maxOf(input.selectionStart, input.selectionEnd).coerceAtLeast(0)
+        val leadsWithTable = startOffset != 0 && parts.first().table != null
+        val trailsTable = parts.last().table != null
+          && input.text.drop(end).takeWhile { it != '\n' }.toString().replace(EMPTY_BLOCK_TEXT, "").isNotEmpty()
+        val startsAtBoundary = startOffset == 0 || leadsWithTable
+        val firstBlock = precedingBlock + if (leadsWithTable) 1 else 0
+        replaceSelection(
+          (if (leadsWithTable) "\n" else "") + parts.joinToString("\n") { it.text } + (if (trailsTable) "\n" else "")
+        )
         parts.forEachIndexed { index, part ->
           if (index == 0 && !startsAtBoundary) {
             // Pasted into the middle of a block, the first part adopts that block's formatting,
             // but its equations are content: without their marks only bare placeholders remain.
             val target = blocks[firstBlock]
             part.marks.filter { it.kind == "equation" }.forEach { mark ->
+              target.marks.removeAll { it.kind == "equation" && it.start == mark.start + startOffset }
               target.marks.add(mark.copy(start = mark.start + startOffset, end = mark.end + startOffset))
             }
             target.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
@@ -3160,6 +3361,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             blocks[firstBlock + index].fileName = part.fileName
             blocks[firstBlock + index].fileSize = part.fileSize
             blocks[firstBlock + index].waveform = part.waveform
+            blocks[firstBlock + index].table = part.table
             // Text that followed the caret now trails the last part; its marks sit past the
             // pasted text and stay with it.
             blocks[firstBlock + index].marks.removeAll { it.start < part.text.length }
@@ -3168,6 +3370,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
               .sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
           }
         }
+        // A pasted table's line still holds the empty text it was inserted as, not its placeholder.
+        normalizeNativeText()
         styleBlocks()
         scheduleEvent("structured-paste")
         return true
@@ -3175,7 +3379,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         // Untrusted/malformed private data falls back to the interoperable plain item.
       }
     }
-    replaceSelection(item.coerceToText(context).toString().replace("\r\n", "\n").replace('\r', '\n'))
+    replaceSelection(
+      withoutPlaceholders(item.coerceToText(context).toString()).replace("\r\n", "\n").replace('\r', '\n')
+    )
     scheduleEvent("plain-paste")
     return true
   }
@@ -3218,8 +3424,20 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     // The turn-into MAB replaces the IME while it is open. Restore it after the transform.
     requestKeyboard()
     var changed = false
+    val selectionStart = logicalSelectionPoint(minOf(input.selectionStart, input.selectionEnd))
+    val selectionEnd = logicalSelectionPoint(maxOf(input.selectionStart, input.selectionEnd))
+    val expansions = HashMap<Int, List<Pair<Int, Int>>>()
     range.forEach { index ->
       val block = blocks[index]
+      // Code and block-equation blocks show their text literally, so an inline equation in one
+      // goes back to its source rather than staying a rendered token.
+      if (type == "code" || type == "equation") {
+        val shifts = expandInlineEquations(block)
+        if (shifts.isNotEmpty()) {
+          expansions[index] = shifts
+          changed = true
+        }
+      }
       val nextToggle = (type.startsWith("heading_") || type == "toggle") &&
         (toggleTarget || type == "toggle")
       val nextColumnCount = if (type == "column_list") columnCount?.coerceIn(2, 5) ?: 2 else null
@@ -3251,6 +3469,17 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       }
     }
     if (!changed) return
+    if (expansions.isNotEmpty()) {
+      applying = true
+      BaseInputConnection.removeComposingSpans(input.text)
+      input.setText(blocks.nativeText())
+      applying = false
+      fun remap(point: Pair<Int, Int>): Int {
+        val added = expansions[point.first]?.filter { it.first < point.second }?.sumOf { it.second } ?: 0
+        return (offsetOf(point.first) + point.second + added).coerceIn(0, input.text.length)
+      }
+      input.setSelection(remap(selectionStart), remap(selectionEnd))
+    }
     styleBlocks()
     scheduleEvent("turn-into")
   }
@@ -3730,6 +3959,63 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     input.post { reportContentSize() }
   }
 
+  /**
+   * Re-mark equations that an edit left in the text but [captureInlineMarks] no longer found.
+   *
+   * A keyboard treats the placeholder as part of the word typed beside it. Composing that word
+   * can strip the marker span (see [keepEquationSpans]), and rewriting the word replaces the
+   * placeholder with a new one that has no span at all. The equations known just before the edit
+   * are therefore carried across it: one outside the edited range moves with the text, and those
+   * inside it survive when the replacement holds as many placeholders as the text it replaced --
+   * they are then the same equations in the same order. A keyboard may also split that rewrite
+   * into a deletion followed by an insertion; see [EquationRewrite].
+   */
+  private fun restoreEquationMarks(text: CharSequence, start: Int, before: Int, count: Int) {
+    val known = equationsBeforeEdit
+    equationsBeforeEdit = emptyList()
+    val pending = deletedEquations
+    deletedEquations = EquationRewrite()
+    val replacements = (start until (start + count).coerceAtMost(text.length))
+      .filter { text[it] == EQUATION_PLACEHOLDER }
+    val rewritten = known.filter { it.first >= start && it.first < start + before }.map { it.second }
+    val returning = when {
+      rewritten.isNotEmpty() && rewritten.size == replacements.size -> rewritten
+      before == 0 -> pending.reinserted(start, replacements.size)
+      else -> emptyList()
+    }
+    if (rewritten.isNotEmpty() && count == 0) deletedEquations = EquationRewrite.of(start, rewritten)
+    val carried = known.mapNotNull { (offset, expression) ->
+      when {
+        offset < start -> offset to expression
+        offset >= start + before -> (offset + count - before) to expression
+        else -> null
+      }
+    } + returning.mapIndexed { order, expression -> replacements[order] to expression }
+    carried.forEach { (offset, expression) ->
+      if (offset !in text.indices || text[offset] != EQUATION_PLACEHOLDER) return@forEach
+      val (index, local) = logicalSelectionPoint(offset)
+      val block = blocks[index]
+      if (!isValidEquationMark(block.text, local, local + 1, expression)
+        || block.marks.any { it.kind == "equation" && it.start == local }) return@forEach
+      block.marks.add(EditorMark("equation", local, local + 1, expression = expression))
+      block.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+    }
+  }
+
+  /**
+   * Undo what a composing region does to an equation inside it. Android flags every span in the
+   * region as composing and later removes every span so flagged, which would take the equation's
+   * marker and its drawing with it. Clearing the flag keeps both.
+   */
+  private fun keepEquationSpans(text: Editable) {
+    text.getSpans(0, text.length, Any::class.java).forEach { span ->
+      if (span !is InlineMathSpan && !(span is EditorInlineMarkSpan && span.kind == "equation")) return@forEach
+      val flags = text.getSpanFlags(span)
+      if (flags and Spanned.SPAN_COMPOSING == 0) return@forEach
+      text.setSpan(span, text.getSpanStart(span), text.getSpanEnd(span), flags and Spanned.SPAN_COMPOSING.inv())
+    }
+  }
+
   /** Copies Android-adjusted inline marker ranges back into the block transport model. */
   private fun captureInlineMarks() {
     blocks.forEach { it.marks.clear() }
@@ -3834,6 +4120,30 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     }
   }
 
+  /** The span that draws one of a cell's equations. */
+  private fun cellMathSpan(
+    editor: TableCellEditor,
+    cell: EditorTableCell,
+    mark: EditorMark,
+    expression: String
+  ): InlineMathSpan {
+    val markColor = cell.marks
+      .firstOrNull { it.kind == "color" && it.start <= mark.start && it.end >= mark.end }?.color
+    return InlineMathSpan(
+      expression,
+      context.assets,
+      InlineMathColors(
+        foreground = theme.textColor(markColor) ?: tableCellTextColor(editor.address),
+        background = theme.backgroundColor(markColor),
+        muted = theme.muted,
+        error = theme.error,
+        monospace = monospaceTypeface
+      ),
+      editor.mathHost,
+      ::equationLayoutState
+    )
+  }
+
   private fun applyCellSpans(editor: TableCellEditor, cell: EditorTableCell) {
     val value = android.text.SpannableStringBuilder(cell.text)
     val fullEnd = value.length
@@ -3871,22 +4181,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       val expression = mark.expression
       if (mark.kind != "equation" || expression == null ||
         !isValidEquationMark(cell.text, mark.start, mark.end, expression)) return@forEach
-      val markColor = cell.marks
-        .firstOrNull { it.kind == "color" && it.start <= mark.start && it.end >= mark.end }?.color
       value.setSpan(
-        InlineMathSpan(
-          expression,
-          context.assets,
-          InlineMathColors(
-            foreground = theme.textColor(markColor) ?: tableCellTextColor(editor.address),
-            background = theme.backgroundColor(markColor),
-            muted = theme.muted,
-            error = theme.error,
-            monospace = monospaceTypeface
-          ),
-          editor.mathHost,
-          ::equationLayoutState
-        ),
+        cellMathSpan(editor, cell, mark, expression),
         mark.start,
         mark.end,
         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -3906,6 +4202,8 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   ) : EditText(context) {
     private var editStart = 0
     private var editBefore = 0
+    private var editEquations: List<String> = emptyList()
+    private var deletedEquations = EquationRewrite()
     private var rangeDrag = false
     private var downX = 0f
     private var downY = 0f
@@ -3953,6 +4251,11 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
           editStart = start
           editBefore = count
+          editEquations = if (syncingTableEditor) emptyList() else tableCell(address)?.marks
+            ?.filter { it.kind == "equation" && it.start >= start && it.end <= start + count }
+            ?.sortedBy { it.start }
+            ?.mapNotNull { it.expression }
+            ?: emptyList()
         }
 
         override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
@@ -3977,6 +4280,36 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
             nextText.length
           )
           cell.text = nextText
+          // As in the main input: a keyboard that rewrote a word together with the equations
+          // beside it gets those equations back.
+          val editAfter = nextText.length - oldLength + editBefore
+          val positions = (editStart until (editStart + editAfter).coerceIn(editStart, nextText.length))
+            .filter { nextText[it] == EQUATION_PLACEHOLDER }
+          val pending = deletedEquations
+          deletedEquations = EquationRewrite()
+          val returning = when {
+            editEquations.isNotEmpty() && positions.size == editEquations.size -> editEquations
+            editBefore == 0 -> pending.reinserted(editStart, positions.size)
+            else -> emptyList()
+          }
+          if (editEquations.isNotEmpty() && editAfter <= 0) {
+            deletedEquations = EquationRewrite.of(editStart, editEquations)
+          }
+          if (s != null && returning.isNotEmpty()) {
+            positions.forEachIndexed { order, position ->
+              if (cell.marks.any { it.kind == "equation" && it.start == position }) return@forEachIndexed
+              val mark = EditorMark("equation", position, position + 1, expression = returning[order])
+              cell.marks.add(mark)
+              s.setSpan(
+                cellMathSpan(this@TableCellEditor, cell, mark, returning[order]),
+                position,
+                position + 1,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+              )
+            }
+            cell.marks.sortWith(compareBy<EditorMark> { it.start }.thenBy { it.end }.thenBy { it.kind })
+          }
+          editEquations = emptyList()
           scheduleEvent("table-text")
           invalidate()
         }
@@ -4069,6 +4402,31 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     override fun onSelectionChanged(start: Int, end: Int) {
       super.onSelectionChanged(start, end)
       if (hasFocus() && inputInitialized) scheduleEvent("selection")
+    }
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+      val connection = super.onCreateInputConnection(outAttrs) ?: return null
+      return object : InputConnectionWrapper(connection, false) {
+        override fun setComposingRegion(start: Int, end: Int): Boolean {
+          val result = super.setComposingRegion(start, end)
+          keepEquationSpans(text)
+          return result
+        }
+
+        override fun setComposingRegion(start: Int, end: Int, textAttribute: TextAttribute?): Boolean {
+          val result = super.setComposingRegion(start, end, textAttribute)
+          keepEquationSpans(text)
+          return result
+        }
+      }
+    }
+
+    /** The system copy and paste actions take the editor's own paths, as in the main input. */
+    override fun onTextContextMenuItem(id: Int): Boolean = when (id) {
+      android.R.id.copy -> copy(false)
+      android.R.id.cut -> copy(true)
+      android.R.id.paste, android.R.id.pasteAsPlainText -> paste()
+      else -> super.onTextContextMenuItem(id)
     }
   }
 
@@ -4914,7 +5272,9 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       android.R.id.paste -> paste()
       android.R.id.pasteAsPlainText -> {
         val clip = clipboard().primaryClip
-        if (clip != null && clip.itemCount > 0) replaceSelection(clip.getItemAt(0).coerceToText(context).toString())
+        if (clip != null && clip.itemCount > 0) {
+          replaceSelection(withoutPlaceholders(clip.getItemAt(0).coerceToText(context).toString()))
+        }
         true
       }
       else -> super.onTextContextMenuItem(id)
@@ -4969,6 +5329,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         override fun setComposingRegion(start: Int, end: Int): Boolean {
           if (epoch != connectionEpoch) return false
           val result = super.setComposingRegion(start, end)
+          keepEquationSpans(text)
           scheduleEvent("ime-composing-region")
           return result
         }
@@ -4990,6 +5351,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
         override fun setComposingRegion(start: Int, end: Int, textAttribute: TextAttribute?): Boolean {
           if (epoch != connectionEpoch) return false
           val result = super.setComposingRegion(start, end, textAttribute)
+          keepEquationSpans(text)
           scheduleEvent("ime-composing-region")
           return result
         }

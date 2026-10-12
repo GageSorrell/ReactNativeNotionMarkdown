@@ -137,7 +137,8 @@ test('editorColorChoices builds translated sections from the configured hues', (
   assert.equal(all.text.length, 10);
   assert.equal(all.text[ 0 ].label, 'Default');
   assert.equal(all.background[ 1 ].color, 'gray_bg');
-  assert.equal(all.background[ 1 ].label, 't:color.grayBackground');
+  assert.equal(all.background[ 1 ].label, 't:color.gray');
+  assert.equal(all.background[ 1 ].accessibilityLabel, 't:color.grayBackground');
   const some = editorColorChoices({ text: [ 'red' ], background: [], showDefault: false }, t, 'Default');
   assert.deepEqual(some.text.map((choice) => choice.color), [ 'red' ]);
   assert.deepEqual(some.background, []);

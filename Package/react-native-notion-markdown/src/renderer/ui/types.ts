@@ -10,9 +10,9 @@
 import type { ComponentType, ReactNode } from "react";
 import type {
     MarkdownBlock,
+    MarkdownBlockType,
     MarkdownDiagnostic,
-    MarkdownDocument,
-    MarkdownBlockType
+    MarkdownDocument
 } from "../../document/types.ts";
 import type { MarkdownSharedConfig } from "../../provider/MarkdownProvider.tsx";
 import type { MarkdownTheme } from "../../provider/theme.ts";
@@ -135,7 +135,9 @@ export interface MarkdownRendererConfig
     readonly components?: MarkdownBlockComponents;
     readonly checkboxComponent?: MarkdownCheckboxComponent;
     readonly icons?: MarkdownRendererIcons;
-    readonly resolveReference?: (request: MarkdownReferenceRequest) => Promise<MarkdownReferenceDisplay | null>;
+    readonly resolveReference?:
+    (request: MarkdownReferenceRequest) => Promise<MarkdownReferenceDisplay | null>;
+
     readonly resolveSyncedBlock?: (url: string) => Promise<MarkdownDocument | null>;
     readonly resolveMediaUrl?: (request: MarkdownMediaRequest) => Promise<string | null>;
 }

@@ -288,16 +288,19 @@ function serializeBlock(
         case "toggle":
             return [
                 "\t".repeat(indent) + `<details${ tagAttributes(meta) }>`,
-                "\t".repeat(indent + 1) + `<summary>${ richText(data.rich_text) }</summary>`,
+                "\t".repeat(indent) + `<summary>${ richText(data.rich_text) }</summary>`,
                 ...childLines,
                 "\t".repeat(indent) + "</details>"
             ];
         case "callout":
         {
-            const icon = asRecord(data.icon).emoji;
-            const iconAttribute = typeof icon === "string" ? ` icon=${quoteAttribute(icon)}` : "";
+            // The parser records the icon in both the payload and the metadata; emit it only once.
+            const { icon: metaIcon, ...tagMeta } = meta;
+            const emoji = asRecord(data.icon).emoji;
+            const icon = typeof emoji === "string" ? emoji : metaIcon;
+            const iconAttribute = icon === undefined ? "" : ` icon=${quoteAttribute(icon)}`;
             return [
-                "\t".repeat(indent) + `<callout${ iconAttribute }${ tagAttributes(meta) }>`,
+                "\t".repeat(indent) + `<callout${ iconAttribute }${ tagAttributes(tagMeta) }>`,
                 "\t".repeat(indent + 1) + richText(data.rich_text),
                 ...childLines,
                 "\t".repeat(indent) + "</callout>"
