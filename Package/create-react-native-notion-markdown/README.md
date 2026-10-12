@@ -1,21 +1,29 @@
-# create-react-native-notion-markdown
+# `create-react-native-notion-markdown`
 
-Install `react-native-notion-markdown` and choose which optional peer dependencies belong in your React Native app.
+Install [`react-native-notion-markdown`](https://www.npmjs.com/package/react-native-notion-markdown) and choose how much of its *batteries-included* editor to add to a React Native app.
 
-Run the installer from your app directory:
-
-```sh
-npx create-react-native-notion-markdown
-```
-
-In an interactive terminal, choose all optional peers, the Expo integrations without Lucide icons, or Lucide icons only. Pass a choice for scripts and other noninteractive environments:
+Run the installer from the app directory,
 
 ```sh
-npx create-react-native-notion-markdown all
-npx create-react-native-notion-markdown no-icons
-npx create-react-native-notion-markdown icons
+npm init react-native-notion-markdown
 ```
 
-The installer reads the current app's `package.json`, then uses its declared package manager or the one identified by its only lockfile. When Expo is needed, the app must have a local Expo CLI available; the installer runs `expo install` so Expo can select compatible package versions. The `icons` choice uses Expo only if the app declares `expo` in `dependencies`.
+The interactive wizard offers:
 
-`all` installs the main package and all optional peers. `no-icons` installs all optional Expo integration peers. `icons` installs only `lucide-react-native` alongside the main package.
+- `none`: install only `react-native-notion-markdown`.
+- `full`: install every third-party peer used by the editor and renderer.
+- `some`: install the editor core, then choose individual features.
+
+The selective feature choices are media picker, audio recording/playback, file and PDF support, equations, links and page references, Lucide icons, Inter fonts, and rich media previews.
+
+Non-interactive invocations are also supported:
+
+```sh
+npm init react-native-notion-markdown -- none
+npm init react-native-notion-markdown -- full
+npm init react-native-notion-markdown -- some media,audio
+```
+
+The installer reads the app's `package.json`, prefers its declared `packageManager`, and otherwise detects a single lockfile before falling back to npm. For an app that already declares Expo, it uses the local Expo CLI's `expo install` command so Expo can select compatible versions. Otherwise it uses the detected package manager's install/add command.
+
+The selective setup prints a starter `MarkdownEditor` component after installation. The snippet identifies callbacks and integrations that the app must supply for features that were not installed. Native dependencies require rebuilding the development client or native application.
