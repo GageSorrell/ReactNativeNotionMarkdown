@@ -276,6 +276,9 @@ export interface NativeContentSizeEvent
 {
     /** The text layout's true content height, in dp. */
     readonly height: number;
+
+    /** The rendered height of one empty text block, including its normal block spacing, in dp. */
+    readonly emptyLineHeight?: number;
 }
 
 /**

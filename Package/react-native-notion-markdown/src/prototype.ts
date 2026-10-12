@@ -201,6 +201,7 @@ export interface EditorEvent extends EditorSnapshot
 export type Action =
     | "focus"
     | "dismiss"
+    | "insertAtEnd"
     | "selectAll"
     | "copy"
     | "cut"

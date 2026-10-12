@@ -1044,6 +1044,12 @@ const ScrollFadeWidth = 20;
    exactly below the editor look like it overlaps it. */
 const KeyboardGeometryTolerance = 2;
 
+/** Extra touchable room below the final line, beyond one empty text-block line. */
+const BottomInsertionMargin = 12;
+
+/** Fallback for the first render, before the native editor reports its measured line height. */
+const DefaultEmptyLineHeightMultiplier = 1.5;
+
 /**
  * A pure-View approximation of a linear gradient (no `expo-linear-gradient`/native gradient
  * dependency): evenly spaced flat slices with increasing alpha read as a smooth fade at this
@@ -1151,6 +1157,9 @@ function MarkdownEditorContent({
        reachable by scrolling instead of being silently clipped. `undefined` until the first
        report arrives, during which the page falls back to filling the available viewport. */
     const [ contentHeight, setContentHeight ] = useState<number>();
+    const [ emptyLineHeight, setEmptyLineHeight ] = useState<number>();
+    const pageScroll = useRef<ScrollView>(null);
+    const scrollToEndAfterContentLayout = useRef(false);
     const sequence = useRef(0);
     const currentSnapshot = useRef(suppliedSnapshot ?? internalSnapshot ?? defaultSnapshot);
     /* A JS-side history of past/undone snapshots for the internally-managed document. This needs
@@ -1540,6 +1549,15 @@ function MarkdownEditorContent({
     }: { nativeEvent: NativeContentSizeEvent }) =>
     {
         setContentHeight(nativeEvent.height);
+        if (nativeEvent.emptyLineHeight !== undefined)
+        {
+            setEmptyLineHeight(nativeEvent.emptyLineHeight);
+        }
+        if (scrollToEndAfterContentLayout.current)
+        {
+            scrollToEndAfterContentLayout.current = false;
+            requestAnimationFrame(() => pageScroll.current?.scrollToEnd({ animated: true }));
+        }
     }, [ ]);
     const handlePageReferencePress = useCallback(({
         nativeEvent
@@ -2213,6 +2231,19 @@ function MarkdownEditorContent({
         () => contentHeight === undefined ? styles.editor : [ styles.editor, { minHeight: contentHeight } ],
         [ contentHeight ]
     );
+    const bottomInsertionHeight = (emptyLineHeight
+        ?? Math.ceil(theme.document.fontSize * DefaultEmptyLineHeightMultiplier))
+        + BottomInsertionMargin;
+    const bottomInsertionStyle = useMemo(
+        () => [ styles.bottomInsertion, { height: bottomInsertionHeight } ],
+        [ bottomInsertionHeight ]
+    );
+    const handleAppendTextBlock = useCallback(() =>
+    {
+        scrollToEndAfterContentLayout.current = true;
+        setOpenPanel(NoPanelOpen);
+        send("insertAtEnd");
+    }, [ send ]);
     const scrollFadeLayerStyles = useMemo(
         () => Array.from({ length: ScrollFadeSteps }, (_unused: unknown, index: number) =>
         {
@@ -2664,6 +2695,7 @@ function MarkdownEditorContent({
                 <ScrollView
                     contentContainerStyle={ styles.pageScrollContent }
                     keyboardShouldPersistTaps="handled"
+                    ref={ pageScroll }
                     style={ styles.pageScroll }>
                     <View style={ pageStyle }>
                         <NativeEditor
@@ -2682,6 +2714,11 @@ function MarkdownEditorContent({
                             testID={ testID }
                             theme={ nativeTheme }
                         />
+                        <Pressable
+                            accessibilityLabel="Add paragraph"
+                            accessibilityRole="button"
+                            onPress={ handleAppendTextBlock }
+                            style={ bottomInsertionStyle } />
                     </View>
                 </ScrollView>
             </Animated.View>
@@ -2999,6 +3036,10 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         gap: 8,
         marginBottom: 8
+    },
+    bottomInsertion:
+    {
+        flexGrow: 0
     },
     button:
     {

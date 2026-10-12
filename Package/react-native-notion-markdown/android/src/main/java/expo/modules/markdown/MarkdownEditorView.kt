@@ -1349,10 +1349,13 @@ private class CalloutIconSpan(
     val iconPaint = Paint(paint)
     iconPaint.textSize = paint.textSize * 1.3f
     val fm = iconPaint.fontMetrics
-    val centerY = (top + bottom) / 2f
-    // Emoji glyphs carry a little extra space below their visible pixels. Raise the baseline
-    // slightly so the visible icon is centered with the first line of callout text.
-    val iconBaseline = centerY - (fm.ascent + fm.descent) / 2f - 2f
+    /* The first wrapped line's bounds include the callout's top padding but not its bottom
+       padding. Center against the text baseline instead of that asymmetric box, otherwise the
+       icon rises by roughly half a line when the callout wraps. Emoji glyphs carry a little extra
+       space below their visible pixels, so keep the small optical lift after the metric correction. */
+    val textMetrics = paint.fontMetrics
+    val textCenterY = baseline + (textMetrics.ascent + textMetrics.descent) / 2f
+    val iconBaseline = textCenterY - (fm.ascent + fm.descent) / 2f - 2f
     canvas.drawText(icon, (x + iconInset).toFloat(), iconBaseline, iconPaint)
   }
 }
@@ -1439,6 +1442,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
   /** Asks JS to prompt for an inline equation's source: `{ expression, editing }`. */
   private val onEquationRequest by EventDispatcher()
   private var lastReportedContentHeightPx = -1
+  private var lastReportedEmptyLineHeightPx = -1
   private var pageReferenceFallbackIcon: String? = null
   private var labels = EditorLabels.DEFAULT
   private var imageMaxWidth = 960
@@ -1938,6 +1942,7 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
       "focus" -> {
         requestKeyboard()
       }
+      "insertAtEnd" -> insertTextBlockAtEnd()
       "dismiss" -> {
         keyboardRequestPending = false
         keyboardShowAttempts = 0
@@ -3002,6 +3007,16 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
     scheduleEvent(if (before) "insert-block-above" else "insert-block-below")
   }
 
+  /** Append an empty text block, place the caret in it, and bring the keyboard back. */
+  private fun insertTextBlockAtEnd() {
+    if (blocks.isEmpty()) return
+    val last = blocks.last()
+    blocks.add(EditorBlock(newId(), "text", "", depth = last.depth))
+    replaceNativeTextAndSelect(blocks.lastIndex)
+    requestKeyboard()
+    scheduleEvent("insert-text-at-end")
+  }
+
   /** Insert a copy of the identified block immediately after it. */
   private fun duplicateBlockById(id: String?) {
     val index = blockIndexById(id) ?: return
@@ -3791,10 +3806,15 @@ class MarkdownEditorView(context: Context, appContext: AppContext) : ExpoView(co
    */
   private fun reportContentSize() {
     val heightPx = input.layout?.height ?: return
-    if (heightPx == lastReportedContentHeightPx) return
+    val metrics = input.paint.fontMetricsInt
+    val emptyLineHeightPx = metrics.descent - metrics.ascent +
+      (16 * resources.displayMetrics.density).roundToInt()
+    if (heightPx == lastReportedContentHeightPx && emptyLineHeightPx == lastReportedEmptyLineHeightPx) return
     lastReportedContentHeightPx = heightPx
+    lastReportedEmptyLineHeightPx = emptyLineHeightPx
     val heightDp = ceil(heightPx / resources.displayMetrics.density).toInt()
-    onContentSize(mapOf("height" to heightDp))
+    val emptyLineHeightDp = ceil(emptyLineHeightPx / resources.displayMetrics.density).toInt()
+    onContentSize(mapOf("height" to heightDp, "emptyLineHeight" to emptyLineHeightDp))
   }
 
   private fun shouldShowEmptyTodoPlaceholder(index: Int, block: EditorBlock): Boolean {
